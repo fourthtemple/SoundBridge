@@ -5,10 +5,10 @@ const ROOT = process.cwd();
 const MAX_SOURCE_LINES = 1200;
 
 const OVERSIZED_BASELINE = new Map([
-  ["native/bridge-daemon/src/Lv2HostWorker.cpp", 2921],
+  ["native/bridge-daemon/src/Lv2HostWorker.cpp", 2017],
   ["native/bridge-daemon/src/Vst3HostWorker.cpp", 1750],
   ["scripts/mock-daemon.mjs", 3687],
-  ["scripts/smoke-test.mjs", 1548]
+  ["scripts/smoke-test.mjs", 1535]
 ]);
 
 const SOURCE_EXTENSIONS = new Set([

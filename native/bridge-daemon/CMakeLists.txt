@@ -10,6 +10,7 @@ add_executable(soundbridge-daemon
   src/Base64.cpp
   src/ExampleInstrumentRenderer.cpp
   src/Lv2HostWorker.cpp
+  src/Lv2HostWorkerSupport.cpp
   src/Lv2Scanner.cpp
   src/NativePlugin.cpp
   src/PluginCatalog.cpp

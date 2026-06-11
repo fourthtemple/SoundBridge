@@ -2,6 +2,7 @@
 @prefix doap: <http://usefulinc.com/ns/doap#> .
 @prefix lv2: <http://lv2plug.in/ns/lv2core#> .
 @prefix midi: <http://lv2plug.in/ns/ext/midi#> .
+@prefix pg: <http://lv2plug.in/ns/ext/port-groups#> .
 @prefix state: <http://lv2plug.in/ns/ext/state#> .
 @prefix time: <http://lv2plug.in/ns/ext/time#> .
 
@@ -9,6 +10,8 @@
   a lv2:Plugin ;
   doap:name "SoundBridge Example LV2 Gain" ;
   lv2:extensionData state:interface ;
+  pg:mainInput <urn:soundbridge:example:lv2-gain#input> ;
+  pg:mainOutput <urn:soundbridge:example:lv2-gain#output> ;
   lv2:port [
     a lv2:InputPort, lv2:ControlPort ;
     lv2:index 0 ;
@@ -21,22 +24,30 @@
     a lv2:InputPort, lv2:AudioPort ;
     lv2:index 1 ;
     lv2:symbol "in_l" ;
-    lv2:name "Input L"
+    lv2:name "Input L" ;
+    lv2:designation pg:left ;
+    pg:group <urn:soundbridge:example:lv2-gain#input>
   ], [
     a lv2:InputPort, lv2:AudioPort ;
     lv2:index 2 ;
     lv2:symbol "in_r" ;
-    lv2:name "Input R"
+    lv2:name "Input R" ;
+    lv2:designation pg:right ;
+    pg:group <urn:soundbridge:example:lv2-gain#input>
   ], [
     a lv2:OutputPort, lv2:AudioPort ;
     lv2:index 3 ;
     lv2:symbol "out_l" ;
-    lv2:name "Output L"
+    lv2:name "Output L" ;
+    lv2:designation pg:left ;
+    pg:group <urn:soundbridge:example:lv2-gain#output>
   ], [
     a lv2:OutputPort, lv2:AudioPort ;
     lv2:index 4 ;
     lv2:symbol "out_r" ;
-    lv2:name "Output R"
+    lv2:name "Output R" ;
+    lv2:designation pg:right ;
+    pg:group <urn:soundbridge:example:lv2-gain#output>
   ], [
     a lv2:OutputPort, lv2:ControlPort ;
     lv2:index 5 ;

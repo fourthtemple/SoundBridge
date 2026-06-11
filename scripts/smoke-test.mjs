@@ -1102,17 +1102,15 @@ async function runNativeLv2WorkerSmoke() {
     const layout = await requestWorker("layout");
     assertLayoutReport(layout, 2, 2, 48000, 128, "native LV2 worker reports layout");
     assert(
-      layout.inputBuses === 3 &&
+      layout.inputBuses === 1 &&
         layout.inputBusLayouts[0]?.index === 0 &&
         layout.inputBusLayouts[0]?.channels === 2 &&
-        layout.inputBusLayouts[1]?.index === 1 &&
-        layout.inputBusLayouts[1]?.channels === 1 &&
-        layout.outputBuses === 3 &&
+        layout.inputBusLayouts[0]?.type === "main" &&
+        layout.outputBuses === 1 &&
         layout.outputBusLayouts[0]?.index === 0 &&
         layout.outputBusLayouts[0]?.channels === 2 &&
-        layout.outputBusLayouts[1]?.index === 1 &&
-        layout.outputBusLayouts[1]?.channels === 1,
-      "native LV2 worker exposes aggregate bus 0 plus bounded per-port aux buses"
+        layout.outputBusLayouts[0]?.type === "main",
+      "native LV2 worker honors declared LV2 port-groups as grouped main buses"
     );
 
     const set = await requestWorker("setParameter gain 0.75 0");
@@ -1151,12 +1149,8 @@ async function runNativeLv2WorkerSmoke() {
       Array.isArray(rendered.outputBuses) &&
         rendered.outputBuses.length === layout.outputBuses &&
         rendered.outputBuses[0]?.index === 0 &&
-        JSON.stringify(rendered.outputBuses[0].channels) === JSON.stringify(rendered.channels) &&
-        rendered.outputBuses[1]?.index === 1 &&
-        JSON.stringify(rendered.outputBuses[1].channels) === JSON.stringify([rendered.channels[0]]) &&
-        rendered.outputBuses[2]?.index === 2 &&
-        JSON.stringify(rendered.outputBuses[2].channels) === JSON.stringify([rendered.channels[1]]),
-      "native LV2 worker returns aggregate and per-port output bus audio"
+        JSON.stringify(rendered.outputBuses[0].channels) === JSON.stringify(rendered.channels),
+      "native LV2 worker returns grouped main output bus audio"
     );
     assert(Math.abs(rendered.channels[0][0] - 0.15) < 0.00001, "native LV2 worker processed audio through the plugin");
 
@@ -1165,13 +1159,6 @@ async function runNativeLv2WorkerSmoke() {
       Math.abs(busRendered.channels[0][0] - 0.3) < 0.00001 &&
         JSON.stringify(busRendered.outputBuses?.[0]?.channels) === JSON.stringify(busRendered.channels),
       "native LV2 worker renders explicit main input bus audio"
-    );
-
-    const auxBusRendered = await requestWorker("render 4 48000 0,0,0,0|0,0,0,0 1=0.25,0.25,0.25,0.25;2=0.4,0.4,0.4,0.4");
-    assert(
-      Math.abs(auxBusRendered.channels[0][0] - 0.375) < 0.00001 &&
-        Math.abs(auxBusRendered.channels[1][0] - 0.6) < 0.00001,
-      "native LV2 worker routes explicit per-port aux input buses"
     );
 
     worker.stdin.write("render 4 48000 - malformed-bus-token -\n", "utf8");

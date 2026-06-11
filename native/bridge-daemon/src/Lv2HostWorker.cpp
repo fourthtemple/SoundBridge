@@ -1,6 +1,7 @@
 #include "SoundBridge/Lv2HostWorker.h"
 
 #include "SoundBridge/Base64.h"
+#include "SoundBridge/Lv2HostWorkerSupport.h"
 #include "SoundBridge/NativePlugin.h"
 
 #ifndef _WIN32
@@ -179,159 +180,7 @@ struct LV2_Atom_Property_Body {
   LV2_Atom value;
 };
 
-constexpr std::uint32_t kMaxWorkerFrames = 8192;
-constexpr std::uint32_t kMaxWorkerAudioPorts = 32;
-constexpr std::uint32_t kMaxWorkerPortIndex = 4096;
-constexpr std::size_t kMaxWorkerPorts = 1024;
-constexpr std::size_t kMaxWorkerParameters = 1024;
-constexpr std::size_t kMaxWorkerParameterChanges = 4096;
-constexpr std::size_t kMaxWorkerMidiEvents = 4096;
-constexpr std::size_t kMaxWorkerStateProperties = 1024;
-constexpr std::size_t kMaxWorkerStatePropertyBytes = 64 * 1024;
-constexpr std::size_t kMaxWorkerStateFiles = 64;
-constexpr std::size_t kMaxWorkerStateFileBytes = 64 * 1024;
-constexpr std::size_t kMaxWorkerStateFileTotalBytes = 192 * 1024;
-constexpr std::size_t kMaxWorkerStatePathBytes = 256;
-constexpr std::size_t kMaxWorkerUriBytes = 512;
-constexpr std::size_t kMaxWorkerUridMappings = 4096;
-constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
-constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
-constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
-constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
-constexpr std::uint32_t kMaxWorkerParameterStepCount = 4096;
-constexpr double kMinWorkerSampleRate = 8000.0;
-constexpr double kMaxWorkerSampleRate = 384000.0;
-constexpr double kMaxWorkerTransportTempoBpm = 960.0;
-constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
-constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
-constexpr const char* kLv2ControlStateMagic = "soundbridge-lv2-control-state-v1";
-constexpr const char* kLv2StateMagic = "soundbridge-lv2-state-v2";
-constexpr const char* kLv2LatencyUri = "http://lv2plug.in/ns/lv2core#latency";
-constexpr const char* kLv2ReportsLatencyUri = "http://lv2plug.in/ns/lv2core#reportsLatency";
-constexpr const char* kLv2ToggledUri = "http://lv2plug.in/ns/lv2core#toggled";
-constexpr const char* kLv2IntegerUri = "http://lv2plug.in/ns/lv2core#integer";
-constexpr const char* kLv2EnumerationUri = "http://lv2plug.in/ns/lv2core#enumeration";
-constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
-constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
-constexpr const char* kLv2AtomSequenceUri = "http://lv2plug.in/ns/ext/atom#Sequence";
-constexpr const char* kLv2AtomFrameTimeUri = "http://lv2plug.in/ns/ext/atom#frameTime";
-constexpr const char* kLv2AtomIntUri = "http://lv2plug.in/ns/ext/atom#Int";
-constexpr const char* kLv2AtomLongUri = "http://lv2plug.in/ns/ext/atom#Long";
-constexpr const char* kLv2AtomFloatUri = "http://lv2plug.in/ns/ext/atom#Float";
-constexpr const char* kLv2AtomDoubleUri = "http://lv2plug.in/ns/ext/atom#Double";
-constexpr const char* kLv2AtomObjectUri = "http://lv2plug.in/ns/ext/atom#Object";
-constexpr const char* kLv2AtomPathUri = "http://lv2plug.in/ns/ext/atom#Path";
-constexpr const char* kLv2MidiEventUri = "http://lv2plug.in/ns/ext/midi#MidiEvent";
-constexpr const char* kLv2StateInterfaceUri = "http://lv2plug.in/ns/ext/state#interface";
-constexpr const char* kLv2StateFreePathUri = "http://lv2plug.in/ns/ext/state#freePath";
-constexpr const char* kLv2StateMakePathUri = "http://lv2plug.in/ns/ext/state#makePath";
-constexpr const char* kLv2StateMapPathUri = "http://lv2plug.in/ns/ext/state#mapPath";
-constexpr const char* kLv2TimePositionUri = "http://lv2plug.in/ns/ext/time#Position";
-constexpr const char* kLv2TimeFrameUri = "http://lv2plug.in/ns/ext/time#frame";
-constexpr const char* kLv2TimeSpeedUri = "http://lv2plug.in/ns/ext/time#speed";
-constexpr const char* kLv2TimeBeatUri = "http://lv2plug.in/ns/ext/time#beat";
-constexpr const char* kLv2TimeBarBeatUri = "http://lv2plug.in/ns/ext/time#barBeat";
-constexpr const char* kLv2TimeBeatUnitUri = "http://lv2plug.in/ns/ext/time#beatUnit";
-constexpr const char* kLv2TimeBeatsPerBarUri = "http://lv2plug.in/ns/ext/time#beatsPerBar";
-constexpr const char* kLv2TimeBeatsPerMinuteUri = "http://lv2plug.in/ns/ext/time#beatsPerMinute";
-constexpr LV2_URID kUridAtomSequence = 1;
-constexpr LV2_URID kUridAtomFrameTime = 2;
-constexpr LV2_URID kUridMidiEvent = 3;
-constexpr LV2_URID kUridAtomFloat = 4;
-constexpr LV2_URID kUridAtomPath = 5;
-constexpr LV2_URID kUridAtomInt = 6;
-constexpr LV2_URID kUridAtomLong = 7;
-constexpr LV2_URID kUridAtomDouble = 8;
-constexpr LV2_URID kUridAtomObject = 9;
-constexpr LV2_URID kUridTimePosition = 10;
-constexpr LV2_URID kUridTimeFrame = 11;
-constexpr LV2_URID kUridTimeSpeed = 12;
-constexpr LV2_URID kUridTimeBeat = 13;
-constexpr LV2_URID kUridTimeBarBeat = 14;
-constexpr LV2_URID kUridTimeBeatUnit = 15;
-constexpr LV2_URID kUridTimeBeatsPerBar = 16;
-constexpr LV2_URID kUridTimeBeatsPerMinute = 17;
-constexpr std::uint32_t kLv2StateSuccess = 0;
-constexpr std::uint32_t kLv2StateErrUnknown = 1;
-constexpr std::uint32_t kLv2StateErrBadType = 2;
-constexpr std::uint32_t kLv2StateErrBadFlags = 3;
-constexpr std::uint32_t kLv2StateErrNoSpace = 6;
-constexpr std::uint32_t kLv2StateIsPod = 1U << 0U;
-constexpr std::uint32_t kLv2StateIsPortable = 1U << 1U;
-constexpr std::uint32_t kLv2StateIsNative = 1U << 2U;
-
-enum class Lv2PortDirection {
-  Input,
-  Output,
-};
-
-enum class Lv2PortType {
-  Audio,
-  Control,
-  Midi,
-};
-
-struct Lv2Port {
-  std::uint32_t index = 0;
-  Lv2PortDirection direction = Lv2PortDirection::Input;
-  Lv2PortType type = Lv2PortType::Control;
-  std::string symbol;
-  std::string name;
-  float defaultValue = 0.0F;
-  float minimum = 0.0F;
-  float maximum = 1.0F;
-  float value = 0.0F;
-  bool acceptsMidi = false;
-  bool acceptsTimePosition = false;
-  bool reportsLatency = false;
-  bool isToggled = false;
-  bool isInteger = false;
-  bool isEnumeration = false;
-};
-
-struct Lv2BundleMetadata {
-  std::string pluginUri;
-  std::filesystem::path binaryPath;
-  std::vector<Lv2Port> ports;
-};
-
-struct PendingParameterChange {
-  std::string parameterId;
-  double normalizedValue = 0.0;
-  std::uint32_t sampleOffset = 0;
-};
-
-struct PendingMidiMessage {
-  std::uint8_t status = 0x90;
-  std::uint8_t data1 = 60;
-  std::uint8_t data2 = 100;
-  std::uint32_t sampleOffset = 0;
-};
-
-struct IndexedAudioBus {
-  std::uint32_t index = 0;
-  std::vector<std::vector<float>> channels;
-};
-
-struct HostTransportContext {
-  bool explicitTransport = false;
-  bool playing = false;
-  bool recording = false;
-  bool loopActive = false;
-  bool hasTempo = false;
-  double tempo = 120.0;
-  bool hasTimeSignature = false;
-  std::uint32_t timeSignatureNumerator = 4;
-  std::uint32_t timeSignatureDenominator = 4;
-  bool hasProjectTimeMusic = false;
-  double projectTimeMusic = 0.0;
-  bool hasBarPositionMusic = false;
-  double barPositionMusic = 0.0;
-  bool hasCycle = false;
-  double cycleStartMusic = 0.0;
-  double cycleEndMusic = 0.0;
-  std::int64_t samplePosition = 0;
-};
+using namespace lv2_worker;
 
 struct Lv2StateProperty {
   std::string keyUri;
@@ -448,327 +297,6 @@ struct DlCloser {
   }
 };
 
-float sanitizeSample(float value) {
-  if (!std::isfinite(value)) {
-    return 0.0F;
-  }
-  return std::clamp(value, -16.0F, 16.0F);
-}
-
-float sanitizeStateValue(float value) {
-  if (!std::isfinite(value)) {
-    return 0.0F;
-  }
-  return std::clamp(value, -1.0e9F, 1.0e9F);
-}
-
-float sanitizeSampleText(const std::string& text) {
-  char* end = nullptr;
-  const double value = std::strtod(text.c_str(), &end);
-  if (end == text.c_str() || !std::isfinite(value)) {
-    return 0.0F;
-  }
-  return static_cast<float>(std::clamp(value, -16.0, 16.0));
-}
-
-bool parseUint32Arg(const char* text, std::uint32_t minValue, std::uint32_t maxValue, std::uint32_t& out) {
-  if (text == nullptr || *text == '\0') {
-    return false;
-  }
-  char* end = nullptr;
-  const unsigned long value = std::strtoul(text, &end, 10);
-  if (end == text || *end != '\0' || value < minValue || value > maxValue) {
-    return false;
-  }
-  out = static_cast<std::uint32_t>(value);
-  return true;
-}
-
-bool parseDoubleArg(const char* text, double minValue, double maxValue, double& out) {
-  if (text == nullptr || *text == '\0') {
-    return false;
-  }
-  char* end = nullptr;
-  const double value = std::strtod(text, &end);
-  if (end == text || *end != '\0' || !std::isfinite(value) ||
-      value < minValue || value > maxValue) {
-    return false;
-  }
-  out = value;
-  return true;
-}
-
-bool parseStateValue(const std::string& text, double& out) {
-  return parseDoubleArg(text.c_str(), -1.0e9, 1.0e9, out);
-}
-
-bool parseSampleRateArg(const char* text, double& out) {
-  return parseDoubleArg(text, kMinWorkerSampleRate, kMaxWorkerSampleRate, out);
-}
-
-bool parseTransportBool(const std::string& text, bool& out) {
-  if (text == "1") {
-    out = true;
-    return true;
-  }
-  if (text == "0") {
-    out = false;
-    return true;
-  }
-  return false;
-}
-
-bool parseTransportSamplePosition(const std::string& text, std::int64_t& out) {
-  if (text.empty()) {
-    return false;
-  }
-  errno = 0;
-  char* end = nullptr;
-  const long long value = std::strtoll(text.c_str(), &end, 10);
-  if (end == text.c_str() || *end != '\0' || errno == ERANGE ||
-      value < 0 || value > kMaxWorkerTransportSamplePosition) {
-    return false;
-  }
-  out = static_cast<std::int64_t>(value);
-  return true;
-}
-
-bool isPowerOfTwo(std::uint32_t value) {
-  return value > 0 && (value & (value - 1U)) == 0;
-}
-
-bool parseTransportContext(
-    const std::string& encoded,
-    double fallbackSampleTime,
-    HostTransportContext& out) {
-  out = HostTransportContext {};
-  out.samplePosition = static_cast<std::int64_t>(std::clamp(
-      fallbackSampleTime,
-      0.0,
-      static_cast<double>(kMaxWorkerTransportSamplePosition)));
-  if (encoded.empty() || encoded == "-") {
-    return true;
-  }
-  out.explicitTransport = true;
-
-  bool sawNumerator = false;
-  bool sawDenominator = false;
-  bool sawCycleStart = false;
-  bool sawCycleEnd = false;
-
-  std::stringstream stream(encoded);
-  std::string token;
-  while (std::getline(stream, token, ',')) {
-    if (token.empty()) {
-      continue;
-    }
-    const auto separator = token.find('=');
-    if (separator == std::string::npos) {
-      return false;
-    }
-    const auto key = token.substr(0, separator);
-    const auto value = token.substr(separator + 1);
-
-    if (key == "playing") {
-      if (!parseTransportBool(value, out.playing)) {
-        return false;
-      }
-    } else if (key == "recording") {
-      if (!parseTransportBool(value, out.recording)) {
-        return false;
-      }
-    } else if (key == "loop") {
-      if (!parseTransportBool(value, out.loopActive)) {
-        return false;
-      }
-    } else if (key == "tempo") {
-      if (!parseDoubleArg(value.c_str(), 1.0, kMaxWorkerTransportTempoBpm, out.tempo)) {
-        return false;
-      }
-      out.hasTempo = true;
-    } else if (key == "num") {
-      if (!parseUint32Arg(value.c_str(), 1, 64, out.timeSignatureNumerator)) {
-        return false;
-      }
-      sawNumerator = true;
-    } else if (key == "den") {
-      if (!parseUint32Arg(value.c_str(), 1, 64, out.timeSignatureDenominator) ||
-          !isPowerOfTwo(out.timeSignatureDenominator)) {
-        return false;
-      }
-      sawDenominator = true;
-    } else if (key == "ppq") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.projectTimeMusic)) {
-        return false;
-      }
-      out.hasProjectTimeMusic = true;
-    } else if (key == "bar") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.barPositionMusic)) {
-        return false;
-      }
-      out.hasBarPositionMusic = true;
-    } else if (key == "cycleStart") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleStartMusic)) {
-        return false;
-      }
-      sawCycleStart = true;
-    } else if (key == "cycleEnd") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleEndMusic)) {
-        return false;
-      }
-      sawCycleEnd = true;
-    } else if (key == "sample") {
-      if (!parseTransportSamplePosition(value, out.samplePosition)) {
-        return false;
-      }
-    } else {
-      return false;
-    }
-  }
-
-  if (sawNumerator != sawDenominator) {
-    return false;
-  }
-  out.hasTimeSignature = sawNumerator && sawDenominator;
-  if (sawCycleStart != sawCycleEnd || (sawCycleStart && out.cycleEndMusic < out.cycleStartMusic)) {
-    return false;
-  }
-  out.hasCycle = sawCycleStart && sawCycleEnd;
-  return true;
-}
-
-std::uint8_t scaled7Bit(double value) {
-  return static_cast<std::uint8_t>(std::clamp(std::lround(std::clamp(value, 0.0, 1.0) * 127.0), 0L, 127L));
-}
-
-bool parseMidiEventToken(const std::string& token, PendingMidiMessage& message) {
-  std::vector<std::string> parts;
-  std::stringstream stream(token);
-  std::string part;
-  while (std::getline(stream, part, ':')) {
-    parts.push_back(part);
-  }
-  if (parts.empty()) {
-    return false;
-  }
-
-  auto parseChannelAndOffset = [&](std::size_t channelIndex, std::size_t offsetIndex, std::uint32_t& channel, std::uint32_t& sampleOffset) -> bool {
-    return parseUint32Arg(parts[channelIndex].c_str(), 0, 15, channel) &&
-        parseUint32Arg(parts[offsetIndex].c_str(), 0, kMaxWorkerFrames - 1, sampleOffset);
-  };
-
-  if (parts[0] == "on" || parts[0] == "off" || parts[0] == "poly") {
-    std::uint32_t note = 0;
-    std::uint32_t channel = 0;
-    std::uint32_t sampleOffset = 0;
-    double value = 0.0;
-    if (parts.size() != 5 ||
-        !parseUint32Arg(parts[1].c_str(), 0, 127, note) ||
-        !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
-        !parseChannelAndOffset(3, 4, channel, sampleOffset)) {
-      return false;
-    }
-    message.status = static_cast<std::uint8_t>((parts[0] == "on" ? 0x90 : parts[0] == "off" ? 0x80 : 0xA0) | channel);
-    message.data1 = static_cast<std::uint8_t>(note);
-    message.data2 = scaled7Bit(value);
-    message.sampleOffset = sampleOffset;
-    return true;
-  }
-  if (parts[0] == "cc") {
-    std::uint32_t controller = 0;
-    std::uint32_t channel = 0;
-    std::uint32_t sampleOffset = 0;
-    double value = 0.0;
-    if (parts.size() != 5 ||
-        !parseUint32Arg(parts[1].c_str(), 0, 127, controller) ||
-        !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
-        !parseChannelAndOffset(3, 4, channel, sampleOffset)) {
-      return false;
-    }
-    message.status = static_cast<std::uint8_t>(0xB0 | channel);
-    message.data1 = static_cast<std::uint8_t>(controller);
-    message.data2 = scaled7Bit(value);
-    message.sampleOffset = sampleOffset;
-    return true;
-  }
-  if (parts[0] == "bend") {
-    std::uint32_t channel = 0;
-    std::uint32_t sampleOffset = 0;
-    double value = 0.0;
-    if (parts.size() != 4 ||
-        !parseDoubleArg(parts[1].c_str(), -1.0, 1.0, value) ||
-        !parseChannelAndOffset(2, 3, channel, sampleOffset)) {
-      return false;
-    }
-    const auto bend = static_cast<std::uint32_t>(
-        std::clamp(std::lround(((std::clamp(value, -1.0, 1.0) + 1.0) / 2.0) * 16383.0), 0L, 16383L));
-    message.status = static_cast<std::uint8_t>(0xE0 | channel);
-    message.data1 = static_cast<std::uint8_t>(bend & 0x7F);
-    message.data2 = static_cast<std::uint8_t>((bend >> 7) & 0x7F);
-    message.sampleOffset = sampleOffset;
-    return true;
-  }
-  if (parts[0] == "pressure") {
-    std::uint32_t channel = 0;
-    std::uint32_t sampleOffset = 0;
-    double pressure = 0.0;
-    if (parts.size() != 4 ||
-        !parseDoubleArg(parts[1].c_str(), 0.0, 1.0, pressure) ||
-        !parseChannelAndOffset(2, 3, channel, sampleOffset)) {
-      return false;
-    }
-    message.status = static_cast<std::uint8_t>(0xD0 | channel);
-    message.data1 = scaled7Bit(pressure);
-    message.data2 = 0;
-    message.sampleOffset = sampleOffset;
-    return true;
-  }
-  if (parts[0] == "program") {
-    std::uint32_t program = 0;
-    std::uint32_t channel = 0;
-    std::uint32_t sampleOffset = 0;
-    if (parts.size() != 4 ||
-        !parseUint32Arg(parts[1].c_str(), 0, 127, program) ||
-        !parseChannelAndOffset(2, 3, channel, sampleOffset)) {
-      return false;
-    }
-    message.status = static_cast<std::uint8_t>(0xC0 | channel);
-    message.data1 = static_cast<std::uint8_t>(program);
-    message.data2 = 0;
-    message.sampleOffset = sampleOffset;
-    return true;
-  }
-  return false;
-}
-
-bool parseMidiEvents(const std::string& encoded, std::vector<PendingMidiMessage>& messages) {
-  messages.clear();
-  if (encoded.empty() || encoded == "-") {
-    return true;
-  }
-
-  std::stringstream stream(encoded);
-  std::string token;
-  while (std::getline(stream, token, ';')) {
-    if (token.empty()) {
-      continue;
-    }
-    if (messages.size() >= kMaxWorkerMidiEvents) {
-      return false;
-    }
-    PendingMidiMessage message;
-    if (!parseMidiEventToken(token, message)) {
-      return false;
-    }
-    messages.push_back(message);
-  }
-  return true;
-}
-
-std::size_t alignAtomSize(std::size_t size) {
-  return (size + 7U) & ~std::size_t(7U);
-}
-
 LV2_URID mapLv2Urid(LV2_URID_Map_Handle handle, const char* uri) {
   if (handle == nullptr) {
     return 0;
@@ -781,30 +309,6 @@ const char* unmapLv2Urid(LV2_URID_Unmap_Handle handle, LV2_URID urid) {
     return nullptr;
   }
   return static_cast<const Lv2UridMapper*>(handle)->unmap(urid);
-}
-
-std::string stateStringToBase64(const std::string& value) {
-  return base64Encode(reinterpret_cast<const std::uint8_t*>(value.data()), value.size());
-}
-
-bool isPortablePodState(std::uint32_t flags) {
-  return (flags & kLv2StateIsPod) != 0 &&
-      (flags & kLv2StateIsPortable) != 0 &&
-      (flags & kLv2StateIsNative) == 0;
-}
-
-bool isValidStateUri(const std::string& value) {
-  if (value.empty() || value.size() > kMaxWorkerUriBytes) {
-    return false;
-  }
-  return std::none_of(value.begin(), value.end(), [](unsigned char character) {
-    return character == '\0' || character <= 0x20 || character == 0x7F;
-  });
-}
-
-std::string base64ToStateString(const std::string& encoded, std::size_t maxBytes) {
-  const auto decoded = base64Decode(encoded, maxBytes);
-  return std::string(decoded.begin(), decoded.end());
 }
 
 class Lv2StateFileBroker {
@@ -1000,6 +504,12 @@ private:
   std::filesystem::path root_;
 };
 
+struct Lv2AudioBusGroup {
+  std::uint32_t index = 0;
+  std::string name;
+  std::vector<std::size_t> portIndexes;
+};
+
 char* makeLv2StatePath(LV2_State_Make_Path_Handle handle, const char* path) {
   if (handle == nullptr) {
     return nullptr;
@@ -1114,539 +624,6 @@ const void* retrieveLv2StateProperty(
   return nullptr;
 }
 
-std::string cappedString(std::string value, std::size_t maxBytes = kMaxWorkerParameterStringBytes) {
-  if (value.size() > maxBytes) {
-    value.resize(maxBytes);
-  }
-  return value;
-}
-
-bool blockContainsUri(const std::string& block, const char* prefixedName, const char* uri) {
-  return block.find(prefixedName) != std::string::npos || block.find(uri) != std::string::npos;
-}
-
-std::uint32_t boundedLatencySamples(double value) {
-  if (!std::isfinite(value) || value <= 0.0) {
-    return 0;
-  }
-  return static_cast<std::uint32_t>(
-      std::clamp(std::llround(value), 0LL, static_cast<long long>(kMaxWorkerLatencySamples)));
-}
-
-std::string readTextFile(const std::filesystem::path& path) {
-  std::ifstream input(path);
-  if (!input) {
-    return {};
-  }
-  return std::string(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
-}
-
-std::string stripTurtleComments(const std::string& input) {
-  std::string output;
-  output.reserve(input.size());
-  bool inString = false;
-  bool escaped = false;
-  bool inComment = false;
-  for (const char character : input) {
-    if (inComment) {
-      if (character == '\n' || character == '\r') {
-        inComment = false;
-        output.push_back(character);
-      }
-      continue;
-    }
-
-    if (inString) {
-      output.push_back(character);
-      if (escaped) {
-        escaped = false;
-      } else if (character == '\\') {
-        escaped = true;
-      } else if (character == '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (character == '#') {
-      inComment = true;
-      continue;
-    }
-    if (character == '"') {
-      inString = true;
-    }
-    output.push_back(character);
-  }
-  return output;
-}
-
-std::optional<std::string> angleValueAfter(const std::string& text, const std::string& key) {
-  const auto keyPosition = text.find(key);
-  if (keyPosition == std::string::npos) {
-    return std::nullopt;
-  }
-  const auto start = text.find('<', keyPosition + key.size());
-  if (start == std::string::npos) {
-    return std::nullopt;
-  }
-  const auto end = text.find('>', start + 1);
-  if (end == std::string::npos || end <= start + 1) {
-    return std::nullopt;
-  }
-  return text.substr(start + 1, end - start - 1);
-}
-
-std::vector<std::string> angleValuesAfter(const std::string& text, const std::string& key) {
-  std::vector<std::string> values;
-  std::size_t position = 0;
-  while ((position = text.find(key, position)) != std::string::npos && values.size() < 64) {
-    auto restPosition = position + key.size();
-    while (true) {
-      const auto start = text.find('<', restPosition);
-      if (start == std::string::npos) {
-        position = restPosition;
-        break;
-      }
-      const auto separator = text.find_first_of(".;", restPosition);
-      if (separator != std::string::npos && separator < start) {
-        position = separator + 1;
-        break;
-      }
-      const auto end = text.find('>', start + 1);
-      if (end == std::string::npos) {
-        position = restPosition;
-        break;
-      }
-      values.push_back(text.substr(start + 1, end - start - 1));
-      restPosition = end + 1;
-      if (values.size() >= 64) {
-        break;
-      }
-    }
-  }
-  return values;
-}
-
-std::optional<std::string> firstPluginUri(const std::string& text) {
-  const auto pluginPosition = text.find("lv2:Plugin");
-  if (pluginPosition == std::string::npos) {
-    return std::nullopt;
-  }
-  const auto start = text.rfind('<', pluginPosition);
-  if (start == std::string::npos) {
-    return std::nullopt;
-  }
-  const auto end = text.find('>', start + 1);
-  if (end == std::string::npos || end > pluginPosition) {
-    return std::nullopt;
-  }
-  return text.substr(start + 1, end - start - 1);
-}
-
-bool pathIsWithin(const std::filesystem::path& child, const std::filesystem::path& parent) {
-  auto childIt = child.begin();
-  for (auto parentIt = parent.begin(); parentIt != parent.end(); ++parentIt, ++childIt) {
-    if (childIt == child.end() || *childIt != *parentIt) {
-      return false;
-    }
-  }
-  return true;
-}
-
-std::filesystem::path canonicalPathOrThrow(const std::filesystem::path& path, const std::string& label) {
-  std::error_code error;
-  const auto canonical = std::filesystem::canonical(path, error);
-  if (error) {
-    throw std::runtime_error(label + " could not be resolved.");
-  }
-  return canonical;
-}
-
-std::filesystem::path resolveBundleLocalPath(
-    const std::filesystem::path& bundlePath,
-    const std::string& relativeText,
-    const std::string& label) {
-  const std::filesystem::path relativePath(relativeText);
-  if (relativePath.empty() || relativePath.is_absolute() || relativePath.filename() != relativePath) {
-    throw std::runtime_error(label + " must be a plain bundle-local file name.");
-  }
-
-  const auto canonicalBundle = canonicalPathOrThrow(bundlePath, "LV2 bundle");
-  const auto candidate = bundlePath / relativePath;
-  std::error_code error;
-  if (!std::filesystem::is_regular_file(candidate, error) || error) {
-    throw std::runtime_error(label + " was not a regular file.");
-  }
-  if (std::filesystem::is_symlink(std::filesystem::symlink_status(candidate, error)) || error) {
-    throw std::runtime_error(label + " must not be a symlink.");
-  }
-
-  const auto canonicalCandidate = canonicalPathOrThrow(candidate, label);
-  if (!pathIsWithin(canonicalCandidate, canonicalBundle)) {
-    throw std::runtime_error(label + " resolved outside the LV2 bundle.");
-  }
-  return canonicalCandidate;
-}
-
-bool parseNumberAfter(const std::string& text, const std::string& key, double& out) {
-  const auto keyPosition = text.find(key);
-  if (keyPosition == std::string::npos) {
-    return false;
-  }
-  const auto valueStart = text.find_first_of("-+0123456789.", keyPosition + key.size());
-  if (valueStart == std::string::npos) {
-    return false;
-  }
-  char* end = nullptr;
-  const double value = std::strtod(text.c_str() + valueStart, &end);
-  if (end == text.c_str() + valueStart || !std::isfinite(value)) {
-    return false;
-  }
-  out = value;
-  return true;
-}
-
-std::optional<std::uint32_t> parseIndexAfter(const std::string& text, const std::string& key) {
-  double value = 0.0;
-  if (!parseNumberAfter(text, key, value) || value < 0.0 || value > kMaxWorkerPortIndex) {
-    return std::nullopt;
-  }
-  return static_cast<std::uint32_t>(std::floor(value));
-}
-
-std::optional<std::string> parseStringAfter(const std::string& text, const std::string& key) {
-  const auto keyPosition = text.find(key);
-  if (keyPosition == std::string::npos) {
-    return std::nullopt;
-  }
-  const auto start = text.find('"', keyPosition + key.size());
-  if (start == std::string::npos) {
-    return std::nullopt;
-  }
-  std::string output;
-  bool escaped = false;
-  for (auto index = start + 1; index < text.size(); ++index) {
-    const char character = text[index];
-    if (escaped) {
-      output.push_back(character);
-      escaped = false;
-      continue;
-    }
-    if (character == '\\') {
-      escaped = true;
-      continue;
-    }
-    if (character == '"') {
-      return output;
-    }
-    output.push_back(character);
-  }
-  return std::nullopt;
-}
-
-std::vector<std::string> extractPortBlocks(const std::string& text) {
-  std::vector<std::string> blocks;
-  std::size_t position = 0;
-  while ((position = text.find("lv2:port", position)) != std::string::npos && blocks.size() < kMaxWorkerPorts) {
-    auto scan = position + 8;
-    std::size_t depth = 0;
-    bool inString = false;
-    bool escaped = false;
-    bool capturedAny = false;
-    std::string current;
-
-    for (; scan < text.size(); ++scan) {
-      const char character = text[scan];
-      if (inString) {
-        if (depth > 0) {
-          current.push_back(character);
-        }
-        if (escaped) {
-          escaped = false;
-        } else if (character == '\\') {
-          escaped = true;
-        } else if (character == '"') {
-          inString = false;
-        }
-        continue;
-      }
-
-      if (character == '"') {
-        inString = true;
-        if (depth > 0) {
-          current.push_back(character);
-        }
-        continue;
-      }
-
-      if (character == '[') {
-        if (depth == 0) {
-          current.clear();
-          capturedAny = true;
-        } else {
-          current.push_back(character);
-        }
-        ++depth;
-        continue;
-      }
-
-      if (character == ']' && depth > 0) {
-        --depth;
-        if (depth == 0) {
-          blocks.push_back(current);
-          current.clear();
-          if (blocks.size() >= kMaxWorkerPorts) {
-            return blocks;
-          }
-        } else {
-          current.push_back(character);
-        }
-        continue;
-      }
-
-      if (character == '.' && depth == 0) {
-        ++scan;
-        break;
-      }
-
-      if (depth > 0) {
-        current.push_back(character);
-      }
-    }
-
-    position = std::max(scan, position + 1);
-    if (!capturedAny) {
-      continue;
-    }
-  }
-  return blocks;
-}
-
-std::optional<Lv2Port> parsePortBlock(const std::string& block) {
-  const auto index = parseIndexAfter(block, "lv2:index");
-  if (!index) {
-    return std::nullopt;
-  }
-
-  Lv2Port port;
-  port.index = *index;
-  if (block.find("lv2:OutputPort") != std::string::npos) {
-    port.direction = Lv2PortDirection::Output;
-  } else if (block.find("lv2:InputPort") != std::string::npos) {
-    port.direction = Lv2PortDirection::Input;
-  } else {
-    return std::nullopt;
-  }
-
-  if (block.find("lv2:AudioPort") != std::string::npos) {
-    port.type = Lv2PortType::Audio;
-  } else if (block.find("lv2:ControlPort") != std::string::npos) {
-    port.type = Lv2PortType::Control;
-    port.reportsLatency =
-        blockContainsUri(block, "lv2:reportsLatency", kLv2ReportsLatencyUri) ||
-        blockContainsUri(block, "lv2:latency", kLv2LatencyUri);
-    port.isToggled = blockContainsUri(block, "lv2:toggled", kLv2ToggledUri);
-    port.isInteger = blockContainsUri(block, "lv2:integer", kLv2IntegerUri);
-    port.isEnumeration = blockContainsUri(block, "lv2:enumeration", kLv2EnumerationUri);
-  } else if (block.find("atom:AtomPort") != std::string::npos || block.find("ev:EventPort") != std::string::npos) {
-    port.acceptsMidi = blockContainsUri(block, "midi:MidiEvent", kLv2MidiEventUri);
-    port.acceptsTimePosition = blockContainsUri(block, "time:Position", kLv2TimePositionUri);
-    if (!port.acceptsMidi && !port.acceptsTimePosition) {
-      return std::nullopt;
-    }
-    port.type = Lv2PortType::Midi;
-  } else {
-    return std::nullopt;
-  }
-
-  port.symbol = cappedString(parseStringAfter(block, "lv2:symbol").value_or(std::to_string(port.index)), 64);
-  port.name = cappedString(parseStringAfter(block, "lv2:name").value_or(port.symbol));
-
-  double minimum = 0.0;
-  double maximum = 1.0;
-  double defaultValue = 0.0;
-  parseNumberAfter(block, "lv2:minimum", minimum);
-  parseNumberAfter(block, "lv2:maximum", maximum);
-  if (maximum < minimum) {
-    std::swap(maximum, minimum);
-  }
-  if (!parseNumberAfter(block, "lv2:default", defaultValue)) {
-    defaultValue = minimum;
-  }
-  port.minimum = static_cast<float>(std::clamp(minimum, -1.0e9, 1.0e9));
-  port.maximum = static_cast<float>(std::clamp(maximum, -1.0e9, 1.0e9));
-  port.defaultValue = static_cast<float>(std::clamp(defaultValue, minimum, maximum));
-  port.value = port.defaultValue;
-  return port;
-}
-
-std::vector<Lv2Port> parsePorts(const std::string& text) {
-  std::vector<Lv2Port> ports;
-  std::set<std::uint32_t> seenIndexes;
-  for (const auto& block : extractPortBlocks(text)) {
-    auto port = parsePortBlock(block);
-    if (!port || seenIndexes.count(port->index) > 0) {
-      continue;
-    }
-    ports.push_back(*port);
-    seenIndexes.insert(port->index);
-    if (ports.size() >= kMaxWorkerPorts) {
-      break;
-    }
-  }
-  std::sort(ports.begin(), ports.end(), [](const auto& left, const auto& right) {
-    return left.index < right.index;
-  });
-  return ports;
-}
-
-Lv2BundleMetadata loadBundleMetadata(const std::filesystem::path& bundlePath) {
-  std::error_code error;
-  if (!std::filesystem::is_directory(bundlePath, error) || error) {
-    throw std::runtime_error("LV2 bundle path is not a directory.");
-  }
-
-  const auto manifest = stripTurtleComments(readTextFile(bundlePath / "manifest.ttl"));
-  if (manifest.empty() || manifest.find("lv2:Plugin") == std::string::npos) {
-    throw std::runtime_error("LV2 manifest did not declare a plugin.");
-  }
-
-  Lv2BundleMetadata metadata;
-  metadata.pluginUri = firstPluginUri(manifest).value_or("");
-  const auto binary = angleValueAfter(manifest, "lv2:binary");
-  if (!binary) {
-    throw std::runtime_error("LV2 manifest did not declare lv2:binary.");
-  }
-  metadata.binaryPath = resolveBundleLocalPath(bundlePath, *binary, "LV2 binary");
-
-  std::string ttl = manifest;
-  for (const auto& seeAlso : angleValuesAfter(manifest, "rdfs:seeAlso")) {
-    try {
-      ttl += "\n";
-      ttl += stripTurtleComments(readTextFile(resolveBundleLocalPath(bundlePath, seeAlso, "LV2 metadata file")));
-    } catch (const std::exception&) {
-      // Broken optional metadata should not redirect the loader outside the
-      // bundle, but the manifest itself may still contain enough port data.
-    }
-  }
-  if (metadata.pluginUri.empty()) {
-    metadata.pluginUri = firstPluginUri(ttl).value_or("");
-  }
-  metadata.ports = parsePorts(ttl);
-  if (metadata.ports.empty()) {
-    throw std::runtime_error("LV2 plugin metadata did not expose basic audio/control ports.");
-  }
-  return metadata;
-}
-
-std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::uint32_t frames) {
-  frames = std::clamp<std::uint32_t>(frames, 1, kMaxWorkerFrames);
-  if (encoded.empty() || encoded == "-") {
-    return {};
-  }
-
-  std::vector<std::vector<float>> channels;
-  std::stringstream channelStream(encoded);
-  std::string channelText;
-  while (channels.size() < kMaxWorkerAudioPorts && std::getline(channelStream, channelText, '|')) {
-    std::vector<float> channel;
-    channel.reserve(frames);
-    std::stringstream sampleStream(channelText);
-    std::string sampleText;
-    while (channel.size() < frames && std::getline(sampleStream, sampleText, ',')) {
-      if (sampleText.empty()) {
-        channel.push_back(0.0F);
-        continue;
-      }
-      channel.push_back(sanitizeSampleText(sampleText));
-    }
-    channel.resize(frames, 0.0F);
-    channels.push_back(std::move(channel));
-  }
-  return channels;
-}
-
-bool parseAudioBuses(
-    const std::string& encoded,
-    std::uint32_t frames,
-    std::vector<IndexedAudioBus>& buses) {
-  buses.clear();
-  if (encoded.empty() || encoded == "-") {
-    return true;
-  }
-
-  std::stringstream stream(encoded);
-  std::string token;
-  std::set<std::uint32_t> seenIndexes;
-  while (std::getline(stream, token, ';')) {
-    if (token.empty()) {
-      return false;
-    }
-    if (seenIndexes.size() >= kMaxWorkerAudioPorts) {
-      return false;
-    }
-    const auto separator = token.find('=');
-    if (separator == std::string::npos) {
-      return false;
-    }
-    std::uint32_t index = 0;
-    if (!parseUint32Arg(token.substr(0, separator).c_str(), 0, kMaxWorkerAudioPorts - 1, index)) {
-      return false;
-    }
-    if (!seenIndexes.insert(index).second) {
-      return false;
-    }
-    buses.push_back(IndexedAudioBus{
-        index,
-        parseChannels(token.substr(separator + 1), frames)});
-  }
-  return true;
-}
-
-const std::vector<std::vector<float>>* findBusChannels(const std::vector<IndexedAudioBus>& buses, std::uint32_t index) {
-  for (const auto& bus : buses) {
-    if (bus.index == index) {
-      return &bus.channels;
-    }
-  }
-  return nullptr;
-}
-
-std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
-  std::ostringstream output;
-  output << "[";
-  for (std::size_t channelIndex = 0; channelIndex < channels.size(); ++channelIndex) {
-    if (channelIndex > 0) {
-      output << ",";
-    }
-    output << "[";
-    for (std::size_t frame = 0; frame < channels[channelIndex].size(); ++frame) {
-      if (frame > 0) {
-        output << ",";
-      }
-      const float sample = channels[channelIndex][frame];
-      output << (std::isfinite(sample) ? sample : 0.0F);
-    }
-    output << "]";
-  }
-  output << "]";
-  return output.str();
-}
-
-std::string lv2OutputBusBlockToJson(const std::vector<std::vector<float>>& channels) {
-  const auto channelsJson = audioChannelsToJson(channels);
-  std::ostringstream output;
-  output << "{\"channels\":" << channelsJson
-         << ",\"outputBuses\":[{\"index\":0,\"channels\":" << channelsJson << "}";
-  const auto outputBusCount = std::min<std::size_t>(channels.size() + 1, kMaxWorkerAudioPorts);
-  for (std::size_t busIndex = 1; busIndex < outputBusCount; ++busIndex) {
-    output << ",{\"index\":" << busIndex
-           << ",\"channels\":" << audioChannelsToJson({channels[busIndex - 1]}) << "}";
-  }
-  output << "]}";
-  return output.str();
-}
-
 class HostedLv2Plugin {
 public:
   HostedLv2Plugin(
@@ -1670,6 +647,7 @@ public:
       throw std::runtime_error("LV2 plugin exceeds SoundBridge audio port limits.");
     }
 
+    buildAudioBusGroups();
     inputChannels_ = static_cast<std::uint32_t>(std::min<std::size_t>(inputPortIndexes_.size(), kMaxWorkerAudioPorts));
     outputChannels_ = static_cast<std::uint32_t>(std::min<std::size_t>(outputPortIndexes_.size(), kMaxWorkerAudioPorts));
     loadDescriptor();
@@ -1707,26 +685,9 @@ public:
     inputBuffers_.resize(inputPortIndexes_.size());
     outputBuffers_.resize(outputPortIndexes_.size());
 
-    const auto* aggregateInputBus = findBusChannels(inputBuses, 0);
     for (std::size_t index = 0; index < inputBuffers_.size(); ++index) {
       inputBuffers_[index].assign(frames, 0.0F);
-      if (aggregateInputBus != nullptr && index < aggregateInputBus->size()) {
-        const auto copyFrames = std::min<std::size_t>(frames, (*aggregateInputBus)[index].size());
-        for (std::size_t frame = 0; frame < copyFrames; ++frame) {
-          inputBuffers_[index][frame] = sanitizeSample((*aggregateInputBus)[index][frame]);
-        }
-      }
-
-      const auto* portInputBus = findBusChannels(inputBuses, static_cast<std::uint32_t>(index + 1));
-      if (portInputBus != nullptr) {
-        std::fill(inputBuffers_[index].begin(), inputBuffers_[index].end(), 0.0F);
-        if (!portInputBus->empty()) {
-          const auto copyFrames = std::min<std::size_t>(frames, (*portInputBus)[0].size());
-          for (std::size_t frame = 0; frame < copyFrames; ++frame) {
-            inputBuffers_[index][frame] = sanitizeSample((*portInputBus)[0][frame]);
-          }
-        }
-      }
+      copyInputBusChannels(index, inputBuses, frames);
     }
     for (auto& output : outputBuffers_) {
       output.assign(frames, 0.0F);
@@ -1846,73 +807,190 @@ public:
     return output.str();
   }
 
+  std::string outputAudioToJson(const std::vector<std::vector<float>>& channels) const {
+    const auto channelsJson = audioChannelsToJson(channels);
+    std::ostringstream output;
+    output << "{\"channels\":" << channelsJson << ",\"outputBuses\":[";
+    for (std::size_t busIndex = 0; busIndex < outputBusGroups_.size(); ++busIndex) {
+      const auto& bus = outputBusGroups_[busIndex];
+      if (busIndex > 0) {
+        output << ",";
+      }
+      std::vector<std::vector<float>> busChannels;
+      for (const auto portIndex : bus.portIndexes) {
+        const auto channelOffset = outputChannelOffsetForPort(portIndex);
+        if (channelOffset && *channelOffset < channels.size()) {
+          busChannels.push_back(channels[*channelOffset]);
+        }
+      }
+      output << "{\"index\":" << bus.index << ",\"channels\":" << audioChannelsToJson(busChannels) << "}";
+    }
+    output << "]}";
+    return output.str();
+  }
+
 private:
   std::uint32_t inputBusCount() const {
-    if (inputChannels_ == 0) {
-      return 0;
-    }
-    return std::min<std::uint32_t>(inputChannels_ + 1, kMaxWorkerAudioPorts);
+    return static_cast<std::uint32_t>(std::min<std::size_t>(inputBusGroups_.size(), kMaxWorkerAudioPorts));
   }
 
   std::uint32_t outputBusCount() const {
-    return std::max<std::uint32_t>(1, std::min<std::uint32_t>(outputChannels_ + 1, kMaxWorkerAudioPorts));
+    return static_cast<std::uint32_t>(std::min<std::size_t>(outputBusGroups_.size(), kMaxWorkerAudioPorts));
   }
 
   std::string inputBusLayoutsToJson() const {
+    return busLayoutsToJson(inputBusGroups_, "input");
+  }
+
+  std::string outputBusLayoutsToJson() const {
+    return busLayoutsToJson(outputBusGroups_, "output");
+  }
+
+  std::string busLayoutsToJson(const std::vector<Lv2AudioBusGroup>& groups, const char* direction) const {
     std::ostringstream output;
     output << "[";
-    const auto busCount = inputBusCount();
-    if (busCount > 0) {
-      output << "{\"index\":0"
-             << ",\"direction\":\"input\""
+    for (std::size_t index = 0; index < groups.size(); ++index) {
+      const auto& group = groups[index];
+      if (index > 0) {
+        output << ",";
+      }
+      output << "{\"index\":" << group.index
+             << ",\"direction\":\"" << direction << "\""
              << ",\"mediaType\":\"audio\""
-             << ",\"name\":\"Main Input\""
-             << ",\"type\":\"main\""
-             << ",\"channels\":" << std::min<std::uint32_t>(inputChannels_, kMaxWorkerAudioPorts)
-             << ",\"active\":true}";
-    }
-    for (std::uint32_t busIndex = 1; busIndex < busCount; ++busIndex) {
-      const auto portOffset = busIndex - 1;
-      const auto portName = portOffset < inputPortIndexes_.size()
-          ? ports_[inputPortIndexes_[portOffset]].name
-          : std::string("Input Port ") + std::to_string(busIndex);
-      output << ",{\"index\":" << busIndex
-             << ",\"direction\":\"input\""
-             << ",\"mediaType\":\"audio\""
-             << ",\"name\":\"" << jsonEscape(portName.empty() ? std::string("Input Port ") + std::to_string(busIndex) : portName) << "\""
-             << ",\"type\":\"aux\""
-             << ",\"channels\":1"
+             << ",\"name\":\"" << jsonEscape(group.name) << "\""
+             << ",\"type\":\"" << (group.index == 0 ? "main" : "aux") << "\""
+             << ",\"channels\":" << std::min<std::size_t>(group.portIndexes.size(), kMaxWorkerAudioPorts)
              << ",\"active\":true}";
     }
     output << "]";
     return output.str();
   }
 
-  std::string outputBusLayoutsToJson() const {
-    std::ostringstream output;
-    output << "[{\"index\":0"
-           << ",\"direction\":\"output\""
-           << ",\"mediaType\":\"audio\""
-           << ",\"name\":\"Main Output\""
-           << ",\"type\":\"main\""
-           << ",\"channels\":" << std::min<std::uint32_t>(outputChannels_, kMaxWorkerAudioPorts)
-           << ",\"active\":true}";
-    const auto busCount = outputBusCount();
-    for (std::uint32_t busIndex = 1; busIndex < busCount; ++busIndex) {
-      const auto portOffset = busIndex - 1;
-      const auto portName = portOffset < outputPortIndexes_.size()
-          ? ports_[outputPortIndexes_[portOffset]].name
-          : std::string("Output Port ") + std::to_string(busIndex);
-      output << ",{\"index\":" << busIndex
-             << ",\"direction\":\"output\""
-             << ",\"mediaType\":\"audio\""
-             << ",\"name\":\"" << jsonEscape(portName.empty() ? std::string("Output Port ") + std::to_string(busIndex) : portName) << "\""
-             << ",\"type\":\"aux\""
-             << ",\"channels\":1"
-             << ",\"active\":true}";
+  void copyInputBusChannels(
+      std::size_t inputBufferIndex,
+      const std::vector<IndexedAudioBus>& inputBuses,
+      std::uint32_t frames) {
+    if (inputBufferIndex >= inputPortIndexes_.size()) {
+      return;
     }
-    output << "]";
-    return output.str();
+    const auto portIndex = inputPortIndexes_[inputBufferIndex];
+    for (const auto& busGroup : inputBusGroups_) {
+      const auto* busChannels = findBusChannels(inputBuses, busGroup.index);
+      if (busChannels == nullptr) {
+        continue;
+      }
+      const auto position = std::find(busGroup.portIndexes.begin(), busGroup.portIndexes.end(), portIndex);
+      if (position == busGroup.portIndexes.end()) {
+        continue;
+      }
+      std::fill(inputBuffers_[inputBufferIndex].begin(), inputBuffers_[inputBufferIndex].end(), 0.0F);
+      const auto channelIndex = static_cast<std::size_t>(std::distance(busGroup.portIndexes.begin(), position));
+      if (channelIndex >= busChannels->size()) {
+        continue;
+      }
+      const auto copyFrames = std::min<std::size_t>(frames, (*busChannels)[channelIndex].size());
+      for (std::size_t frame = 0; frame < copyFrames; ++frame) {
+        inputBuffers_[inputBufferIndex][frame] = sanitizeSample((*busChannels)[channelIndex][frame]);
+      }
+    }
+  }
+
+  std::optional<std::size_t> outputChannelOffsetForPort(std::size_t portIndex) const {
+    const auto position = std::find(outputPortIndexes_.begin(), outputPortIndexes_.end(), portIndex);
+    if (position == outputPortIndexes_.end()) {
+      return std::nullopt;
+    }
+    return static_cast<std::size_t>(std::distance(outputPortIndexes_.begin(), position));
+  }
+
+  static std::string groupNameFromUri(const std::string& uri, const std::string& fallback) {
+    if (uri.empty()) {
+      return fallback;
+    }
+    const auto separator = uri.find_last_of("#/");
+    auto name = separator == std::string::npos ? uri : uri.substr(separator + 1);
+    if (name.empty()) {
+      name = fallback;
+    }
+    for (auto& character : name) {
+      if (character == '_' || character == '-') {
+        character = ' ';
+      }
+    }
+    return cappedString(name);
+  }
+
+  std::vector<Lv2AudioBusGroup> groupedAudioBuses(
+      const std::vector<std::size_t>& portIndexes,
+      const std::string& mainGroupUri,
+      const char* mainName,
+      const char* fallbackPortName) const {
+    std::vector<Lv2AudioBusGroup> groups;
+    if (portIndexes.empty()) {
+      return groups;
+    }
+
+    const bool hasDeclaredGroups = std::any_of(portIndexes.begin(), portIndexes.end(), [&](std::size_t portIndex) {
+      return !ports_[portIndex].groupUri.empty();
+    });
+    if (!hasDeclaredGroups) {
+      groups.push_back(Lv2AudioBusGroup{0, mainName, portIndexes});
+      for (std::size_t offset = 0; offset < portIndexes.size() && groups.size() < kMaxWorkerAudioPorts; ++offset) {
+        const auto portIndex = portIndexes[offset];
+        const auto fallback = std::string(fallbackPortName) + " " + std::to_string(offset + 1);
+        groups.push_back(Lv2AudioBusGroup{
+            static_cast<std::uint32_t>(groups.size()),
+            ports_[portIndex].name.empty() ? fallback : ports_[portIndex].name,
+            {portIndex}});
+      }
+      return groups;
+    }
+
+    std::vector<std::string> orderedGroupUris;
+    for (const auto portIndex : portIndexes) {
+      const auto& uri = ports_[portIndex].groupUri;
+      if (!uri.empty() && std::find(orderedGroupUris.begin(), orderedGroupUris.end(), uri) == orderedGroupUris.end()) {
+        orderedGroupUris.push_back(uri);
+      }
+    }
+
+    std::string effectiveMainUri = mainGroupUri;
+    if (effectiveMainUri.empty() ||
+        std::find(orderedGroupUris.begin(), orderedGroupUris.end(), effectiveMainUri) == orderedGroupUris.end()) {
+      effectiveMainUri = orderedGroupUris.empty() ? std::string {} : orderedGroupUris.front();
+    }
+
+    auto appendGroup = [&](const std::string& uri, const std::string& name) {
+      if (groups.size() >= kMaxWorkerAudioPorts) {
+        return;
+      }
+      std::vector<std::size_t> members;
+      for (const auto portIndex : portIndexes) {
+        if (ports_[portIndex].groupUri == uri) {
+          members.push_back(portIndex);
+        }
+      }
+      if (!members.empty()) {
+        groups.push_back(Lv2AudioBusGroup{static_cast<std::uint32_t>(groups.size()), name, std::move(members)});
+      }
+    };
+
+    appendGroup(effectiveMainUri, mainName);
+    for (const auto& uri : orderedGroupUris) {
+      if (uri != effectiveMainUri) {
+        appendGroup(uri, groupNameFromUri(uri, std::string(fallbackPortName) + " Group"));
+      }
+    }
+    for (const auto portIndex : portIndexes) {
+      if (!ports_[portIndex].groupUri.empty() || groups.size() >= kMaxWorkerAudioPorts) {
+        continue;
+      }
+      groups.push_back(Lv2AudioBusGroup{
+          static_cast<std::uint32_t>(groups.size()),
+          ports_[portIndex].name.empty() ? std::string(fallbackPortName) : ports_[portIndex].name,
+          {portIndex}});
+    }
+    return groups;
   }
 
   std::string stateBase64() {
@@ -2202,6 +1280,22 @@ private:
       } else if (port.type == Lv2PortType::Midi && port.direction == Lv2PortDirection::Input) {
         inputMidiPortIndexes_.push_back(index);
       }
+    }
+  }
+
+  void buildAudioBusGroups() {
+    inputBusGroups_ = groupedAudioBuses(
+        inputPortIndexes_,
+        metadata_.mainInputGroupUri,
+        "Main Input",
+        "Input Port");
+    outputBusGroups_ = groupedAudioBuses(
+        outputPortIndexes_,
+        metadata_.mainOutputGroupUri,
+        "Main Output",
+        "Output Port");
+    if (!outputPortIndexes_.empty() && outputBusGroups_.empty()) {
+      outputBusGroups_.push_back(Lv2AudioBusGroup{0, "Main Output", outputPortIndexes_});
     }
   }
 
@@ -2709,6 +1803,8 @@ private:
   std::vector<std::size_t> inputControlPortIndexes_;
   std::vector<std::size_t> outputControlPortIndexes_;
   std::vector<std::size_t> inputMidiPortIndexes_;
+  std::vector<Lv2AudioBusGroup> inputBusGroups_;
+  std::vector<Lv2AudioBusGroup> outputBusGroups_;
   std::optional<std::size_t> latencyPortIndex_;
   std::vector<std::vector<float>> inputBuffers_;
   std::vector<std::vector<float>> outputBuffers_;
@@ -2871,7 +1967,7 @@ int runLv2HostWorkerNative(int argc, char** argv) {
               std::move(channels),
               std::move(inputBuses),
               transport);
-          std::cout << lv2OutputBusBlockToJson(renderedChannels) << std::endl;
+          std::cout << host.outputAudioToJson(renderedChannels) << std::endl;
           continue;
         }
 
@@ -2901,7 +1997,7 @@ bool lv2HostWorkerAvailable() {
 
 std::string lv2HostWorkerStatus() {
 #ifndef _WIN32
-  return "Basic LV2 audio/control host worker is available with bounded atom MIDI, atom time-position transport, per-audio-port bus routing, standard latency output-port reporting, and brokered portable/file-backed state delivery; LV2 UI extensions remain disabled.";
+  return "Basic LV2 audio/control host worker is available with bounded atom MIDI, atom time-position transport, LV2 port-group bus routing with per-port fallback, standard latency output-port reporting, and brokered portable/file-backed state delivery; LV2 UI extensions remain disabled.";
 #else
   return "LV2 host worker is not available on this platform build.";
 #endif

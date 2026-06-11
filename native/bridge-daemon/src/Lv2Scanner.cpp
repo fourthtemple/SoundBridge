@@ -124,6 +124,7 @@ std::string stripTurtleComments(const std::string& input) {
   std::string output;
   output.reserve(input.size());
   bool inString = false;
+  bool inAngle = false;
   bool escaped = false;
   bool inComment = false;
   for (const char character : input) {
@@ -144,6 +145,20 @@ std::string stripTurtleComments(const std::string& input) {
       } else if (character == '"') {
         inString = false;
       }
+      continue;
+    }
+
+    if (inAngle) {
+      output.push_back(character);
+      if (character == '>') {
+        inAngle = false;
+      }
+      continue;
+    }
+
+    if (character == '<') {
+      inAngle = true;
+      output.push_back(character);
       continue;
     }
 
