@@ -60,10 +60,47 @@ struct LV2_Descriptor {
 using Lv2DescriptorFunction = const LV2_Descriptor* (*)(std::uint32_t index);
 using LV2_URID = std::uint32_t;
 using LV2_URID_Map_Handle = void*;
+using LV2_URID_Unmap_Handle = void*;
+using LV2_State_Handle = void*;
 
 struct LV2_URID_Map {
   LV2_URID_Map_Handle handle;
   LV2_URID (*map)(LV2_URID_Map_Handle handle, const char* uri);
+};
+
+struct LV2_URID_Unmap {
+  LV2_URID_Unmap_Handle handle;
+  const char* (*unmap)(LV2_URID_Unmap_Handle handle, LV2_URID urid);
+};
+
+using LV2_State_Status = std::uint32_t;
+using LV2_State_Store_Function = LV2_State_Status (*)(
+    LV2_State_Handle handle,
+    std::uint32_t key,
+    const void* value,
+    std::size_t size,
+    std::uint32_t type,
+    std::uint32_t flags);
+using LV2_State_Retrieve_Function = const void* (*)(
+    LV2_State_Handle handle,
+    std::uint32_t key,
+    std::size_t* size,
+    std::uint32_t* type,
+    std::uint32_t* flags);
+
+struct LV2_State_Interface {
+  LV2_State_Status (*save)(
+      LV2_Handle instance,
+      LV2_State_Store_Function store,
+      LV2_State_Handle handle,
+      std::uint32_t flags,
+      const LV2_Feature* const* features);
+  LV2_State_Status (*restore)(
+      LV2_Handle instance,
+      LV2_State_Retrieve_Function retrieve,
+      LV2_State_Handle handle,
+      std::uint32_t flags,
+      const LV2_Feature* const* features);
 };
 
 struct LV2_Atom {
@@ -98,19 +135,36 @@ constexpr std::size_t kMaxWorkerPorts = 1024;
 constexpr std::size_t kMaxWorkerParameters = 1024;
 constexpr std::size_t kMaxWorkerParameterChanges = 4096;
 constexpr std::size_t kMaxWorkerMidiEvents = 4096;
+constexpr std::size_t kMaxWorkerStateProperties = 1024;
+constexpr std::size_t kMaxWorkerStatePropertyBytes = 64 * 1024;
+constexpr std::size_t kMaxWorkerUriBytes = 512;
+constexpr std::size_t kMaxWorkerUridMappings = 4096;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
 constexpr const char* kLv2ControlStateMagic = "soundbridge-lv2-control-state-v1";
+constexpr const char* kLv2StateMagic = "soundbridge-lv2-state-v2";
 constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
+constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
 constexpr const char* kLv2AtomSequenceUri = "http://lv2plug.in/ns/ext/atom#Sequence";
 constexpr const char* kLv2AtomFrameTimeUri = "http://lv2plug.in/ns/ext/atom#frameTime";
+constexpr const char* kLv2AtomFloatUri = "http://lv2plug.in/ns/ext/atom#Float";
 constexpr const char* kLv2MidiEventUri = "http://lv2plug.in/ns/ext/midi#MidiEvent";
+constexpr const char* kLv2StateInterfaceUri = "http://lv2plug.in/ns/ext/state#interface";
 constexpr LV2_URID kUridAtomSequence = 1;
 constexpr LV2_URID kUridAtomFrameTime = 2;
 constexpr LV2_URID kUridMidiEvent = 3;
+constexpr LV2_URID kUridAtomFloat = 4;
+constexpr std::uint32_t kLv2StateSuccess = 0;
+constexpr std::uint32_t kLv2StateErrUnknown = 1;
+constexpr std::uint32_t kLv2StateErrBadType = 2;
+constexpr std::uint32_t kLv2StateErrBadFlags = 3;
+constexpr std::uint32_t kLv2StateErrNoSpace = 6;
+constexpr std::uint32_t kLv2StateIsPod = 1U << 0U;
+constexpr std::uint32_t kLv2StateIsPortable = 1U << 1U;
+constexpr std::uint32_t kLv2StateIsNative = 1U << 2U;
 
 enum class Lv2PortDirection {
   Input,
@@ -152,6 +206,85 @@ struct PendingMidiMessage {
   std::uint8_t data1 = 60;
   std::uint8_t data2 = 100;
   std::uint32_t sampleOffset = 0;
+};
+
+struct Lv2StateProperty {
+  std::string keyUri;
+  std::string typeUri;
+  std::uint32_t flags = 0;
+  std::vector<std::uint8_t> value;
+};
+
+struct Lv2RestoredStateProperty {
+  LV2_URID key = 0;
+  LV2_URID type = 0;
+  std::uint32_t flags = 0;
+  std::vector<std::uint8_t> value;
+};
+
+class Lv2UridMapper {
+public:
+  Lv2UridMapper() {
+    mappings_.reserve(kMaxWorkerUridMappings);
+    addKnown(kUridAtomSequence, kLv2AtomSequenceUri);
+    addKnown(kUridAtomFrameTime, kLv2AtomFrameTimeUri);
+    addKnown(kUridMidiEvent, kLv2MidiEventUri);
+    addKnown(kUridAtomFloat, kLv2AtomFloatUri);
+    nextUrid_ = kUridAtomFloat + 1;
+  }
+
+  LV2_URID map(const char* uri) {
+    if (uri == nullptr || *uri == '\0') {
+      return 0;
+    }
+    const std::string text(uri);
+    if (text.size() > kMaxWorkerUriBytes) {
+      return 0;
+    }
+    for (const auto& mapping : mappings_) {
+      if (mapping.uri == text) {
+        return mapping.urid;
+      }
+    }
+    if (mappings_.size() >= kMaxWorkerUridMappings) {
+      return 0;
+    }
+    const auto urid = nextUrid_++;
+    mappings_.push_back(Lv2MappedUri{urid, text});
+    return urid;
+  }
+
+  const char* unmap(LV2_URID urid) const {
+    for (const auto& mapping : mappings_) {
+      if (mapping.urid == urid) {
+        return mapping.uri.c_str();
+      }
+    }
+    return nullptr;
+  }
+
+private:
+  struct Lv2MappedUri {
+    LV2_URID urid = 0;
+    std::string uri;
+  };
+
+  void addKnown(LV2_URID urid, const char* uri) {
+    mappings_.push_back(Lv2MappedUri{urid, uri});
+  }
+
+  std::vector<Lv2MappedUri> mappings_;
+  LV2_URID nextUrid_ = kUridAtomFloat + 1;
+};
+
+struct Lv2StateSaveContext {
+  Lv2UridMapper* mapper = nullptr;
+  std::vector<Lv2StateProperty>* properties = nullptr;
+  std::size_t totalValueBytes = 0;
+};
+
+struct Lv2StateRestoreContext {
+  const std::vector<Lv2RestoredStateProperty>* properties = nullptr;
 };
 
 struct DlCloser {
@@ -352,20 +485,106 @@ std::size_t alignAtomSize(std::size_t size) {
   return (size + 7U) & ~std::size_t(7U);
 }
 
-LV2_URID mapLv2Urid(LV2_URID_Map_Handle /* handle */, const char* uri) {
-  if (uri == nullptr) {
+LV2_URID mapLv2Urid(LV2_URID_Map_Handle handle, const char* uri) {
+  if (handle == nullptr) {
     return 0;
   }
-  if (std::strcmp(uri, kLv2AtomSequenceUri) == 0) {
-    return kUridAtomSequence;
+  return static_cast<Lv2UridMapper*>(handle)->map(uri);
+}
+
+const char* unmapLv2Urid(LV2_URID_Unmap_Handle handle, LV2_URID urid) {
+  if (handle == nullptr) {
+    return nullptr;
   }
-  if (std::strcmp(uri, kLv2AtomFrameTimeUri) == 0) {
-    return kUridAtomFrameTime;
+  return static_cast<const Lv2UridMapper*>(handle)->unmap(urid);
+}
+
+std::string stateStringToBase64(const std::string& value) {
+  return base64Encode(reinterpret_cast<const std::uint8_t*>(value.data()), value.size());
+}
+
+bool isPortablePodState(std::uint32_t flags) {
+  return (flags & kLv2StateIsPod) != 0 &&
+      (flags & kLv2StateIsPortable) != 0 &&
+      (flags & kLv2StateIsNative) == 0;
+}
+
+bool isValidStateUri(const std::string& value) {
+  if (value.empty() || value.size() > kMaxWorkerUriBytes) {
+    return false;
   }
-  if (std::strcmp(uri, kLv2MidiEventUri) == 0) {
-    return kUridMidiEvent;
+  return std::none_of(value.begin(), value.end(), [](unsigned char character) {
+    return character == '\0' || character <= 0x20 || character == 0x7F;
+  });
+}
+
+std::string base64ToStateString(const std::string& encoded, std::size_t maxBytes) {
+  const auto decoded = base64Decode(encoded, maxBytes);
+  return std::string(decoded.begin(), decoded.end());
+}
+
+LV2_State_Status storeLv2StateProperty(
+    LV2_State_Handle handle,
+    std::uint32_t key,
+    const void* value,
+    std::size_t size,
+    std::uint32_t type,
+    std::uint32_t flags) {
+  auto* context = static_cast<Lv2StateSaveContext*>(handle);
+  if (context == nullptr || context->mapper == nullptr || context->properties == nullptr || value == nullptr || size == 0) {
+    return kLv2StateErrUnknown;
   }
-  return 0;
+  if (!isPortablePodState(flags)) {
+    return kLv2StateErrBadFlags;
+  }
+  if (size > kMaxWorkerStatePropertyBytes ||
+      context->totalValueBytes + size > kMaxWorkerStateBytes / 2 ||
+      context->properties->size() >= kMaxWorkerStateProperties) {
+    return kLv2StateErrNoSpace;
+  }
+
+  const char* keyUri = context->mapper->unmap(key);
+  const char* typeUri = context->mapper->unmap(type);
+  if (keyUri == nullptr || typeUri == nullptr || !isValidStateUri(keyUri) || !isValidStateUri(typeUri)) {
+    return kLv2StateErrBadType;
+  }
+
+  auto* bytes = static_cast<const std::uint8_t*>(value);
+  context->properties->push_back(Lv2StateProperty{
+      keyUri,
+      typeUri,
+      flags,
+      std::vector<std::uint8_t>(bytes, bytes + size)});
+  context->totalValueBytes += size;
+  return kLv2StateSuccess;
+}
+
+const void* retrieveLv2StateProperty(
+    LV2_State_Handle handle,
+    std::uint32_t key,
+    std::size_t* size,
+    std::uint32_t* type,
+    std::uint32_t* flags) {
+  auto* context = static_cast<Lv2StateRestoreContext*>(handle);
+  if (context == nullptr || context->properties == nullptr) {
+    return nullptr;
+  }
+  for (const auto& property : *context->properties) {
+    if (property.key != key) {
+      continue;
+    }
+    if (size != nullptr) {
+      *size = property.value.size();
+    }
+    if (type != nullptr) {
+      *type = property.type;
+    }
+    if (flags != nullptr) {
+      *flags = property.flags;
+    }
+    return property.value.data();
+  }
+  return nullptr;
 }
 
 std::string cappedString(std::string value, std::size_t maxBytes = kMaxWorkerParameterStringBytes) {
@@ -939,8 +1158,8 @@ public:
     return "{\"tailSamples\":0,\"infiniteTail\":false}";
   }
 
-  std::string stateToJson() const {
-    const auto state = controlStateBase64();
+  std::string stateToJson() {
+    const auto state = stateBase64();
     return std::string("{\"state\":\"") + state + "\"}";
   }
 
@@ -948,7 +1167,7 @@ public:
     if (stateText == "-") {
       return "{\"ok\":true}";
     }
-    restoreControlState(stateText);
+    restoreState(stateText);
     return "{\"ok\":true}";
   }
 
@@ -986,13 +1205,20 @@ private:
     return output.str();
   }
 
-  std::string controlStateBase64() const {
+  std::string stateBase64() {
     std::ostringstream state;
-    state << kLv2ControlStateMagic << "\n";
+    state << kLv2StateMagic << "\n";
     state << std::setprecision(9);
     for (const auto portIndex : inputControlPortIndexes_) {
       const auto& port = ports_[portIndex];
       state << "p " << port.index << " " << sanitizeStateValue(port.value) << "\n";
+    }
+    for (const auto& property : extensionStateProperties()) {
+      state << "s "
+            << stateStringToBase64(property.keyUri) << " "
+            << stateStringToBase64(property.typeUri) << " "
+            << property.flags << " "
+            << base64Encode(property.value.data(), property.value.size()) << "\n";
     }
     const auto text = state.str();
     if (text.size() > kMaxWorkerStateBytes) {
@@ -1001,16 +1227,85 @@ private:
     return base64Encode(reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
   }
 
-  void restoreControlState(const std::string& encodedState) {
+  void restoreState(const std::string& encodedState) {
     const auto decoded = base64Decode(encodedState, kMaxWorkerStateBytes);
     const std::string text(decoded.begin(), decoded.end());
     std::stringstream lines(text);
     std::string line;
-    if (!std::getline(lines, line) || line != kLv2ControlStateMagic) {
+    if (!std::getline(lines, line)) {
+      throw std::runtime_error("invalid_lv2_state");
+    }
+    if (line == kLv2ControlStateMagic) {
+      restoreControlStateLines(lines);
+      return;
+    }
+    if (line != kLv2StateMagic) {
       throw std::runtime_error("invalid_lv2_state");
     }
 
     std::size_t restored = 0;
+    std::size_t totalExtensionBytes = 0;
+    std::vector<Lv2RestoredStateProperty> extensionProperties;
+    while (std::getline(lines, line)) {
+      if (line.empty()) {
+        continue;
+      }
+      if (++restored > kMaxWorkerParameters + kMaxWorkerStateProperties) {
+        throw std::runtime_error("state_too_large");
+      }
+
+      std::stringstream entry(line);
+      std::string prefix;
+      entry >> prefix;
+      if (prefix == "p") {
+        restoreControlStateEntry(entry);
+        continue;
+      }
+      if (prefix == "s") {
+        std::string keyText;
+        std::string typeText;
+        std::string flagsText;
+        std::string valueText;
+        entry >> keyText;
+        entry >> typeText;
+        entry >> flagsText;
+        entry >> valueText;
+        std::string extra;
+        entry >> extra;
+        std::uint32_t flags = 0;
+        if (!extra.empty() || !parseUint32Arg(flagsText.c_str(), 0, 0xFFFFFFFFU, flags)) {
+          throw std::runtime_error("invalid_lv2_state");
+        }
+
+        const auto keyUri = base64ToStateString(keyText, kMaxWorkerUriBytes);
+        const auto typeUri = base64ToStateString(typeText, kMaxWorkerUriBytes);
+        auto value = base64Decode(valueText, kMaxWorkerStatePropertyBytes);
+        if (!isValidStateUri(keyUri) || !isValidStateUri(typeUri) || value.empty() || !isPortablePodState(flags)) {
+          throw std::runtime_error("invalid_lv2_state");
+        }
+        totalExtensionBytes += value.size();
+        if (totalExtensionBytes > kMaxWorkerStateBytes / 2) {
+          throw std::runtime_error("state_too_large");
+        }
+        const auto key = uridMapper_.map(keyUri.c_str());
+        const auto type = uridMapper_.map(typeUri.c_str());
+        if (key == 0 || type == 0) {
+          throw std::runtime_error("invalid_lv2_state");
+        }
+        if (extensionProperties.size() >= kMaxWorkerStateProperties) {
+          throw std::runtime_error("state_too_large");
+        }
+        extensionProperties.push_back(Lv2RestoredStateProperty{key, type, flags, std::move(value)});
+        continue;
+      }
+      throw std::runtime_error("invalid_lv2_state");
+    }
+    restoreExtensionState(extensionProperties);
+  }
+
+  void restoreControlStateLines(std::stringstream& lines) {
+    std::size_t restored = 0;
+    std::string line;
     while (std::getline(lines, line)) {
       if (line.empty()) {
         continue;
@@ -1018,35 +1313,101 @@ private:
       if (++restored > kMaxWorkerParameters) {
         throw std::runtime_error("state_too_large");
       }
-
       std::stringstream entry(line);
       std::string prefix;
-      std::string portIndexText;
-      std::string valueText;
       entry >> prefix;
-      entry >> portIndexText;
-      entry >> valueText;
-      std::string extra;
-      entry >> extra;
-      std::uint32_t portIndex = 0;
-      double value = 0.0;
-      if (prefix != "p" ||
-          !extra.empty() ||
-          !parseUint32Arg(portIndexText.c_str(), 0, kMaxWorkerPortIndex, portIndex) ||
-          !parseStateValue(valueText, value)) {
+      if (prefix != "p") {
         throw std::runtime_error("invalid_lv2_state");
       }
+      restoreControlStateEntry(entry);
+    }
+  }
 
-      for (const auto controlPortIndex : inputControlPortIndexes_) {
-        auto& port = ports_[controlPortIndex];
-        if (port.index == portIndex) {
-          port.value = static_cast<float>(std::clamp(
-              value,
-              static_cast<double>(port.minimum),
-              static_cast<double>(port.maximum)));
-          break;
-        }
+  void restoreControlStateEntry(std::stringstream& entry) {
+    std::string portIndexText;
+    std::string valueText;
+    entry >> portIndexText;
+    entry >> valueText;
+    std::string extra;
+    entry >> extra;
+    std::uint32_t portIndex = 0;
+    double value = 0.0;
+    if (!extra.empty() ||
+        !parseUint32Arg(portIndexText.c_str(), 0, kMaxWorkerPortIndex, portIndex) ||
+        !parseStateValue(valueText, value)) {
+      throw std::runtime_error("invalid_lv2_state");
+    }
+
+    for (const auto controlPortIndex : inputControlPortIndexes_) {
+      auto& port = ports_[controlPortIndex];
+      if (port.index == portIndex) {
+        port.value = static_cast<float>(std::clamp(
+            value,
+            static_cast<double>(port.minimum),
+            static_cast<double>(port.maximum)));
+        break;
       }
+    }
+  }
+
+  std::vector<Lv2StateProperty> extensionStateProperties() {
+    std::vector<Lv2StateProperty> properties;
+    if (stateInterface_ == nullptr || stateInterface_->save == nullptr || handle_ == nullptr) {
+      return properties;
+    }
+
+    LV2_URID_Map uridMap {&uridMapper_, &mapLv2Urid};
+    LV2_URID_Unmap uridUnmap {&uridMapper_, &unmapLv2Urid};
+    LV2_Feature uridMapFeature {kLv2UridMapUri, &uridMap};
+    LV2_Feature uridUnmapFeature {kLv2UridUnmapUri, &uridUnmap};
+    const LV2_Feature* const features[] = {&uridMapFeature, &uridUnmapFeature, nullptr};
+    Lv2StateSaveContext context {&uridMapper_, &properties, 0};
+    const auto status = stateInterface_->save(
+        handle_,
+        &storeLv2StateProperty,
+        &context,
+        kLv2StateIsPod | kLv2StateIsPortable,
+        features);
+    if (status != kLv2StateSuccess) {
+      throw std::runtime_error("lv2_state_save_failed");
+    }
+    return properties;
+  }
+
+  void restoreExtensionState(const std::vector<Lv2RestoredStateProperty>& properties) {
+    if (properties.empty()) {
+      return;
+    }
+    if (stateInterface_ == nullptr || stateInterface_->restore == nullptr || handle_ == nullptr) {
+      throw std::runtime_error("lv2_state_extension_unavailable");
+    }
+
+    LV2_URID_Map uridMap {&uridMapper_, &mapLv2Urid};
+    LV2_URID_Unmap uridUnmap {&uridMapper_, &unmapLv2Urid};
+    LV2_Feature uridMapFeature {kLv2UridMapUri, &uridMap};
+    LV2_Feature uridUnmapFeature {kLv2UridUnmapUri, &uridUnmap};
+    const LV2_Feature* const features[] = {&uridMapFeature, &uridUnmapFeature, nullptr};
+    Lv2StateRestoreContext context {&properties};
+    const bool reactivate = activated_ && descriptor_->deactivate != nullptr && descriptor_->activate != nullptr;
+    if (reactivate) {
+      descriptor_->deactivate(handle_);
+      activated_ = false;
+    }
+    try {
+      const auto status = stateInterface_->restore(handle_, &retrieveLv2StateProperty, &context, 0, features);
+      if (status != kLv2StateSuccess) {
+        throw std::runtime_error("lv2_state_restore_failed");
+      }
+    } catch (...) {
+      if (reactivate) {
+        descriptor_->activate(handle_);
+        activated_ = true;
+      }
+      throw;
+    }
+    if (reactivate) {
+      descriptor_->activate(handle_);
+      activated_ = true;
     }
   }
 
@@ -1092,6 +1453,12 @@ private:
       }
       if (metadata_.pluginUri.empty() || metadata_.pluginUri == descriptor->URI) {
         descriptor_ = descriptor;
+        if (descriptor_->extension_data != nullptr) {
+          auto* stateInterface = static_cast<const LV2_State_Interface*>(descriptor_->extension_data(kLv2StateInterfaceUri));
+          if (stateInterface != nullptr && (stateInterface->save != nullptr || stateInterface->restore != nullptr)) {
+            stateInterface_ = stateInterface;
+          }
+        }
         return;
       }
     }
@@ -1100,9 +1467,11 @@ private:
   }
 
   void instantiate() {
-    LV2_URID_Map uridMap {nullptr, &mapLv2Urid};
+    LV2_URID_Map uridMap {&uridMapper_, &mapLv2Urid};
+    LV2_URID_Unmap uridUnmap {&uridMapper_, &unmapLv2Urid};
     LV2_Feature uridMapFeature {kLv2UridMapUri, &uridMap};
-    const LV2_Feature* const features[] = {&uridMapFeature, nullptr};
+    LV2_Feature uridUnmapFeature {kLv2UridUnmapUri, &uridUnmap};
+    const LV2_Feature* const features[] = {&uridMapFeature, &uridUnmapFeature, nullptr};
     auto bundlePath = bundlePath_;
     if (!bundlePath.empty() && bundlePath.back() != '/') {
       bundlePath.push_back('/');
@@ -1312,7 +1681,9 @@ private:
   std::unique_ptr<void, DlCloser> module_;
   Lv2DescriptorFunction descriptorFunction_ = nullptr;
   const LV2_Descriptor* descriptor_ = nullptr;
+  const LV2_State_Interface* stateInterface_ = nullptr;
   LV2_Handle handle_ = nullptr;
+  Lv2UridMapper uridMapper_;
   double sampleRate_ = 48000.0;
   std::uint32_t maxBlockSize_ = 128;
   std::uint32_t requestedInputChannels_ = 2;
@@ -1499,7 +1870,7 @@ bool lv2HostWorkerAvailable() {
 
 std::string lv2HostWorkerStatus() {
 #ifndef _WIN32
-  return "Basic LV2 audio/control host worker is available with bounded atom MIDI delivery; LV2 extension state, worker, and UI extensions remain disabled.";
+  return "Basic LV2 audio/control host worker is available with bounded atom MIDI and portable POD state delivery; LV2 file-backed state, worker, and UI extensions remain disabled.";
 #else
   return "LV2 host worker is not available on this platform build.";
 #endif

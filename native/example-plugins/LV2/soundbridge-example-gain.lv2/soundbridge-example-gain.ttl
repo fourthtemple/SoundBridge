@@ -2,10 +2,12 @@
 @prefix doap: <http://usefulinc.com/ns/doap#> .
 @prefix lv2: <http://lv2plug.in/ns/lv2core#> .
 @prefix midi: <http://lv2plug.in/ns/ext/midi#> .
+@prefix state: <http://lv2plug.in/ns/ext/state#> .
 
 <urn:soundbridge:example:lv2-gain>
   a lv2:Plugin ;
   doap:name "SoundBridge Example LV2 Gain" ;
+  lv2:extensionData state:interface ;
   lv2:port [
     a lv2:InputPort, lv2:ControlPort ;
     lv2:index 0 ;

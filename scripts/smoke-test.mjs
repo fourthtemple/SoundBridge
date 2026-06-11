@@ -235,6 +235,52 @@ if (nativeLv2Effect) {
     nativeLv2MidiBlock.channels?.[0]?.[0] > 0.06 && nativeLv2MidiBlock.channels[0][0] < 0.16,
     "installed LV2 effect received atom MIDI CC"
   );
+  const nativeLv2ExtensionState = await request(socket, "getState", { instanceId: nativeLv2Instance.instanceId }, true, pair.sessionToken);
+  await request(
+    socket,
+    "sendMidiEvents",
+    {
+      instanceId: nativeLv2Instance.instanceId,
+      events: [{ type: "controlChange", controller: 7, value: 1, channel: 0, time: 0 }]
+    },
+    true,
+    pair.sessionToken
+  );
+  await request(
+    socket,
+    "processAudioBlock",
+    {
+      instanceId: nativeLv2Instance.instanceId,
+      blockId: 13,
+      sampleRate: 48000,
+      channels: [new Array(4).fill(0.4), new Array(4).fill(0.4)]
+    },
+    true,
+    pair.sessionToken
+  );
+  await request(
+    socket,
+    "setState",
+    { instanceId: nativeLv2Instance.instanceId, state: nativeLv2ExtensionState.state },
+    true,
+    pair.sessionToken
+  );
+  const nativeLv2RestoredMidiBlock = await request(
+    socket,
+    "processAudioBlock",
+    {
+      instanceId: nativeLv2Instance.instanceId,
+      blockId: 14,
+      sampleRate: 48000,
+      channels: [new Array(4).fill(0.4), new Array(4).fill(0.4)]
+    },
+    true,
+    pair.sessionToken
+  );
+  assert(
+    nativeLv2RestoredMidiBlock.channels?.[0]?.[0] > 0.06 && nativeLv2RestoredMidiBlock.channels[0][0] < 0.16,
+    "setState restores installed LV2 extension state"
+  );
   await request(socket, "destroyInstance", { instanceId: nativeLv2Instance.instanceId }, true, pair.sessionToken);
 }
 
@@ -870,6 +916,15 @@ async function runNativeLv2WorkerSmoke() {
     assert(
       Math.abs(midiRendered.channels[0][0] - 0.4 * (32 / 127)) < 0.02,
       "native LV2 worker delivers MIDI CC to atom MIDI ports"
+    );
+    const extensionState = await requestWorker("getState");
+    await requestWorker("midi cc:7:1:0:0");
+    await requestWorker("render 4 48000 0.4,0.4,0.4,0.4|0.4,0.4,0.4,0.4");
+    await requestWorker(`setState ${extensionState.state}`);
+    const restoredExtensionState = await requestWorker("render 4 48000 0.4,0.4,0.4,0.4|0.4,0.4,0.4,0.4");
+    assert(
+      Math.abs(restoredExtensionState.channels[0][0] - 0.4 * (32 / 127)) < 0.02,
+      "native LV2 worker restores bounded extension state"
     );
 
     worker.stdin.write("midi cc:200:0.5:0:0\n", "utf8");

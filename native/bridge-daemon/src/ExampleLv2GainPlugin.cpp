@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -35,6 +36,37 @@ struct LV2_URID_Map {
   LV2_URID (*map)(LV2_URID_Map_Handle handle, const char* uri);
 };
 
+using LV2_State_Handle = void*;
+using LV2_State_Status = std::uint32_t;
+using LV2_State_Store_Function = LV2_State_Status (*)(
+    LV2_State_Handle handle,
+    std::uint32_t key,
+    const void* value,
+    std::size_t size,
+    std::uint32_t type,
+    std::uint32_t flags);
+using LV2_State_Retrieve_Function = const void* (*)(
+    LV2_State_Handle handle,
+    std::uint32_t key,
+    std::size_t* size,
+    std::uint32_t* type,
+    std::uint32_t* flags);
+
+struct LV2_State_Interface {
+  LV2_State_Status (*save)(
+      LV2_Handle instance,
+      LV2_State_Store_Function store,
+      LV2_State_Handle handle,
+      std::uint32_t flags,
+      const LV2_Feature* const* features);
+  LV2_State_Status (*restore)(
+      LV2_Handle instance,
+      LV2_State_Retrieve_Function retrieve,
+      LV2_State_Handle handle,
+      std::uint32_t flags,
+      const LV2_Feature* const* features);
+};
+
 struct LV2_Atom {
   std::uint32_t size;
   LV2_URID type;
@@ -61,7 +93,15 @@ struct LV2_Atom_Event {
 };
 
 constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
+constexpr const char* kLv2AtomFloatUri = "http://lv2plug.in/ns/ext/atom#Float";
 constexpr const char* kLv2MidiEventUri = "http://lv2plug.in/ns/ext/midi#MidiEvent";
+constexpr const char* kLv2StateInterfaceUri = "http://lv2plug.in/ns/ext/state#interface";
+constexpr const char* kMidiGainStateUri = "urn:soundbridge:example:lv2-gain#midiGain";
+constexpr std::uint32_t kLv2StateSuccess = 0;
+constexpr std::uint32_t kLv2StateErrBadType = 2;
+constexpr std::uint32_t kLv2StateErrNoFeature = 4;
+constexpr std::uint32_t kLv2StateIsPod = 1U << 0U;
+constexpr std::uint32_t kLv2StateIsPortable = 1U << 1U;
 
 enum PortIndex : std::uint32_t {
   kGain = 0,
@@ -80,6 +120,8 @@ struct GainPlugin {
   float* outputRight = nullptr;
   const LV2_Atom_Sequence* midiIn = nullptr;
   LV2_URID midiEventUrid = 0;
+  LV2_URID midiGainKeyUrid = 0;
+  LV2_URID atomFloatUrid = 0;
   float midiGain = 1.0F;
 };
 
@@ -102,6 +144,8 @@ LV2_Handle instantiate(
       auto* uridMap = static_cast<const LV2_URID_Map*>((*feature)->data);
       if (uridMap->map != nullptr) {
         plugin->midiEventUrid = uridMap->map(uridMap->handle, kLv2MidiEventUri);
+        plugin->midiGainKeyUrid = uridMap->map(uridMap->handle, kMidiGainStateUri);
+        plugin->atomFloatUrid = uridMap->map(uridMap->handle, kLv2AtomFloatUri);
       }
     }
   }
@@ -175,8 +219,67 @@ void run(LV2_Handle instance, std::uint32_t sampleCount) {
   }
 }
 
+LV2_State_Status saveState(
+    LV2_Handle instance,
+    LV2_State_Store_Function store,
+    LV2_State_Handle handle,
+    std::uint32_t /* flags */,
+    const LV2_Feature* const* /* features */) {
+  auto* plugin = static_cast<GainPlugin*>(instance);
+  if (store == nullptr || plugin->midiGainKeyUrid == 0 || plugin->atomFloatUrid == 0) {
+    return kLv2StateErrNoFeature;
+  }
+  const float value = std::clamp(plugin->midiGain, 0.0F, 1.0F);
+  return store(
+      handle,
+      plugin->midiGainKeyUrid,
+      &value,
+      sizeof(value),
+      plugin->atomFloatUrid,
+      kLv2StateIsPod | kLv2StateIsPortable);
+}
+
+LV2_State_Status restoreState(
+    LV2_Handle instance,
+    LV2_State_Retrieve_Function retrieve,
+    LV2_State_Handle handle,
+    std::uint32_t /* flags */,
+    const LV2_Feature* const* /* features */) {
+  auto* plugin = static_cast<GainPlugin*>(instance);
+  if (retrieve == nullptr || plugin->midiGainKeyUrid == 0 || plugin->atomFloatUrid == 0) {
+    return kLv2StateErrNoFeature;
+  }
+
+  std::size_t size = 0;
+  std::uint32_t type = 0;
+  std::uint32_t flags = 0;
+  const auto* value = retrieve(handle, plugin->midiGainKeyUrid, &size, &type, &flags);
+  if (value == nullptr) {
+    return kLv2StateSuccess;
+  }
+  if (size != sizeof(float) || type != plugin->atomFloatUrid || (flags & kLv2StateIsPod) == 0) {
+    return kLv2StateErrBadType;
+  }
+
+  float restored = 1.0F;
+  std::memcpy(&restored, value, sizeof(restored));
+  plugin->midiGain = std::clamp(restored, 0.0F, 1.0F);
+  return kLv2StateSuccess;
+}
+
 void cleanup(LV2_Handle instance) {
   delete static_cast<GainPlugin*>(instance);
+}
+
+const LV2_State_Interface kStateInterface {
+    saveState,
+    restoreState};
+
+const void* extensionData(const char* uri) {
+  if (uri != nullptr && std::strcmp(uri, kLv2StateInterfaceUri) == 0) {
+    return &kStateInterface;
+  }
+  return nullptr;
 }
 
 const LV2_Descriptor kDescriptor {
@@ -187,7 +290,7 @@ const LV2_Descriptor kDescriptor {
     run,
     nullptr,
     cleanup,
-    nullptr};
+    extensionData};
 
 } // namespace
 
