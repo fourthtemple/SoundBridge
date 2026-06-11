@@ -9,6 +9,11 @@ const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47370);
 const PAIRING_TOKEN = process.env.SOUNDBRIDGE_PAIRING_TOKEN ?? "dev-token";
 const PROTOCOL_VERSION = "0.1.0";
+const SESSION_TTL_MS = envInteger("SOUNDBRIDGE_SESSION_TTL_MS", 30 * 60 * 1000);
+const MAX_SESSIONS_PER_ORIGIN = envInteger("SOUNDBRIDGE_MAX_SESSIONS_PER_ORIGIN", 8);
+const MAX_INSTANCES_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_INSTANCES_PER_SESSION", 8);
+const MAX_TOTAL_INSTANCES = envInteger("SOUNDBRIDGE_MAX_TOTAL_INSTANCES", 32);
+const ALLOWED_ORIGINS = envList("SOUNDBRIDGE_ALLOWED_ORIGINS");
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NATIVE_RENDERER = resolveNativeRenderer();
 const NATIVE_HOST_STATUS = loadNativeHostStatus();
@@ -75,6 +80,11 @@ server.listen(PORT, HOST, () => {
 
 function attachWebSocket(socket, requestOrigin) {
   let buffer = Buffer.alloc(0);
+  const context = {
+    connectionId: crypto.randomUUID(),
+    requestOrigin: String(requestOrigin),
+    sessionTokens: new Set()
+  };
 
   const send = (message) => {
     socket.write(encodeWebSocketFrame(Buffer.from(JSON.stringify(message), "utf8"), 0x1));
@@ -105,14 +115,15 @@ function attachWebSocket(socket, requestOrigin) {
         continue;
       }
 
-      void handleRequest(parsed.payload.toString("utf8"), requestOrigin, send);
+      void handleRequest(parsed.payload.toString("utf8"), context, send);
     }
   });
 
   socket.on("error", () => {});
+  socket.on("close", () => cleanupConnection(context));
 }
 
-async function handleRequest(rawMessage, requestOrigin, send) {
+async function handleRequest(rawMessage, context, send) {
   let envelope;
   try {
     envelope = JSON.parse(rawMessage);
@@ -127,7 +138,7 @@ async function handleRequest(rawMessage, requestOrigin, send) {
   }
 
   try {
-    const payload = await dispatchCommand(envelope, requestOrigin);
+    const payload = await dispatchCommand(envelope, context);
     send({
       type: "response",
       id: envelope.id,
@@ -145,11 +156,12 @@ async function handleRequest(rawMessage, requestOrigin, send) {
   }
 }
 
-async function dispatchCommand(envelope, requestOrigin) {
+async function dispatchCommand(envelope, context) {
   const { command, payload = {} } = envelope;
+  let session;
 
   if (!["hello", "pair", "heartbeat"].includes(command)) {
-    assertPaired(envelope.sessionToken, command);
+    session = assertPaired(envelope.sessionToken, command, context);
   }
 
   switch (command) {
@@ -175,12 +187,21 @@ async function dispatchCommand(envelope, requestOrigin) {
           latency: true,
           midi: true,
           nativeExampleRenderer: Boolean(NATIVE_RENDERER),
-          nativeEditor: false
+          nativeEditor: false,
+          security: {
+            originAllowlist: ALLOWED_ORIGINS.length > 0,
+            sessionBoundToConnection: true,
+            sessionBoundToOrigin: true,
+            instanceOwnership: true,
+            cleanupOnDisconnect: true,
+            maxInstancesPerSession: MAX_INSTANCES_PER_SESSION,
+            maxTotalInstances: MAX_TOTAL_INSTANCES
+          }
         }
       };
 
     case "pair":
-      return pair(payload, requestOrigin);
+      return pair(payload, context);
 
     case "scanPlugins":
       return {
@@ -195,32 +216,33 @@ async function dispatchCommand(envelope, requestOrigin) {
       };
 
     case "createInstance":
-      return createInstance(payload);
+      return createInstance(payload, session);
 
     case "destroyInstance":
-      return destroyInstance(payload.instanceId);
+      return destroyInstance(payload.instanceId, session);
 
     case "getParameters":
       return {
-        parameters: getInstance(payload.instanceId).parameters.map((parameter) => ({ ...parameter }))
+        parameters: getInstance(payload.instanceId, session).parameters.map((parameter) => ({ ...parameter }))
       };
 
     case "setParameter":
-      return setParameter(payload.instanceId, payload.parameterId, payload.normalizedValue);
+      return setParameter(payload.instanceId, payload.parameterId, payload.normalizedValue, session);
 
     case "getState":
-      return getState(payload.instanceId);
+      return getState(payload.instanceId, session);
 
     case "setState":
-      return setState(payload.instanceId, payload.state);
+      return setState(payload.instanceId, payload.state, session);
 
     case "processAudioBlock":
-      return processAudioBlock(payload);
+      return processAudioBlock(payload, session);
 
     case "sendMidiEvents":
-      return sendMidiEvents(payload.instanceId, payload.events);
+      return sendMidiEvents(payload.instanceId, payload.events, session);
 
     case "getLatency":
+      getInstance(payload.instanceId, session);
       return {
         pluginLatencySamples: 0,
         transportLatencySamples: Number(payload.transportLatencySamples ?? 0),
@@ -242,22 +264,42 @@ async function dispatchCommand(envelope, requestOrigin) {
   }
 }
 
-function pair(payload, requestOrigin) {
-  const requestedOrigin = String(payload.origin ?? requestOrigin);
+function pair(payload, context) {
+  cleanupExpiredSessions();
+  const requestedOrigin = String(payload.origin ?? context.requestOrigin);
   if (payload.pairingToken !== PAIRING_TOKEN) {
     throw protocolError("pairing_denied", "Invalid pairing token.");
   }
 
-  if (requestOrigin !== "unknown-origin" && requestedOrigin !== requestOrigin) {
+  if (context.requestOrigin !== "unknown-origin" && requestedOrigin !== context.requestOrigin) {
     throw protocolError("origin_mismatch", "Pairing origin does not match the WebSocket Origin header.");
   }
 
+  if (ALLOWED_ORIGINS.length > 0 && !ALLOWED_ORIGINS.includes(requestedOrigin)) {
+    throw protocolError("origin_not_allowed", "This browser origin is not allowed to pair with SoundBridge.", {
+      origin: requestedOrigin
+    });
+  }
+
+  if (sessionsForOrigin(requestedOrigin).length >= MAX_SESSIONS_PER_ORIGIN) {
+    throw protocolError("quota_exceeded", "Too many active SoundBridge sessions for this origin.", {
+      origin: requestedOrigin,
+      maxSessionsPerOrigin: MAX_SESSIONS_PER_ORIGIN
+    });
+  }
+
   const sessionToken = crypto.randomBytes(24).toString("base64url");
-  const expiresAt = Date.now() + 30 * 60 * 1000;
+  const expiresAt = Date.now() + SESSION_TTL_MS;
   sessions.set(sessionToken, {
+    sessionToken,
     origin: requestedOrigin,
-    expiresAt
+    connectionId: context.connectionId,
+    expiresAt,
+    instances: new Set(),
+    createdAt: Date.now(),
+    lastSeenAt: Date.now()
   });
+  context.sessionTokens.add(sessionToken);
 
   return {
     sessionToken,
@@ -275,7 +317,18 @@ function filterPlugins(payload, plugins) {
   return plugins.filter((plugin) => formats.has(plugin.format));
 }
 
-async function createInstance(payload) {
+async function createInstance(payload, session) {
+  if (session.instances.size >= MAX_INSTANCES_PER_SESSION) {
+    throw protocolError("quota_exceeded", "This browser session has reached its plugin instance limit.", {
+      maxInstancesPerSession: MAX_INSTANCES_PER_SESSION
+    });
+  }
+  if (instances.size >= MAX_TOTAL_INSTANCES) {
+    throw protocolError("quota_exceeded", "The local SoundBridge daemon has reached its total plugin instance limit.", {
+      maxTotalInstances: MAX_TOTAL_INSTANCES
+    });
+  }
+
   const plugin = getPlugin(payload.pluginId);
   if (!plugin) {
     throw protocolError("plugin_not_found", `Unknown plugin: ${payload.pluginId}`);
@@ -293,6 +346,8 @@ async function createInstance(payload) {
   const parameters = plugin.parameters.map((parameter) => ({ ...parameter }));
   const instance = {
     instanceId,
+    ownerSessionToken: session.sessionToken,
+    ownerOrigin: session.origin,
     pluginId: plugin.pluginId,
     format: plugin.format,
     kind: plugin.kind,
@@ -325,6 +380,7 @@ async function createInstance(payload) {
     instance.renderEngine = instance.worker.renderEngine;
   }
   instances.set(instanceId, instance);
+  session.instances.add(instanceId);
 
   return {
     instanceId,
@@ -333,16 +389,16 @@ async function createInstance(payload) {
   };
 }
 
-function destroyInstance(instanceId) {
-  const instance = instances.get(instanceId);
-  instance?.worker?.destroy();
+function destroyInstance(instanceId, session) {
+  const instance = getInstance(instanceId, session);
+  destroyInstanceRecord(instance);
   return {
-    destroyed: instances.delete(instanceId)
+    destroyed: true
   };
 }
 
-function setParameter(instanceId, parameterId, normalizedValue) {
-  const instance = getInstance(instanceId);
+function setParameter(instanceId, parameterId, normalizedValue, session) {
+  const instance = getInstance(instanceId, session);
   const parameterIndex = instance.parameters.findIndex((parameter) => parameter.id === parameterId);
   if (parameterIndex < 0) {
     throw protocolError("parameter_not_found", `Unknown parameter: ${parameterId}`);
@@ -355,8 +411,8 @@ function setParameter(instanceId, parameterId, normalizedValue) {
   };
 }
 
-function getState(instanceId) {
-  const instance = getInstance(instanceId);
+function getState(instanceId, session) {
+  const instance = getInstance(instanceId, session);
   const state = Buffer.from(
     JSON.stringify({
       version: 1,
@@ -372,8 +428,8 @@ function getState(instanceId) {
   return { state };
 }
 
-function setState(instanceId, state) {
-  const instance = getInstance(instanceId);
+function setState(instanceId, state, session) {
+  const instance = getInstance(instanceId, session);
   let parsed;
   try {
     parsed = JSON.parse(Buffer.from(String(state), "base64").toString("utf8"));
@@ -397,8 +453,8 @@ function setState(instanceId, state) {
   };
 }
 
-async function processAudioBlock(payload) {
-  const instance = getInstance(payload.instanceId);
+async function processAudioBlock(payload, session) {
+  const instance = getInstance(payload.instanceId, session);
   const channels = Array.isArray(payload.channels) ? payload.channels : [];
   const frames = Math.max(1, channels[0]?.length ?? Number(payload.frames ?? instance.maxBlockSize ?? 128));
 
@@ -448,10 +504,16 @@ async function processAudioBlock(payload) {
   };
 }
 
-function getInstance(instanceId) {
+function getInstance(instanceId, session) {
   const instance = instances.get(instanceId);
   if (!instance) {
     throw protocolError("instance_not_found", `Unknown instance: ${instanceId}`);
+  }
+  if (session && instance.ownerSessionToken !== session.sessionToken) {
+    throw protocolError("instance_access_denied", "This plugin instance belongs to a different browser session.", {
+      instanceId,
+      requestOrigin: session.origin
+    });
   }
   return instance;
 }
@@ -460,8 +522,8 @@ function getPlugin(pluginId) {
   return plugins.find((plugin) => plugin.pluginId === pluginId);
 }
 
-async function sendMidiEvents(instanceId, events) {
-  const instance = getInstance(instanceId);
+async function sendMidiEvents(instanceId, events, session) {
+  const instance = getInstance(instanceId, session);
   if (instance.kind !== "instrument") {
     return {
       accepted: false,
@@ -1360,15 +1422,80 @@ function examplePresetsFor(pluginId, defaults) {
   ];
 }
 
-function assertPaired(sessionToken, command) {
+function assertPaired(sessionToken, command, context) {
   const session = sessions.get(sessionToken);
   if (!session) {
     throw protocolError("not_paired", `Pair before calling ${command}.`);
   }
   if (session.expiresAt <= Date.now()) {
-    sessions.delete(sessionToken);
+    destroySession(sessionToken);
     throw protocolError("session_expired", "Pairing session expired.");
   }
+  if (session.connectionId !== context.connectionId) {
+    throw protocolError("session_connection_mismatch", "This session token is bound to a different browser connection.");
+  }
+  if (session.origin !== context.requestOrigin) {
+    throw protocolError("origin_mismatch", "This session token is bound to a different browser origin.");
+  }
+  session.lastSeenAt = Date.now();
+  return session;
+}
+
+function cleanupConnection(context) {
+  for (const sessionToken of context.sessionTokens) {
+    destroySession(sessionToken);
+  }
+  context.sessionTokens.clear();
+}
+
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  for (const [sessionToken, session] of sessions) {
+    if (session.expiresAt <= now) {
+      destroySession(sessionToken);
+    }
+  }
+}
+
+function destroySession(sessionToken) {
+  const session = sessions.get(sessionToken);
+  if (!session) {
+    return;
+  }
+  for (const instanceId of Array.from(session.instances)) {
+    const instance = instances.get(instanceId);
+    if (instance) {
+      destroyInstanceRecord(instance);
+    }
+  }
+  sessions.delete(sessionToken);
+}
+
+function destroyInstanceRecord(instance) {
+  instance.worker?.destroy();
+  instances.delete(instance.instanceId);
+  const owner = sessions.get(instance.ownerSessionToken);
+  owner?.instances.delete(instance.instanceId);
+}
+
+function sessionsForOrigin(origin) {
+  cleanupExpiredSessions();
+  return Array.from(sessions.values()).filter((session) => session.origin === origin);
+}
+
+function envInteger(name, fallback) {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value) || value <= 0) {
+    return fallback;
+  }
+  return Math.floor(value);
+}
+
+function envList(name) {
+  return String(process.env[name] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 }
 
 function makeInstrumentParameters(values) {

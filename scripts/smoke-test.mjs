@@ -199,6 +199,42 @@ const created = await request(
 );
 assert(created.instanceId, "createInstance returned instanceId");
 
+const secondSocket = await connectWebSocket(HOST, PORT, ORIGIN);
+await request(secondSocket, "listPlugins", {}, true, pair.sessionToken).then(
+  () => {
+    throw new Error("session token unexpectedly worked from a second WebSocket");
+  },
+  (error) => {
+    assert(
+      error.message.includes("session_connection_mismatch"),
+      "session tokens are bound to the WebSocket that paired them"
+    );
+  }
+);
+const secondPair = await request(secondSocket, "pair", { origin: ORIGIN, pairingToken: PAIRING_TOKEN }, false);
+await request(
+  secondSocket,
+  "setParameter",
+  {
+    instanceId: created.instanceId,
+    parameterId: "gain",
+    normalizedValue: 0.1
+  },
+  true,
+  secondPair.sessionToken
+).then(
+  () => {
+    throw new Error("second session unexpectedly controlled another session's instance");
+  },
+  (error) => {
+    assert(
+      error.message.includes("instance_access_denied"),
+      "plugin instances are owned by the session that created them"
+    );
+  }
+);
+secondSocket.destroy();
+
 await request(
   socket,
   "setParameter",
@@ -375,7 +411,7 @@ function request(socket, command, payload, includeSession, sessionToken) {
   });
 }
 
-function connectWebSocket(host, port) {
+function connectWebSocket(host, port, origin = ORIGIN) {
   return new Promise((resolve, reject) => {
     const key = crypto.randomBytes(16).toString("base64");
     const socket = net.createConnection({ host, port }, () => {
@@ -387,7 +423,7 @@ function connectWebSocket(host, port) {
           "Connection: Upgrade",
           `Sec-WebSocket-Key: ${key}`,
           "Sec-WebSocket-Version: 13",
-          `Origin: ${ORIGIN}`,
+          `Origin: ${origin}`,
           "\r\n"
         ].join("\r\n")
       );

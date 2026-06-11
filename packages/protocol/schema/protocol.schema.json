@@ -82,6 +82,19 @@
                 "mock": { "$ref": "#/$defs/pluginFormatCapability" },
                 "unknown": { "$ref": "#/$defs/pluginFormatCapability" }
               }
+            },
+            "security": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "originAllowlist": { "type": "boolean" },
+                "sessionBoundToConnection": { "type": "boolean" },
+                "sessionBoundToOrigin": { "type": "boolean" },
+                "instanceOwnership": { "type": "boolean" },
+                "cleanupOnDisconnect": { "type": "boolean" },
+                "maxInstancesPerSession": { "type": "number" },
+                "maxTotalInstances": { "type": "number" }
+              }
             }
           }
         }

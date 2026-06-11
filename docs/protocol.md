@@ -84,12 +84,23 @@ Example capability payload:
         "notes": "LV2 scanner and SoundBridge example worker are active; LV2 binary hosting adapter is not linked yet."
       }
     },
+    "security": {
+      "originAllowlist": false,
+      "sessionBoundToConnection": true,
+      "sessionBoundToOrigin": true,
+      "instanceOwnership": true,
+      "cleanupOnDisconnect": true,
+      "maxInstancesPerSession": 8,
+      "maxTotalInstances": 32
+    },
     "nativeExampleRenderer": true
   }
 }
 ```
 
 `host` means the daemon can instantiate installed binary plugins for that format. `exampleHost` means the daemon can run SoundBridge's repo-local example bundles for that format through the same browser protocol path; it must not be treated as proof that arbitrary installed VST3, Audio Unit, or LV2 binaries can be hosted. `notes` is optional human-readable status text from the native backend.
+
+`capabilities.security` describes local multi-host protections. Production hosts should require `sessionBoundToOrigin` and `instanceOwnership` before exposing installed plugins to arbitrary web origins.
 
 ### `pair`
 
@@ -111,7 +122,7 @@ Response:
 }
 ```
 
-The native daemon should show a confirmation prompt for unknown origins. The mock daemon accepts a development token.
+The native daemon should show a confirmation prompt for unknown origins. The development daemon accepts a pairing token, binds the resulting session to the WebSocket connection and Origin header that paired it, and destroys session-owned plugin instances when that connection closes.
 
 ### `scanPlugins`
 
@@ -152,6 +163,8 @@ Returns plugin metadata:
 `format` is required and is one of `vst3`, `au`, `lv2`, `mock`, or `unknown`. `pluginId` must be stable within that format namespace; native daemons should prefix or otherwise scope ids so a VST3 and AU from the same vendor do not collide.
 
 `hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter is available. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
+
+Plugin instances are owned by the session that creates them. Commands that reference `instanceId` must fail with `instance_access_denied` when another session attempts to control the instance.
 
 ### `createInstance`
 

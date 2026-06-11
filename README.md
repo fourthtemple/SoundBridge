@@ -124,6 +124,25 @@ Open <http://127.0.0.1:5173>. The demo can select installed VST3/AU plugins, cre
 
 VST3 hosting is enabled when `SOUNDBRIDGE_VST3_SDK_PATH` points to a Steinberg VST3 SDK checkout, or when the local development SDK path exists.
 
+## Multiple Websites And Safety
+
+The local bridge can serve more than one browser host, but plugin instances are not shared:
+
+- each website/tab pairs over its own WebSocket
+- session tokens are bound to that WebSocket and its Origin header
+- each plugin instance is owned by the session that created it
+- another session cannot control that `instanceId`
+- closing the WebSocket destroys that session's plugin workers
+- the daemon enforces per-session and total instance limits
+
+The development daemon still uses a simple pairing token. A production app should replace that with a native approval prompt or one-time user confirmation.
+
+You can restrict pairing to known origins during development:
+
+```sh
+SOUNDBRIDGE_ALLOWED_ORIGINS=https://your-site.example npm run bridge
+```
+
 ## Common Problems
 
 `vst3.hostAvailable` is false:

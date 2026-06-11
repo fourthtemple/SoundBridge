@@ -43,6 +43,15 @@ export interface HelloResponse {
     midi?: boolean;
     nativeExampleRenderer?: boolean;
     nativeEditor?: boolean;
+    security?: {
+      originAllowlist?: boolean;
+      sessionBoundToConnection?: boolean;
+      sessionBoundToOrigin?: boolean;
+      instanceOwnership?: boolean;
+      cleanupOnDisconnect?: boolean;
+      maxInstancesPerSession?: number;
+      maxTotalInstances?: number;
+    };
     [key: string]: unknown;
   };
 }
