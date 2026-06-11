@@ -21,6 +21,7 @@ The `AudioWorkletProcessor` never blocks. It copies input blocks into a queue, p
 The daemon listens on loopback only. It provides:
 
 - plugin scanning for VST3, Audio Unit, and LV2 search paths
+- bounded path-free public plugin metadata for host catalogs
 - pairing and origin allowlisting
 - plugin instance lifecycle
 - parameter metadata and normalized values
@@ -38,9 +39,9 @@ Format support is intentionally split:
 
 | Format | Scanner | Hosting Path | Notes |
 | --- | --- | --- | --- |
-| VST3 | Active macOS bundle scanner with plist metadata | Steinberg VST3 SDK adapter | First real DSP target. Keep SDK optional and review licensing before vendoring. |
-| AU | Active macOS `.component` scanner plus AudioComponent registry metadata | Active CoreAudio AudioComponent worker | macOS-only. Runs installed AU binaries in a separate worker process. |
-| LV2 | Active `.lv2` bundle scanner with bounded TTL parsing | Basic LV2 C-ABI audio/control worker | Important for open-source plugin ecosystems. Atom MIDI, extension state, worker, UI, and fuller extension support remain future work; keep GPL components out of the core. |
+| VST3 | Active macOS bundle scanner with plist metadata | Steinberg VST3 SDK adapter | First real DSP target. Public scanner metadata is path-free; keep SDK optional and review licensing before vendoring. |
+| AU | Active macOS `.component` scanner plus AudioComponent registry metadata | Active CoreAudio AudioComponent worker | macOS-only. Runs installed AU binaries in a separate worker process and exposes path-free AudioComponent identifiers. |
+| LV2 | Active `.lv2` bundle scanner with bounded TTL parsing | Basic LV2 C-ABI audio/control worker | Important for open-source plugin ecosystems. Public LV2 URI metadata is path-free. Atom MIDI, extension state, worker, UI, and fuller extension support remain future work; keep GPL components out of the core. |
 
 The native daemon also exposes repo-local VST3/AU/LV2 example bundles through `--scan-examples`. The native build installs a small Mach-O helper into each example instrument bundle, and the browser demo daemon launches a long-lived worker from that bundle executable per plugin instance. Note events are sent into that worker, and render calls advance worker-owned oscillator state across audio blocks. This means the website exercises scanned AU/VST/LV2 example bundle metadata plus native C++ example DSP over a worker-process boundary. Installed Audio Units use a real CoreAudio worker today. Installed VST3 audio effects use a Steinberg SDK worker when the SDK is available at build time. Compatible LV2 audio/control effects use the built-in LV2 C-ABI worker. A small repo-local LV2 gain dynamic library exists as a native worker regression fixture.
 

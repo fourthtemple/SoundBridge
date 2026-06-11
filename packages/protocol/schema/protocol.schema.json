@@ -235,6 +235,7 @@
         "hostUnavailableReason": { "type": "string" },
         "inputs": { "type": "integer", "minimum": 0 },
         "outputs": { "type": "integer", "minimum": 0 },
+        "metadata": { "$ref": "#/$defs/pluginClassMetadata" },
         "tailSamples": { "type": "integer", "minimum": 0, "maximum": 1048576 },
         "infiniteTail": { "type": "boolean" },
         "parameters": {
@@ -246,6 +247,19 @@
           "type": "array",
           "items": { "$ref": "#/$defs/pluginPreset" }
         }
+      }
+    },
+    "pluginClassMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stableId": { "type": "string", "maxLength": 256 },
+        "bundleIdentifier": { "type": "string", "maxLength": 256 },
+        "version": { "type": "string", "maxLength": 80 },
+        "componentType": { "type": "string", "maxLength": 16 },
+        "componentSubType": { "type": "string", "maxLength": 16 },
+        "componentManufacturer": { "type": "string", "maxLength": 16 },
+        "lv2Uri": { "type": "string", "maxLength": 256 }
       }
     },
     "pluginLayout": {

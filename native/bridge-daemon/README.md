@@ -43,11 +43,11 @@ native/bridge-daemon/build/soundbridge-daemon --scan-installed
 native/bridge-daemon/build/soundbridge-daemon --host-status
 ```
 
-`--scan-vst3` discovers VST3 bundles and reads macOS `Info.plist` metadata when present, including display name, bundle identifier, version, and vendor hints. Scanning remains lightweight; binary loading happens in the separate `--host-vst3-worker` process.
+`--scan-vst3` discovers VST3 bundles and reads macOS `Info.plist` metadata when present, including display name, bundle identifier, version, and vendor hints. Public scanner metadata is path-free; bundle and executable paths stay in diagnostics for the daemon's internal worker launch path. Scanning remains lightweight; binary loading happens in the separate `--host-vst3-worker` process.
 
-`--scan-au` combines `.component` bundle discovery with the macOS AudioComponent registry. Bundle hits are enriched with registry metadata when the component names match; registry-only built-in Audio Units are returned with `diagnostics.isRegistry: true` and no bundle path.
+`--scan-au` combines `.component` bundle discovery with the macOS AudioComponent registry. Bundle hits are enriched with path-free public AudioComponent metadata when the component names match; registry-only built-in Audio Units are returned with `diagnostics.isRegistry: true` and no bundle path.
 
-`--scan-lv2` discovers `.lv2` bundles, reads bounded Turtle metadata, verifies bundle-local `lv2:binary` paths, and counts basic audio ports when present. Scanned plugins that do not match the basic audio/control worker profile remain discovery-only in the browser daemon.
+`--scan-lv2` discovers `.lv2` bundles, reads bounded Turtle metadata, verifies bundle-local `lv2:binary` paths, exposes path-free public LV2 URI metadata, and counts basic audio ports when present. Scanned plugins that do not match the basic audio/control worker profile remain discovery-only in the browser daemon.
 
 `--host-au-worker` runs the native Audio Unit host worker used by the browser daemon. It instantiates one AudioComponent, accepts newline-delimited `parameters`, `setParameter`, `getState`, `setState`, `latency`, `tail`, `layout`, `midi`, `noteOn`, `noteOff`, `render`, and `quit` commands, and renders JSON float audio blocks back to the daemon process. Bounded parameter metadata is read from CoreAudio, normalized parameter writes are mapped back to each AU parameter range with bounded sample offsets, bounded note/CC/pitch-bend/pressure/program-change events are delivered through `MusicDeviceMIDIEvent` where the unit supports them, opaque state is stored through the CoreAudio class-info property list, and plugin latency/tail/layout data are reported from CoreAudio properties and the negotiated worker setup. AU layout currently reports the active main audio buses used by this render path.
 
@@ -116,6 +116,6 @@ Full VST3/AU/LV2 hosting should land as core compatibility work with feature-spe
 - Add plugin editor/UI hosting only through a separate UI worker or broker process. Do not load native editor code into the daemon; broker windowing, focus, clipboard, drag/drop, and file dialogs explicitly.
 - Broker preset, sample, cache, and licensing file access. Avoid ambient filesystem access from plugin workers; grant only narrow, user-approved paths where practical.
 - Add LV2 atom MIDI, extension-state, worker, UI, and extension-feature support behind the same worker, validation, state, bus, file-broker, and sandbox rules. Basic LV2 control-port state is already supported.
-- Implement factory/class metadata extraction for all supported formats without exposing private filesystem paths unless diagnostics are explicitly enabled.
+- Deepen VST3 factory/class metadata extraction beyond path-free scanner identifiers without exposing private filesystem paths unless diagnostics are explicitly enabled.
 - Add an internal real-time-safe audio queue between daemon and worker.
 - Add OS-level worker sandboxing as the final hardening milestone once core hosting compatibility is in place.

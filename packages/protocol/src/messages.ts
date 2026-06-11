@@ -111,6 +111,16 @@ export interface PluginPreset {
   parameters: Record<string, number>;
 }
 
+export interface PluginClassMetadata {
+  stableId?: string;
+  bundleIdentifier?: string;
+  version?: string;
+  componentType?: string;
+  componentSubType?: string;
+  componentManufacturer?: string;
+  lv2Uri?: string;
+}
+
 export interface PluginBusLayout {
   index: number;
   direction: "input" | "output";
@@ -146,6 +156,7 @@ export interface PluginMetadata {
   hostUnavailableReason?: string;
   inputs: number;
   outputs: number;
+  metadata?: PluginClassMetadata;
   parameters: PluginParameter[];
   presets?: PluginPreset[];
 }

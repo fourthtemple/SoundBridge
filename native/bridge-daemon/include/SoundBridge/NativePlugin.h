@@ -30,6 +30,7 @@ struct NativePluginInfo {
   std::string componentType;
   std::string componentSubType;
   std::string componentManufacturer;
+  std::string lv2Uri;
   std::uint32_t inputs = 0;
   std::uint32_t outputs = 0;
   bool isExample = false;

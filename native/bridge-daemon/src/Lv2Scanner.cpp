@@ -1,6 +1,7 @@
 #include "SoundBridge/Lv2Scanner.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -83,7 +84,14 @@ std::optional<std::uint32_t> manifestIntValue(const std::string& manifest, const
     return std::nullopt;
   }
   const auto valueEnd = manifest.find_first_not_of("0123456789", valueStart);
-  return static_cast<std::uint32_t>(std::stoul(manifest.substr(valueStart, valueEnd - valueStart)));
+  const auto text = manifest.substr(valueStart, valueEnd - valueStart);
+  char* end = nullptr;
+  errno = 0;
+  const auto value = std::strtoul(text.c_str(), &end, 10);
+  if (end == text.c_str() || *end != '\0' || errno == ERANGE || value > 32) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(value);
 }
 
 bool hasSharedLibrary(const std::filesystem::path& bundlePath) {
@@ -158,6 +166,22 @@ std::optional<std::string> angleValueAfter(const std::string& text, const std::s
   }
   const auto end = text.find('>', start + 1);
   if (end == std::string::npos || end <= start + 1) {
+    return std::nullopt;
+  }
+  return text.substr(start + 1, end - start - 1);
+}
+
+std::optional<std::string> firstPluginUri(const std::string& text) {
+  const auto pluginPosition = text.find("lv2:Plugin");
+  if (pluginPosition == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto start = text.rfind('<', pluginPosition);
+  if (start == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto end = text.find('>', start + 1);
+  if (end == std::string::npos || end > pluginPosition || end <= start + 1) {
     return std::nullopt;
   }
   return text.substr(start + 1, end - start - 1);
@@ -531,6 +555,7 @@ std::vector<NativePluginInfo> Lv2Scanner::scan() const {
       info.vendor = "Unknown";
       info.category = "LV2";
       info.kind = "unknown";
+      info.lv2Uri = firstPluginUri(manifest).value_or("");
       info.bundlePath = canonicalPathOrInput(path).string();
       info.hasContents = true;
       info.hasManifest = hasManifest;

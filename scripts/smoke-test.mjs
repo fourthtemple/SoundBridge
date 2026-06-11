@@ -12,6 +12,7 @@ const MAX_PLUGIN_LATENCY_SAMPLES = 1_048_576;
 const MAX_PLUGIN_TAIL_SAMPLES = 1_048_576;
 const MAX_AUDIO_CHANNELS = 32;
 const MAX_PLUGIN_BUSES = 32;
+const MAX_PLUGIN_METADATA_BYTES = 256;
 
 const socket = await connectWebSocket(HOST, PORT);
 let requestSeq = 0;
@@ -59,6 +60,9 @@ for (const scanOnlyPlugin of plugins.filter((plugin) => plugin.source === "scan"
   );
   assert(!("executablePath" in scanOnlyPlugin), `${scanOnlyPlugin.pluginId} does not expose an executable path`);
   assert(!("diagnostics" in scanOnlyPlugin), `${scanOnlyPlugin.pluginId} does not expose scanner diagnostics by default`);
+}
+for (const plugin of plugins) {
+  assertPublicPluginMetadata(plugin, `${plugin.pluginId} exposes only path-free public metadata`);
 }
 assert(
   plugins.some((plugin) => plugin.format === "vst3" && plugin.kind === "instrument" && plugin.source === expectedExampleSource),
@@ -130,6 +134,11 @@ if (firstScanOnly) {
 
 const nativeLv2Effect = plugins.find((plugin) => plugin.pluginId === "lv2:soundbridge-example-gain.lv2" && plugin.hostable === true);
 if (nativeLv2Effect) {
+  assert(
+    nativeLv2Effect.metadata?.lv2Uri === "urn:soundbridge:example:lv2-gain" &&
+      nativeLv2Effect.metadata?.stableId === nativeLv2Effect.metadata.lv2Uri,
+    "installed LV2 effect exposes bounded path-free LV2 class metadata"
+  );
   const nativeLv2Instance = await request(
     socket,
     "createInstance",
@@ -190,6 +199,13 @@ if (nativeLv2Effect) {
 const nativeAuEffect = plugins.find((plugin) => plugin.pluginId === "au-reg:appl:aufx:lpas");
 assert(nativeAuEffect?.hostable === true, "listPlugins exposes an installed Apple AU effect as hostable");
 assert(!("diagnostics" in nativeAuEffect), "hostable AU metadata does not expose scanner diagnostics");
+assert(
+  nativeAuEffect.metadata?.componentManufacturer === "appl" &&
+    nativeAuEffect.metadata?.componentType === "aufx" &&
+    nativeAuEffect.metadata?.componentSubType === "lpas" &&
+    nativeAuEffect.metadata?.stableId === "appl:aufx:lpas",
+  "hostable AU metadata exposes bounded AudioComponent class identifiers"
+);
 const nativeAuInstance = await request(
   socket,
   "createInstance",
@@ -1078,6 +1094,23 @@ function assertOutputBuses(block, layout, message) {
     for (const channel of bus.channels) {
       assert(Array.isArray(channel) && channel.length <= 8192, `${message}: output bus frame count is bounded`);
     }
+  }
+}
+
+function assertPublicPluginMetadata(plugin, message) {
+  const metadata = plugin.metadata;
+  if (metadata == null) {
+    return;
+  }
+  assert(typeof metadata === "object" && !Array.isArray(metadata), `${message}: metadata object is bounded`);
+  for (const forbidden of ["bundlePath", "executablePath", "path", "diagnostics"]) {
+    assert(!(forbidden in metadata), `${message}: ${forbidden} is not public metadata`);
+  }
+  for (const [key, value] of Object.entries(metadata)) {
+    assert(
+      typeof value === "string" && Buffer.byteLength(value, "utf8") <= MAX_PLUGIN_METADATA_BYTES,
+      `${message}: ${key} is a bounded string`
+    );
   }
 }
 

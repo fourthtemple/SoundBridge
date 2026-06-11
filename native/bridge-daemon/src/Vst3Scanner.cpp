@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -92,7 +93,14 @@ std::optional<std::uint32_t> manifestIntValue(const std::string& manifest, const
     return std::nullopt;
   }
   const auto valueEnd = manifest.find_first_not_of("0123456789", valueStart);
-  return static_cast<std::uint32_t>(std::stoul(manifest.substr(valueStart, valueEnd - valueStart)));
+  const auto text = manifest.substr(valueStart, valueEnd - valueStart);
+  char* end = nullptr;
+  errno = 0;
+  const auto value = std::strtoul(text.c_str(), &end, 10);
+  if (end == text.c_str() || *end != '\0' || errno == ERANGE || value > 32) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint32_t>(value);
 }
 
 void applySoundBridgeManifest(NativePluginInfo& info, const std::filesystem::path& bundlePath) {

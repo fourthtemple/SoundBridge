@@ -66,6 +66,32 @@ std::string nativePluginInfoToJson(const NativePluginInfo& info) {
   output << "\"source\":\"" << jsonEscape(info.source) << "\",";
   output << "\"inputs\":" << info.inputs << ",";
   output << "\"outputs\":" << info.outputs << ",";
+  output << "\"metadata\":{";
+  bool wroteMetadata = false;
+  const auto writeMetadataString = [&](const char* key, const std::string& value) {
+    if (value.empty()) {
+      return;
+    }
+    if (wroteMetadata) {
+      output << ",";
+    }
+    output << "\"" << key << "\":\"" << jsonEscape(value) << "\"";
+    wroteMetadata = true;
+  };
+  if (!info.componentType.empty() && !info.componentSubType.empty() && !info.componentManufacturer.empty()) {
+    writeMetadataString("stableId", info.componentManufacturer + ":" + info.componentType + ":" + info.componentSubType);
+  } else if (!info.lv2Uri.empty()) {
+    writeMetadataString("stableId", info.lv2Uri);
+  } else if (!info.bundleIdentifier.empty()) {
+    writeMetadataString("stableId", info.bundleIdentifier);
+  }
+  writeMetadataString("bundleIdentifier", info.bundleIdentifier);
+  writeMetadataString("version", info.version);
+  writeMetadataString("componentType", info.componentType);
+  writeMetadataString("componentSubType", info.componentSubType);
+  writeMetadataString("componentManufacturer", info.componentManufacturer);
+  writeMetadataString("lv2Uri", info.lv2Uri);
+  output << "},";
   output << "\"diagnostics\":{";
   output << "\"bundlePath\":\"" << jsonEscape(info.bundlePath) << "\",";
   output << "\"executablePath\":\"" << jsonEscape(info.executablePath) << "\",";
@@ -88,6 +114,9 @@ std::string nativePluginInfoToJson(const NativePluginInfo& info) {
   }
   if (!info.version.empty()) {
     output << ",\"version\":\"" << jsonEscape(info.version) << "\"";
+  }
+  if (!info.lv2Uri.empty()) {
+    output << ",\"lv2Uri\":\"" << jsonEscape(info.lv2Uri) << "\"";
   }
   output << "}";
   output << "}";

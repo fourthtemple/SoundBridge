@@ -24,6 +24,7 @@ const MAX_MIDI_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_MIDI_EVENTS_PER_
 const MAX_PARAMETER_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_PARAMETER_EVENTS_PER_REQUEST", 4096);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
 const MAX_PLUGIN_PARAMETER_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETER_TEXT_BYTES", 160);
+const MAX_PLUGIN_METADATA_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_METADATA_TEXT_BYTES", 256);
 const MAX_PLUGIN_STATE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_BYTES", 384 * 1024);
 const MAX_PLUGIN_STATE_ENVELOPE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_ENVELOPE_BYTES", 1024 * 1024);
 const MAX_PLUGIN_LATENCY_SAMPLES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_LATENCY_SAMPLES", 1_048_576);
@@ -1570,6 +1571,7 @@ function decorateExamplePlugin(plugin) {
     hostable: true,
     inputs: plugin.inputs ?? 0,
     outputs: plugin.outputs ?? 2,
+    metadata: normalizePluginClassMetadata(plugin.metadata, plugin.format),
     executablePath: plugin.diagnostics?.executablePath,
     engine: defaults.engine,
     parameters: makeInstrumentParameters(defaults),
@@ -1594,6 +1596,7 @@ function decorateInstalledPlugin(plugin) {
       : hostUnavailableReasonForInstalledPlugin(plugin),
     inputs: defaultInputChannels(plugin),
     outputs: defaultOutputChannels(plugin),
+    metadata: normalizePluginClassMetadata(plugin.metadata, plugin.format),
     parameters: [],
     presets: [],
     nativeHost
@@ -2550,12 +2553,49 @@ function clonePluginMetadata(plugin) {
     hostUnavailableReason: plugin.hostUnavailableReason,
     inputs: plugin.inputs,
     outputs: plugin.outputs,
+    metadata: clonePluginClassMetadata(plugin.metadata),
     parameters: plugin.parameters.map((parameter) => ({ ...parameter })),
     presets: (plugin.presets ?? []).map((preset) => ({
       ...preset,
       parameters: { ...preset.parameters }
     }))
   };
+}
+
+function clonePluginClassMetadata(metadata) {
+  const normalized = normalizePluginClassMetadata(metadata);
+  return normalized ? { ...normalized } : undefined;
+}
+
+function normalizePluginClassMetadata(value, format = "unknown") {
+  const source = value && typeof value === "object" ? value : {};
+  const metadata = {};
+  const add = (key, maxBytes = MAX_PLUGIN_METADATA_TEXT_BYTES) => {
+    const text = truncateText(source[key], maxBytes);
+    if (text) {
+      metadata[key] = text;
+    }
+  };
+
+  add("stableId");
+  add("bundleIdentifier");
+  add("version", 80);
+  add("componentType", 16);
+  add("componentSubType", 16);
+  add("componentManufacturer", 16);
+  add("lv2Uri");
+
+  if (!metadata.stableId) {
+    if (metadata.componentManufacturer && metadata.componentType && metadata.componentSubType) {
+      metadata.stableId = `${metadata.componentManufacturer}:${metadata.componentType}:${metadata.componentSubType}`;
+    } else if (metadata.lv2Uri) {
+      metadata.stableId = metadata.lv2Uri;
+    } else if (metadata.bundleIdentifier) {
+      metadata.stableId = metadata.bundleIdentifier;
+    }
+  }
+
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
 function formatCategory(format) {

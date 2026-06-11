@@ -17,10 +17,12 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | VST3/AU layout reporting | Fixed | Native workers report bounded negotiated channel and per-bus layout metadata through the shared protocol, and instance metadata reflects the effective channel counts. |
 | Basic LV2 audio/control hosting | Fixed | The native LV2 worker loads bundle-local dynamic libraries through the LV2 C ABI, bounds TTL metadata, exposes control ports as parameters, renders audio, and reports conservative latency/tail metadata. |
 | LV2 control-port state | Fixed | Compatible basic LV2 audio/control plugins now save and restore bounded opaque worker state for known input control ports; full LV2 state extension support remains roadmap work. |
+| Public plugin class metadata | Fixed | Scanners expose bounded path-free metadata such as bundle identifiers, AudioComponent tuples, versions, and LV2 URIs while keeping launch paths in internal diagnostics. |
+| Scanner manifest integer parsing | Fixed | VST3/AU/LV2 example-manifest numeric fields use bounded non-throwing parsing so oversized bundle-provided values cannot terminate scanning. |
 | Bounded parameter automation events | Fixed | The protocol and daemon reject oversized automation batches, validate parameter ids/values/sample offsets, enforce instance ownership, and forward bounded events to native workers. |
 | Bounded richer MIDI events | Fixed | The protocol and daemon reject oversized MIDI batches and validate note, CC, pitch-bend, pressure, program, channel, and timing fields before worker dispatch; native workers keep per-format MIDI behavior bounded. |
 | VST3 bus-aware audio blocks | Fixed | The protocol accepts bounded indexed input bus buffers, the VST3 worker routes them into active SDK buses, and responses include bounded indexed output bus buffers. |
-| Full plugin-hosting surface | Open roadmap | Automation curve interpolation, AU/LV2 sidechain and multi-output routing, deeper VST3 bus negotiation, LV2 atom/extension-state/worker/UI support, plugin UI, and file access need feature-specific controls as they are implemented. |
+| Full plugin-hosting surface | Open roadmap | Automation curve interpolation, AU/LV2 sidechain and multi-output routing, deeper VST3 bus negotiation and factory metadata, LV2 atom/extension-state/worker/UI support, plugin UI, and file access need feature-specific controls as they are implemented. |
 | Third-party worker sandboxing | Last-stage hardening | Worker processes isolate crashes today, but OS-level sandboxing for malicious third-party plugin code is intentionally tracked after the core host features. |
 
 ## Open Roadmap Items

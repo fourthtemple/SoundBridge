@@ -155,6 +155,11 @@ Returns plugin metadata:
       "hostable": true,
       "inputs": 2,
       "outputs": 2,
+      "metadata": {
+        "stableId": "com.vendor.Plugin",
+        "bundleIdentifier": "com.vendor.Plugin",
+        "version": "1.0.0"
+      },
       "parameters": []
     }
   ]
@@ -162,6 +167,8 @@ Returns plugin metadata:
 ```
 
 `format` is required and is one of `vst3`, `au`, `lv2`, `mock`, or `unknown`. `pluginId` must be stable within that format namespace; native daemons should prefix or otherwise scope ids so a VST3 and AU from the same vendor do not collide.
+
+`metadata` is optional bounded public class metadata for host caching and plugin browsers. It must not contain local filesystem paths. Current fields include `stableId`, `bundleIdentifier`, `version`, AudioComponent `componentType` / `componentSubType` / `componentManufacturer`, and `lv2Uri`.
 
 `hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter or compatible host profile is available. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
 
