@@ -55,6 +55,20 @@ Worker processes contain plugin crashes, but they do not automatically contain a
 
 The reference implementation does not claim that sandboxing is complete today. It keeps plugin hosting behind worker boundaries and input validation now, and tracks OS sandboxing as the next containment layer before this should be treated as a hardened general-purpose host.
 
+## Full Host Feature Security Roadmap
+
+Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, parameter metadata, automation, opaque state, latency reporting, bus negotiation, native editor windows, presets, samples, and licensing flows all increase the attack surface. This applies to browser hosts and local desktop hosts: once the system loads third-party plugin code, the plugin boundary must be treated as untrusted.
+
+| Feature | Added risk | Required control |
+| --- | --- | --- |
+| MIDI event lists | Oversized or malformed event batches can stress workers or confuse adapters. | Bound event count, byte size, timing offsets, channel/note ranges, and reject malformed events. |
+| Parameter enumeration and automation | Plugin-controlled names/units/ids can break JSON, UI, or automation paths. | Cap counts and string lengths, escape text, normalize values, and enforce per-instance ownership. |
+| State save/restore | Opaque blobs can be huge or maliciously malformed. | Enforce blob-size limits, keep state opaque, bind it to the producing instance/session, and never interpret it as a path or command. |
+| Latency reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges and treat negative, NaN, or extreme values as invalid. |
+| Bus negotiation | Bad channel/block/sample-rate combinations can trigger large allocations or crashes. | Keep hard resource limits at the daemon boundary and inside each worker before allocation. |
+| Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Run editor code outside the daemon, broker UI actions explicitly, and keep web/local host ownership checks in place. |
+| Presets, samples, caches, licensing | Plugins may expect broad filesystem or network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
+
 ## DNS Rebinding And Host Headers
 
 Binding to loopback is necessary but not sufficient. A public website can use DNS rebinding to point its own name at `127.0.0.1` and reach the daemon from the browser. The browser still sends the site's real `Origin`, so the origin allowlist is the primary defense — but a daemon with an empty allowlist would then rely on the pairing token alone.

@@ -100,9 +100,15 @@ Arguments are plugin id, frame count, sample rate, normalized gain, normalized t
 
 ## Next Native Milestones
 
-- Expand the VST3 host adapter with event-list MIDI, parameter enumeration, state, latency, and stronger bus negotiation.
-- Expand the Audio Unit host adapter with parameter enumeration, state, latency, and better format negotiation.
-- Add an LV2 host adapter behind an optional dependency boundary.
-- Implement factory/class metadata extraction for all supported formats.
+Full VST3/AU/LV2 hosting should land as feature and security work together. Each new host feature expands the native plugin attack surface, even for local desktop hosts, so it must stay behind worker isolation, session ownership, bounded payloads, and eventually OS-level worker sandboxing.
+
+- Expand the VST3 host adapter with event-list MIDI. Validate event counts, byte sizes, timing offsets, channel/note ranges, and reject oversized batches before they reach the worker.
+- Expand VST3 and AU parameter enumeration/automation. Cap parameter counts and string lengths, escape plugin-controlled text, keep parameter writes normalized, and rate-limit automation bursts per instance.
+- Add opaque state save/restore for VST3 and AU. Enforce blob-size limits, bind state to the owning instance/session, and never treat plugin state as a filesystem path or executable input.
+- Report plugin latency through the shared protocol. Clamp plugin-reported latency to sane numeric ranges before hosts use it for scheduling.
+- Strengthen bus and format negotiation for VST3 and AU. Keep hard channel, block-size, sample-rate, and allocation limits at the daemon boundary and again inside workers.
+- Add plugin editor/UI hosting only through a separate UI worker or broker process. Do not load native editor code into the daemon; broker windowing, focus, clipboard, drag/drop, and file dialogs explicitly.
+- Broker preset, sample, cache, and licensing file access. Avoid ambient filesystem access from plugin workers; grant only narrow, user-approved paths where practical.
+- Add an LV2 host adapter behind an optional dependency boundary with the same worker, validation, state, bus, and sandbox rules.
+- Implement factory/class metadata extraction for all supported formats without exposing private filesystem paths unless diagnostics are explicitly enabled.
 - Add an internal real-time-safe audio queue between daemon and worker.
-- Report plugin latency and parameter metadata through the shared protocol.

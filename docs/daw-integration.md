@@ -45,5 +45,5 @@ Hosts should:
 - Parameter automation is block-rate.
 - The mock plugin is a gain effect.
 - The demo uses a `MessagePort` queue between main thread and AudioWorklet for compatibility.
-- Native VST3 and LV2 instantiation is staged behind the C++ scanner skeleton and future per-format host adapters; installed Audio Units can instantiate and render through the CoreAudio worker.
-- The website-playable VST3/AU/LV2 instruments are repo-local example bundles rendered by the native example renderer; full VST3 SDK and LV2 binary DSP hosting plus deeper AU parameter/state support are still next native milestones.
+- Installed VST3 audio effects can instantiate and render when the Steinberg SDK worker is linked; installed Audio Units can instantiate and render through the CoreAudio worker; LV2 binary hosting still needs a per-format host adapter.
+- The website-playable VST3/AU/LV2 instruments are repo-local example bundles rendered by the native example renderer; full MIDI event lists, parameter enumeration, state, latency, bus negotiation, plugin UI, and brokered filesystem access are still security-sensitive native milestones.
