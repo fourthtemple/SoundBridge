@@ -448,7 +448,7 @@ Response:
 }
 ```
 
-`channels` is the backwards-compatible main output bus. `outputBuses` carries indexed output bus buffers and bus index `0` mirrors `channels`. The VST3 worker can route bounded indexed input buffers into active VST3 buses and return indexed output bus buffers. AU, LV2, mock, and example workers currently route the main audio bus and return a conservative bus-0 response.
+`channels` is the backwards-compatible main output bus. `outputBuses` carries indexed output bus buffers and bus index `0` mirrors `channels`. The VST3 worker can route bounded indexed input buffers into active VST3 buses and return indexed output bus buffers. Installed AU and LV2 workers currently route the main audio bus and return an explicit conservative bus-0 response; mock and example workers use the daemon-normalized bus-0 response.
 
 `transport` is echoed only when the request supplied accepted bounded transport data. It is an acknowledgement of the host context delivered for that block, not plugin-generated timing.
 

@@ -1,7 +1,6 @@
 #include "SoundBridge/Lv2HostWorker.h"
 
 #include "SoundBridge/Base64.h"
-#include "SoundBridge/ExampleInstrumentRenderer.h"
 #include "SoundBridge/NativePlugin.h"
 
 #ifndef _WIN32
@@ -1562,6 +1561,33 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
   return channels;
 }
 
+std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
+  std::ostringstream output;
+  output << "[";
+  for (std::size_t channelIndex = 0; channelIndex < channels.size(); ++channelIndex) {
+    if (channelIndex > 0) {
+      output << ",";
+    }
+    output << "[";
+    for (std::size_t frame = 0; frame < channels[channelIndex].size(); ++frame) {
+      if (frame > 0) {
+        output << ",";
+      }
+      const float sample = channels[channelIndex][frame];
+      output << (std::isfinite(sample) ? sample : 0.0F);
+    }
+    output << "]";
+  }
+  output << "]";
+  return output.str();
+}
+
+std::string mainOutputBusBlockToJson(const std::vector<std::vector<float>>& channels) {
+  const auto channelsJson = audioChannelsToJson(channels);
+  return std::string("{\"channels\":") + channelsJson +
+      ",\"outputBuses\":[{\"index\":0,\"channels\":" + channelsJson + "}]}";
+}
+
 class HostedLv2Plugin {
 public:
   HostedLv2Plugin(
@@ -2709,7 +2735,7 @@ int runLv2HostWorkerNative(int argc, char** argv) {
             continue;
           }
           const auto channels = host.render(frames, renderSampleRate, parseChannels(encodedChannels, frames), transport);
-          std::cout << exampleInstrumentBlockToJson(channels) << std::endl;
+          std::cout << mainOutputBusBlockToJson(channels) << std::endl;
           continue;
         }
 

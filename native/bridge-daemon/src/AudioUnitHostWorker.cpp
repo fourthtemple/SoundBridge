@@ -1,7 +1,6 @@
 #include "SoundBridge/AudioUnitHostWorker.h"
 
 #include "SoundBridge/Base64.h"
-#include "SoundBridge/ExampleInstrumentRenderer.h"
 #include "SoundBridge/NativePlugin.h"
 
 #ifdef SOUNDBRIDGE_MACOS
@@ -510,6 +509,33 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
     channels.push_back(std::move(channel));
   }
   return channels;
+}
+
+std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
+  std::ostringstream output;
+  output << "[";
+  for (std::size_t channelIndex = 0; channelIndex < channels.size(); ++channelIndex) {
+    if (channelIndex > 0) {
+      output << ",";
+    }
+    output << "[";
+    for (std::size_t frame = 0; frame < channels[channelIndex].size(); ++frame) {
+      if (frame > 0) {
+        output << ",";
+      }
+      const float sample = channels[channelIndex][frame];
+      output << (std::isfinite(sample) ? sample : 0.0F);
+    }
+    output << "]";
+  }
+  output << "]";
+  return output.str();
+}
+
+std::string mainOutputBusBlockToJson(const std::vector<std::vector<float>>& channels) {
+  const auto channelsJson = audioChannelsToJson(channels);
+  return std::string("{\"channels\":") + channelsJson +
+      ",\"outputBuses\":[{\"index\":0,\"channels\":" + channelsJson + "}]}";
 }
 
 std::unique_ptr<AudioBufferList, void (*)(AudioBufferList*)> makeAudioBufferList(
@@ -1356,7 +1382,7 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
             continue;
           }
           const auto channels = host.render(frames, renderSampleRate, parseChannels(encodedChannels, frames), transport);
-          std::cout << exampleInstrumentBlockToJson(channels) << std::endl;
+          std::cout << mainOutputBusBlockToJson(channels) << std::endl;
           continue;
         }
 

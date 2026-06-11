@@ -1080,6 +1080,13 @@ async function runNativeLv2WorkerSmoke() {
 
     const rendered = await requestWorker("render 4 48000 0.1,0.2,0.3,0.4|0.1,0.1,0.1,0.1");
     assert(rendered.channels?.length === 2, "native LV2 worker rendered stereo output");
+    assert(
+      Array.isArray(rendered.outputBuses) &&
+        rendered.outputBuses.length === 1 &&
+        rendered.outputBuses[0]?.index === 0 &&
+        JSON.stringify(rendered.outputBuses[0].channels) === JSON.stringify(rendered.channels),
+      "native LV2 worker returns explicit main output bus audio"
+    );
     assert(Math.abs(rendered.channels[0][0] - 0.15) < 0.00001, "native LV2 worker processed audio through the plugin");
 
     const transported = await requestWorker(
