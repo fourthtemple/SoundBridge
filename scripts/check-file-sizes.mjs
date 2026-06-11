@@ -5,7 +5,7 @@ const ROOT = process.cwd();
 const MAX_SOURCE_LINES = 1200;
 
 const OVERSIZED_BASELINE = new Map([
-  ["scripts/mock-daemon.mjs", 2579]
+  ["scripts/mock-daemon.mjs", 2386]
 ]);
 
 const SOURCE_EXTENSIONS = new Set([
