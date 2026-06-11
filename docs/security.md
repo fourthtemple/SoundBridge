@@ -66,6 +66,7 @@ Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, param
 | Public plugin metadata | Scanner-controlled identifiers can leak local paths or become oversized UI/cache data. | Expose only bounded path-free public metadata such as bundle ids, AudioComponent tuples, versions, LV2 URIs, and brokered VST3 factory class metadata; keep launch paths in internal diagnostics. |
 | State save/restore | Opaque blobs can be huge or maliciously malformed. | VST3/AU now enforce blob-size limits, keep state opaque, bind it to the producing instance/session, and never interpret it as a path or command; LV2 control-port state and portable POD extension properties are bounded and keyed only to known ports or URIs; LV2 file-backed state is allowed only through brokered relative paths, symlink/traversal rejection, and capped embedded file bytes. |
 | Latency and tail reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges, preserve explicit infinite-tail signals, and treat negative, NaN, or extreme values as invalid. |
+| Host transport context | Bogus tempo, playhead, time-signature, or loop fields can confuse plugin timing or create incompatible scheduling state. | Accept only bounded optional fields, require paired time-signature and cycle-range values, reject invalid ranges, and re-validate in native workers before setting format-specific timing flags. |
 | Bus and layout negotiation | Bad channel/block/sample-rate combinations can trigger large allocations or crashes. | Keep hard resource limits at the daemon boundary and inside each worker before allocation, expose only bounded negotiated per-bus layout metadata, and route sidechain or multi-output audio only through explicit bounded bus buffers. |
 | LV2 extensions | Worker, UI, and other extension features require host-provided feature data and callbacks. | Keep unsupported extensions disabled; enable each extension only with explicit feature structs, bounded data, ownership checks, file-broker rules where needed, and worker containment. |
 | Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Support bounded generic parameter editor sessions now; run future native editor code outside the daemon, broker UI actions explicitly, and keep web/local host ownership checks in place. |
@@ -102,6 +103,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | LV2 file-backed state | 64 files, 64 KiB per file, 192 KiB total, 256-byte relative paths | LV2 `state:mapPath` / `state:makePath` |
 | Plugin/transport latency samples | 0–1048576 | `getLatency`, `processAudioBlock.latencySamples` |
 | Plugin tail samples | 0–1048576 | `getTailTime`, `processAudioBlock.tailSamples` |
+| Host transport context | tempo 1–960 BPM; time signatures 1–64 with power-of-two denominators; musical positions 0–1000000000 quarter notes; sample positions 0–9007199254740991 | `processAudioBlock.transport` |
 | Sessions per origin | 8 | `pair` |
 | Total sessions | 64 | `pair` |
 | Instances per session / total | 8 / 32 | `createInstance` |

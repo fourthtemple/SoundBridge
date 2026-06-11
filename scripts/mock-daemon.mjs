@@ -39,6 +39,9 @@ const MAX_PLUGIN_STATE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_BYTES", 
 const MAX_PLUGIN_STATE_ENVELOPE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_ENVELOPE_BYTES", 1024 * 1024);
 const MAX_PLUGIN_LATENCY_SAMPLES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_LATENCY_SAMPLES", 1_048_576);
 const MAX_PLUGIN_TAIL_SAMPLES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_TAIL_SAMPLES", 1_048_576);
+const MAX_TRANSPORT_TEMPO_BPM = envInteger("SOUNDBRIDGE_MAX_TRANSPORT_TEMPO_BPM", 960);
+const MAX_TRANSPORT_POSITION_MUSIC = envInteger("SOUNDBRIDGE_MAX_TRANSPORT_POSITION_MUSIC", 1_000_000_000);
+const MAX_TRANSPORT_SAMPLE_POSITION = Number.MAX_SAFE_INTEGER;
 const MAX_PAIR_ATTEMPTS_PER_CONNECTION = envInteger("SOUNDBRIDGE_MAX_PAIR_ATTEMPTS", 5);
 const MIN_SAMPLE_RATE = 8000;
 const MAX_SAMPLE_RATE = 384000;
@@ -332,6 +335,7 @@ function helloResponse(paired) {
             layout: true,
             midi: true,
             automation: true,
+            transport: true,
             genericEditor: true,
             nativeExampleRenderer: Boolean(NATIVE_RENDERER),
             nativeEditor: false
@@ -353,7 +357,10 @@ function helloResponse(paired) {
         maxAudioChannels: MAX_AUDIO_CHANNELS,
         maxBlockSize: MAX_BLOCK_SIZE,
         maxParameterEventsPerRequest: MAX_PARAMETER_EVENTS_PER_REQUEST,
-        maxAutomationCurvePoints: MAX_AUTOMATION_CURVE_POINTS
+        maxAutomationCurvePoints: MAX_AUTOMATION_CURVE_POINTS,
+        maxTransportTempoBpm: MAX_TRANSPORT_TEMPO_BPM,
+        maxTransportPositionMusic: MAX_TRANSPORT_POSITION_MUSIC,
+        maxTransportSamplePosition: MAX_TRANSPORT_SAMPLE_POSITION
       }
     }
   };
@@ -829,6 +836,7 @@ async function processAudioBlock(payload, session) {
   const mainInputChannels = normalizeAudioChannels(payload.channels, MAX_AUDIO_CHANNELS, frames);
   const inputBuses = normalizeAudioBusBlocks(payload.inputBuses, mainInputChannels, instance.layout?.inputBusLayouts, frames);
   const channels = inputBuses.find((bus) => bus.index === 0)?.channels ?? mainInputChannels;
+  const transport = normalizeTransportState(payload.transport);
 
   if (instance.kind === "instrument") {
     const processed = await processInstrumentBlock(instance, frames, blockSampleRate);
@@ -836,6 +844,7 @@ async function processAudioBlock(payload, session) {
       blockId: payload.blockId,
       ...processed,
       outputBuses: normalizeOutputBusBlocks(processed.outputBuses, processed.channels, instance.layout, frames),
+      ...(transport ? { transport } : {}),
       latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
       tailSamples: normalizeTailSamples(instance.pluginTailSamples),
       infiniteTail: Boolean(instance.pluginInfiniteTail)
@@ -847,13 +856,15 @@ async function processAudioBlock(payload, session) {
       frames,
       sampleRate: blockSampleRate,
       channels,
-      inputBuses
+      inputBuses,
+      transport
     });
     const renderedChannels = Array.isArray(rendered) ? rendered : rendered.channels;
     return {
       blockId: payload.blockId,
       channels: normalizeAudioChannels(renderedChannels, instance.outputChannels, frames),
       outputBuses: normalizeOutputBusBlocks(rendered.outputBuses, renderedChannels, instance.layout, frames),
+      ...(transport ? { transport } : {}),
       latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
       tailSamples: normalizeTailSamples(instance.pluginTailSamples),
       infiniteTail: Boolean(instance.pluginInfiniteTail),
@@ -883,6 +894,7 @@ async function processAudioBlock(payload, session) {
     blockId: payload.blockId,
     channels: output,
     outputBuses: normalizeOutputBusBlocks(undefined, output, instance.layout, frames),
+    ...(transport ? { transport } : {}),
     latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
     tailSamples: normalizeTailSamples(instance.pluginTailSamples),
     infiniteTail: Boolean(instance.pluginInfiniteTail)
@@ -946,6 +958,93 @@ function normalizeOutputBusBlocks(value, mainChannels, layout, frames) {
     index: 0,
     channels: normalizeAudioChannels(mainChannels, layout?.outputChannels ?? MAX_AUDIO_CHANNELS, frames)
   }];
+}
+
+function normalizeTransportState(value) {
+  if (value == null) {
+    return undefined;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw protocolError("invalid_argument", "transport must be an object.");
+  }
+
+  const allowedFields = new Set([
+    "playing",
+    "recording",
+    "loopActive",
+    "tempo",
+    "timeSignatureNumerator",
+    "timeSignatureDenominator",
+    "projectTimeMusic",
+    "barPositionMusic",
+    "cycleStartMusic",
+    "cycleEndMusic",
+    "samplePosition"
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!allowedFields.has(key)) {
+      throw protocolError("invalid_argument", `Unknown transport field: ${key}.`);
+    }
+  }
+
+  const transport = {};
+  const assignBoolean = (property) => {
+    if (Object.hasOwn(value, property)) {
+      transport[property] = requireBoolean(value[property], `transport.${property}`);
+    }
+  };
+  const assignNumber = (property, min, max) => {
+    if (Object.hasOwn(value, property)) {
+      transport[property] = requireNumberInRange(value[property], min, max, `transport.${property}`);
+    }
+  };
+  const assignInteger = (property, min, max) => {
+    if (Object.hasOwn(value, property)) {
+      transport[property] = requireIntegerInRange(value[property], min, max, `transport.${property}`);
+    }
+  };
+
+  assignBoolean("playing");
+  assignBoolean("recording");
+  assignBoolean("loopActive");
+  assignNumber("tempo", 1, MAX_TRANSPORT_TEMPO_BPM);
+  assignInteger("timeSignatureNumerator", 1, 64);
+  assignInteger("timeSignatureDenominator", 1, 64);
+  assignNumber("projectTimeMusic", 0, MAX_TRANSPORT_POSITION_MUSIC);
+  assignNumber("barPositionMusic", 0, MAX_TRANSPORT_POSITION_MUSIC);
+  assignNumber("cycleStartMusic", 0, MAX_TRANSPORT_POSITION_MUSIC);
+  assignNumber("cycleEndMusic", 0, MAX_TRANSPORT_POSITION_MUSIC);
+  assignInteger("samplePosition", 0, MAX_TRANSPORT_SAMPLE_POSITION);
+
+  if (
+    Object.hasOwn(transport, "timeSignatureNumerator") !==
+    Object.hasOwn(transport, "timeSignatureDenominator")
+  ) {
+    throw protocolError("invalid_argument", "transport time signature numerator and denominator must be supplied together.");
+  }
+  if (
+    Object.hasOwn(transport, "timeSignatureDenominator") &&
+    !isPowerOfTwo(transport.timeSignatureDenominator)
+  ) {
+    throw protocolError("invalid_argument", "transport.timeSignatureDenominator must be a power of two in 1..64.", {
+      value: value.timeSignatureDenominator
+    });
+  }
+  if (Object.hasOwn(transport, "cycleStartMusic") !== Object.hasOwn(transport, "cycleEndMusic")) {
+    throw protocolError("invalid_argument", "transport cycle start and end must be supplied together.");
+  }
+  if (
+    Object.hasOwn(transport, "cycleStartMusic") &&
+    Object.hasOwn(transport, "cycleEndMusic") &&
+    transport.cycleEndMusic < transport.cycleStartMusic
+  ) {
+    throw protocolError("invalid_argument", "transport.cycleEndMusic must be greater than or equal to transport.cycleStartMusic.", {
+      cycleStartMusic: transport.cycleStartMusic,
+      cycleEndMusic: transport.cycleEndMusic
+    });
+  }
+
+  return transport;
 }
 
 function getInstance(instanceId, session) {
@@ -1319,7 +1418,8 @@ class NativeHostWorker {
       request.frames,
       request.sampleRate,
       encodeAudioChannels(request.channels, request.frames),
-      encodeAudioBuses(request.inputBuses, request.frames)
+      encodeAudioBuses(request.inputBuses, request.frames),
+      encodeTransportState(request.transport)
     ].join(" ");
 
     return this.request(command).then((parsed) => {
@@ -2418,6 +2518,36 @@ function encodeAudioBuses(buses, frames) {
   return encoded || "-";
 }
 
+function encodeTransportState(transport) {
+  if (!transport || typeof transport !== "object") {
+    return "-";
+  }
+  const parts = [];
+  const addBoolean = (encodedName, property) => {
+    if (Object.hasOwn(transport, property)) {
+      parts.push(`${encodedName}=${transport[property] ? "1" : "0"}`);
+    }
+  };
+  const addNumber = (encodedName, property) => {
+    if (Object.hasOwn(transport, property)) {
+      parts.push(`${encodedName}=${Number(transport[property])}`);
+    }
+  };
+
+  addBoolean("playing", "playing");
+  addBoolean("recording", "recording");
+  addBoolean("loop", "loopActive");
+  addNumber("tempo", "tempo");
+  addNumber("num", "timeSignatureNumerator");
+  addNumber("den", "timeSignatureDenominator");
+  addNumber("ppq", "projectTimeMusic");
+  addNumber("bar", "barPositionMusic");
+  addNumber("cycleStart", "cycleStartMusic");
+  addNumber("cycleEnd", "cycleEndMusic");
+  addNumber("sample", "samplePosition");
+  return parts.length > 0 ? parts.join(",") : "-";
+}
+
 function encodeMidiEvents(events) {
   if (!Array.isArray(events) || events.length === 0) {
     return "-";
@@ -3023,6 +3153,16 @@ function requireIntInRange(value, min, max, label) {
   return number;
 }
 
+function requireIntegerInRange(value, min, max, label) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) {
+    throw protocolError("invalid_argument", `${label} must be an integer in ${min}..${max}.`, {
+      value
+    });
+  }
+  return number;
+}
+
 function requireSampleRate(value, label = "sampleRate") {
   const number = Number(value);
   if (!Number.isFinite(number) || number < MIN_SAMPLE_RATE || number > MAX_SAMPLE_RATE) {
@@ -3041,6 +3181,19 @@ function requireNumberInRange(value, min, max, label) {
     });
   }
   return number;
+}
+
+function requireBoolean(value, label) {
+  if (typeof value !== "boolean") {
+    throw protocolError("invalid_argument", `${label} must be a boolean.`, {
+      value
+    });
+  }
+  return value;
+}
+
+function isPowerOfTwo(value) {
+  return Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;
 }
 
 function clampSampleRate(value, fallback) {

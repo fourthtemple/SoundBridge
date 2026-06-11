@@ -12,6 +12,7 @@
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
+#include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/ivstunits.h"
 #include "public.sdk/source/common/memorystream.h"
 #include "public.sdk/source/vst/hosting/eventlist.h"
@@ -23,6 +24,7 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -57,6 +59,9 @@ constexpr std::uint32_t kMaxWorkerTailSamples = 1'048'576;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
+constexpr double kMaxWorkerTransportTempoBpm = 960.0;
+constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
+constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
 
 enum class PendingMidiEventType {
   NoteOn,
@@ -87,6 +92,25 @@ struct PendingParameterChange {
 struct IndexedAudioBus {
   std::uint32_t index = 0;
   std::vector<std::vector<float>> channels;
+};
+
+struct HostTransportContext {
+  bool playing = false;
+  bool recording = false;
+  bool loopActive = false;
+  bool hasTempo = false;
+  double tempo = 120.0;
+  bool hasTimeSignature = false;
+  Steinberg::int32 timeSignatureNumerator = 4;
+  Steinberg::int32 timeSignatureDenominator = 4;
+  bool hasProjectTimeMusic = false;
+  double projectTimeMusic = 0.0;
+  bool hasBarPositionMusic = false;
+  double barPositionMusic = 0.0;
+  bool hasCycle = false;
+  double cycleStartMusic = 0.0;
+  double cycleEndMusic = 0.0;
+  Steinberg::Vst::TSamples samplePosition = 0;
 };
 
 struct RenderedAudio {
@@ -154,6 +178,136 @@ bool parseDoubleArg(const char* text, double minValue, double maxValue, double& 
     return false;
   }
   out = value;
+  return true;
+}
+
+bool parseTransportBool(const std::string& text, bool& out) {
+  if (text == "1") {
+    out = true;
+    return true;
+  }
+  if (text == "0") {
+    out = false;
+    return true;
+  }
+  return false;
+}
+
+bool parseTransportSamplePosition(const std::string& text, Steinberg::Vst::TSamples& out) {
+  if (text.empty()) {
+    return false;
+  }
+  errno = 0;
+  char* end = nullptr;
+  const long long value = std::strtoll(text.c_str(), &end, 10);
+  if (end == text.c_str() || *end != '\0' || errno == ERANGE ||
+      value < 0 || value > kMaxWorkerTransportSamplePosition) {
+    return false;
+  }
+  out = static_cast<Steinberg::Vst::TSamples>(value);
+  return true;
+}
+
+bool isPowerOfTwo(std::uint32_t value) {
+  return value > 0 && (value & (value - 1U)) == 0;
+}
+
+bool parseTransportContext(
+    const std::string& encoded,
+    double fallbackSampleTime,
+    HostTransportContext& out) {
+  out = HostTransportContext {};
+  out.samplePosition = static_cast<Steinberg::Vst::TSamples>(std::max(0.0, fallbackSampleTime));
+  if (encoded.empty() || encoded == "-") {
+    return true;
+  }
+
+  bool sawNumerator = false;
+  bool sawDenominator = false;
+  bool sawCycleStart = false;
+  bool sawCycleEnd = false;
+
+  std::stringstream stream(encoded);
+  std::string token;
+  while (std::getline(stream, token, ',')) {
+    if (token.empty()) {
+      continue;
+    }
+    const auto separator = token.find('=');
+    if (separator == std::string::npos) {
+      return false;
+    }
+    const auto key = token.substr(0, separator);
+    const auto value = token.substr(separator + 1);
+
+    if (key == "playing") {
+      if (!parseTransportBool(value, out.playing)) {
+        return false;
+      }
+    } else if (key == "recording") {
+      if (!parseTransportBool(value, out.recording)) {
+        return false;
+      }
+    } else if (key == "loop") {
+      if (!parseTransportBool(value, out.loopActive)) {
+        return false;
+      }
+    } else if (key == "tempo") {
+      if (!parseDoubleArg(value.c_str(), 1.0, kMaxWorkerTransportTempoBpm, out.tempo)) {
+        return false;
+      }
+      out.hasTempo = true;
+    } else if (key == "num") {
+      std::uint32_t parsed = 4;
+      if (!parseUint32Arg(value.c_str(), 1, 64, parsed)) {
+        return false;
+      }
+      out.timeSignatureNumerator = static_cast<Steinberg::int32>(parsed);
+      sawNumerator = true;
+    } else if (key == "den") {
+      std::uint32_t parsed = 4;
+      if (!parseUint32Arg(value.c_str(), 1, 64, parsed) || !isPowerOfTwo(parsed)) {
+        return false;
+      }
+      out.timeSignatureDenominator = static_cast<Steinberg::int32>(parsed);
+      sawDenominator = true;
+    } else if (key == "ppq") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.projectTimeMusic)) {
+        return false;
+      }
+      out.hasProjectTimeMusic = true;
+    } else if (key == "bar") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.barPositionMusic)) {
+        return false;
+      }
+      out.hasBarPositionMusic = true;
+    } else if (key == "cycleStart") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleStartMusic)) {
+        return false;
+      }
+      sawCycleStart = true;
+    } else if (key == "cycleEnd") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleEndMusic)) {
+        return false;
+      }
+      sawCycleEnd = true;
+    } else if (key == "sample") {
+      if (!parseTransportSamplePosition(value, out.samplePosition)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  if (sawNumerator != sawDenominator) {
+    return false;
+  }
+  out.hasTimeSignature = sawNumerator && sawDenominator;
+  if (sawCycleStart != sawCycleEnd || (sawCycleStart && out.cycleEndMusic < out.cycleStartMusic)) {
+    return false;
+  }
+  out.hasCycle = sawCycleStart && sawCycleEnd;
   return true;
 }
 
@@ -540,11 +694,16 @@ public:
     }
   }
 
+  double sampleTime() const {
+    return sampleTime_;
+  }
+
   RenderedAudio render(
       std::uint32_t frames,
       double sampleRate,
       std::vector<std::vector<float>> inputChannels,
-      std::vector<IndexedAudioBus> inputBuses) {
+      std::vector<IndexedAudioBus> inputBuses,
+      HostTransportContext transport) {
     if (std::abs(sampleRate - sampleRate_) > 0.01) {
       throw std::runtime_error("VST3 worker cannot change sample rate after initialization.");
     }
@@ -604,6 +763,44 @@ public:
     processData.inputs = inputBusBuffers.empty() ? nullptr : inputBusBuffers.data();
     processData.outputs = outputBusBuffers.empty() ? nullptr : outputBusBuffers.data();
 
+    Steinberg::Vst::ProcessContext processContext {};
+    processContext.sampleRate = sampleRate_;
+    processContext.projectTimeSamples = transport.samplePosition;
+    processContext.continousTimeSamples = transport.samplePosition;
+    processContext.state = Steinberg::Vst::ProcessContext::kContTimeValid;
+    if (transport.playing) {
+      processContext.state |= Steinberg::Vst::ProcessContext::kPlaying;
+    }
+    if (transport.recording) {
+      processContext.state |= Steinberg::Vst::ProcessContext::kRecording;
+    }
+    if (transport.loopActive) {
+      processContext.state |= Steinberg::Vst::ProcessContext::kCycleActive;
+    }
+    if (transport.hasTempo) {
+      processContext.tempo = transport.tempo;
+      processContext.state |= Steinberg::Vst::ProcessContext::kTempoValid;
+    }
+    if (transport.hasTimeSignature) {
+      processContext.timeSigNumerator = transport.timeSignatureNumerator;
+      processContext.timeSigDenominator = transport.timeSignatureDenominator;
+      processContext.state |= Steinberg::Vst::ProcessContext::kTimeSigValid;
+    }
+    if (transport.hasProjectTimeMusic) {
+      processContext.projectTimeMusic = transport.projectTimeMusic;
+      processContext.state |= Steinberg::Vst::ProcessContext::kProjectTimeMusicValid;
+    }
+    if (transport.hasBarPositionMusic) {
+      processContext.barPositionMusic = transport.barPositionMusic;
+      processContext.state |= Steinberg::Vst::ProcessContext::kBarPositionValid;
+    }
+    if (transport.hasCycle) {
+      processContext.cycleStartMusic = transport.cycleStartMusic;
+      processContext.cycleEndMusic = transport.cycleEndMusic;
+      processContext.state |= Steinberg::Vst::ProcessContext::kCycleValid;
+    }
+    processData.processContext = &processContext;
+
     auto midiEvents = std::move(pendingMidiEvents_);
     pendingMidiEvents_.clear();
     std::stable_sort(midiEvents.begin(), midiEvents.end(), [](const auto& left, const auto& right) {
@@ -650,7 +847,7 @@ public:
     processData.outputEvents = nullptr;
 
     checkResult(processor_->process(processData), "IAudioProcessor::process");
-    sampleTime_ += frames;
+    sampleTime_ = static_cast<double>(transport.samplePosition) + frames;
     RenderedAudio rendered;
     rendered.channels = outputStorage.empty() ? std::vector<std::vector<float>>{} : outputStorage[0];
     for (std::size_t busIndex = 0; busIndex < outputStorage.size(); ++busIndex) {
@@ -1373,14 +1570,18 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
           double renderSampleRate = sampleRate;
           std::string encodedChannels;
           std::string encodedInputBuses;
+          std::string encodedTransport;
           std::string framesText;
           std::string sampleRateText;
           stream >> framesText;
           stream >> sampleRateText;
           stream >> encodedChannels;
           stream >> encodedInputBuses;
+          stream >> encodedTransport;
+          HostTransportContext transport;
           if (!parseUint32Arg(framesText.c_str(), 1, kMaxWorkerFrames, frames) ||
-              !parseSampleRateArg(sampleRateText.c_str(), renderSampleRate)) {
+              !parseSampleRateArg(sampleRateText.c_str(), renderSampleRate) ||
+              !parseTransportContext(encodedTransport, host.sampleTime(), transport)) {
             std::cout << "{\"error\":\"invalid_render_arguments\"}" << std::endl;
             continue;
           }
@@ -1388,7 +1589,8 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
               frames,
               renderSampleRate,
               parseChannels(encodedChannels, frames),
-              parseAudioBuses(encodedInputBuses, frames));
+              parseAudioBuses(encodedInputBuses, frames),
+              transport);
           std::cout << renderedAudioToJson(rendered) << std::endl;
           continue;
         }

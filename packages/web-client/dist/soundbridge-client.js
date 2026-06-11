@@ -263,12 +263,22 @@ export class SoundBridgeAudioNode extends EventTarget {
 
     this.inFlightBlocks += 1;
     const channels = message.channels.map((channel) => Array.from(channel));
+    const requestedFrames = Math.floor(Number(message.frames ?? channels[0]?.length ?? 128));
+    const frames = Number.isFinite(requestedFrames) ? Math.max(1, requestedFrames) : 128;
+    const requestedSamplePosition = Math.floor(message.blockId * frames);
+    const samplePosition = Number.isFinite(requestedSamplePosition)
+      ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, requestedSamplePosition))
+      : 0;
     this.client
       .processAudioBlock({
         instanceId: this.instanceId,
         blockId: message.blockId,
         sampleRate: this.sampleRate,
         channels,
+        transport: {
+          playing: true,
+          samplePosition
+        },
         timestamp: performance.now()
       })
       .then((response) => {

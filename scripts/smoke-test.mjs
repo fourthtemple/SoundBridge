@@ -518,7 +518,16 @@ const nativeVst3Block = await request(
     instanceId: nativeVst3Instance.instanceId,
     blockId: 21,
     sampleRate: 48000,
-    channels: [vst3Input, vst3Input]
+    channels: [vst3Input, vst3Input],
+    transport: {
+      playing: true,
+      tempo: 124,
+      timeSignatureNumerator: 4,
+      timeSignatureDenominator: 4,
+      projectTimeMusic: 32,
+      barPositionMusic: 32,
+      samplePosition: 1536000
+    }
   },
   true,
   pair.sessionToken
@@ -527,6 +536,12 @@ assert(nativeVst3Block.renderEngine === "native-vst3", "installed VST3 effect re
 assert(blockHasSignal(nativeVst3Block.channels), "installed VST3 effect produced processed audio");
 assert(nativeVst3Block.channels.length === nativeVst3Layout.outputChannels, "installed VST3 render uses negotiated output channels");
 assertOutputBuses(nativeVst3Block, nativeVst3Layout, "installed VST3 render reports bounded output buses");
+assert(
+  nativeVst3Block.transport?.playing === true &&
+    nativeVst3Block.transport?.tempo === 124 &&
+    nativeVst3Block.transport?.samplePosition === 1536000,
+  "installed VST3 render accepts bounded host transport context"
+);
 const nativeVst3Latency = await request(
   socket,
   "getLatency",

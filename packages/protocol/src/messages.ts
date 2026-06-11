@@ -48,6 +48,7 @@ export interface HelloResponse {
     layout?: boolean;
     midi?: boolean;
     automation?: boolean;
+    transport?: boolean;
     genericEditor?: boolean;
     nativeExampleRenderer?: boolean;
     nativeEditor?: boolean;
@@ -64,6 +65,9 @@ export interface HelloResponse {
       maxEditorSessionTtlMs?: number;
       maxParameterEventsPerRequest?: number;
       maxAutomationCurvePoints?: number;
+      maxTransportTempoBpm?: number;
+      maxTransportPositionMusic?: number;
+      maxTransportSamplePosition?: number;
     };
     [key: string]: unknown;
   };
@@ -245,12 +249,27 @@ export interface AudioBusBlock {
   channels: number[][];
 }
 
+export interface HostTransportState {
+  playing?: boolean;
+  recording?: boolean;
+  loopActive?: boolean;
+  tempo?: number;
+  timeSignatureNumerator?: number;
+  timeSignatureDenominator?: number;
+  projectTimeMusic?: number;
+  barPositionMusic?: number;
+  cycleStartMusic?: number;
+  cycleEndMusic?: number;
+  samplePosition?: number;
+}
+
 export interface AudioBlockRequest {
   instanceId: string;
   blockId: number;
   sampleRate: number;
   channels?: number[][];
   inputBuses?: AudioBusBlock[];
+  transport?: HostTransportState;
   timestamp?: number;
 }
 
@@ -258,6 +277,7 @@ export interface AudioBlockResponse {
   blockId: number;
   channels: number[][];
   outputBuses?: AudioBusBlock[];
+  transport?: HostTransportState;
   latencySamples: number;
   tailSamples?: number;
   infiniteTail?: boolean;

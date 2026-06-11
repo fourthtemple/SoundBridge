@@ -85,6 +85,12 @@ async function run() {
   const pairedHello = await request(main, "hello", {}, true, session);
   check(pairedHello.capabilities?.automation === true, "paired hello advertises bounded parameter automation");
   check(
+    pairedHello.capabilities?.transport === true &&
+      pairedHello.capabilities?.security?.maxTransportTempoBpm >= 960 &&
+      pairedHello.capabilities?.security?.maxTransportSamplePosition > 0,
+    "paired hello advertises bounded host transport context"
+  );
+  check(
     pairedHello.capabilities?.genericEditor === true &&
       pairedHello.capabilities?.nativeEditor === false &&
       pairedHello.capabilities?.security?.maxEditorsPerSession > 0,
@@ -231,11 +237,102 @@ async function run() {
   const processed = await request(
     main,
     "processAudioBlock",
-    { instanceId: created.instanceId, blockId: 2, sampleRate: 48000, channels: [new Array(128).fill(0.1), new Array(128).fill(0.1)] },
+    {
+      instanceId: created.instanceId,
+      blockId: 2,
+      sampleRate: 48000,
+      channels: [new Array(128).fill(0.1), new Array(128).fill(0.1)],
+      transport: {
+        playing: true,
+        loopActive: true,
+        tempo: 128,
+        timeSignatureNumerator: 7,
+        timeSignatureDenominator: 8,
+        projectTimeMusic: 16,
+        barPositionMusic: 14,
+        cycleStartMusic: 12,
+        cycleEndMusic: 20,
+        samplePosition: 768000
+      }
+    },
     true,
     session
   );
   check(Math.abs(processed.channels[0][0]) > 0.1, "gain at 0.75 boosts the signal (happy path intact)");
+  check(
+    processed.transport?.playing === true &&
+      processed.transport?.loopActive === true &&
+      processed.transport?.tempo === 128 &&
+      processed.transport?.timeSignatureDenominator === 8 &&
+      processed.transport?.samplePosition === 768000,
+    "processAudioBlock accepts and echoes bounded host transport context"
+  );
+
+  const badTransportTempo = await request(
+    main,
+    "processAudioBlock",
+    { instanceId: created.instanceId, blockId: 3, sampleRate: 48000, channels: [], transport: { tempo: 5000 } },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(badTransportTempo.code === "invalid_argument", "processAudioBlock rejects out-of-range transport tempo");
+
+  const badTransportSignature = await request(
+    main,
+    "processAudioBlock",
+    {
+      instanceId: created.instanceId,
+      blockId: 4,
+      sampleRate: 48000,
+      channels: [],
+      transport: { timeSignatureNumerator: 4, timeSignatureDenominator: 3 }
+    },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(badTransportSignature.code === "invalid_argument", "processAudioBlock rejects invalid transport time signatures");
+
+  const badTransportCycle = await request(
+    main,
+    "processAudioBlock",
+    {
+      instanceId: created.instanceId,
+      blockId: 5,
+      sampleRate: 48000,
+      channels: [],
+      transport: { cycleStartMusic: 20, cycleEndMusic: 12 }
+    },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(badTransportCycle.code === "invalid_argument", "processAudioBlock rejects invalid transport cycle ranges");
+
+  const badTransportInteger = await request(
+    main,
+    "processAudioBlock",
+    {
+      instanceId: created.instanceId,
+      blockId: 6,
+      sampleRate: 48000,
+      channels: [],
+      transport: { samplePosition: 1.5 }
+    },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(badTransportInteger.code === "invalid_argument", "processAudioBlock rejects non-integer transport sample positions");
 
   // I. MIDI input is bounded even when the target plugin is not MIDI-capable.
   const tooManyMidiEvents = Array.from({ length: 4097 }, () => ({ type: "noteOn", note: 60, velocity: 0.8 }));

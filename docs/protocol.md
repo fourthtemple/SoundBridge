@@ -353,11 +353,22 @@ Request:
       ]
     }
   ],
+  "transport": {
+    "playing": true,
+    "tempo": 128,
+    "timeSignatureNumerator": 4,
+    "timeSignatureDenominator": 4,
+    "projectTimeMusic": 32,
+    "barPositionMusic": 32,
+    "samplePosition": 1536000
+  },
   "timestamp": 1781126400000
 }
 ```
 
 `channels` is the backwards-compatible main input bus. `inputBuses` is optional and carries explicit indexed input bus buffers for sidechain-style routing. When both are present, bus index `0` is the main input bus. All bus indices are clamped to `0..31`; all channel counts are capped to 32; all frame counts are capped to the instance `maxBlockSize`.
+
+`transport` is optional bounded host timeline context. Supported fields are `playing`, `recording`, `loopActive`, `tempo`, `timeSignatureNumerator`, `timeSignatureDenominator`, `projectTimeMusic`, `barPositionMusic`, `cycleStartMusic`, `cycleEndMusic`, and `samplePosition`. Tempo is `1..960` BPM, time-signature denominators must be powers of two in `1..64`, musical positions are quarter-note values in `0..1000000000`, sample positions are integers in `0..9007199254740991`, and cycle start/end must be supplied together with `cycleEndMusic >= cycleStartMusic`. VST3 workers map accepted values into Steinberg `ProcessContext`; AU and LV2 transport-specific mapping remains adapter work.
 
 Response:
 
@@ -377,6 +388,15 @@ Response:
       ]
     }
   ],
+  "transport": {
+    "playing": true,
+    "tempo": 128,
+    "timeSignatureNumerator": 4,
+    "timeSignatureDenominator": 4,
+    "projectTimeMusic": 32,
+    "barPositionMusic": 32,
+    "samplePosition": 1536000
+  },
   "latencySamples": 0,
   "tailSamples": 0,
   "infiniteTail": false,
@@ -385,6 +405,8 @@ Response:
 ```
 
 `channels` is the backwards-compatible main output bus. `outputBuses` carries indexed output bus buffers and bus index `0` mirrors `channels`. The VST3 worker can route bounded indexed input buffers into active VST3 buses and return indexed output bus buffers. AU, LV2, mock, and example workers currently route the main audio bus and return a conservative bus-0 response.
+
+`transport` is echoed only when the request supplied accepted bounded transport data. It is an acknowledgement of the host context delivered for that block, not plugin-generated timing.
 
 `renderEngine` is optional diagnostics. Current values include `bundle-worker`, `bundle-executable`, `native-example`, `native-au`, `native-vst3`, `native-lv2`, and `js-fallback`. JSON arrays are intentionally only for the mock daemon and early validation. Production transports should use binary Float32 frames or shared memory/shared ring buffers for bus-indexed audio.
 
