@@ -218,11 +218,13 @@ function createInstancePayload(plugin) {
 
 function renderPayloadForLayout(instanceId, layout) {
   const inputChannels = clampInt(layout?.inputChannels, 0, 32, 0);
+  const bus0Channels = Array.from({ length: inputChannels }, () => Array(MAX_BLOCK_SIZE).fill(0.05));
   return {
     instanceId,
     frames: MAX_BLOCK_SIZE,
     sampleRate: SAMPLE_RATE,
-    channels: Array.from({ length: inputChannels }, () => Array(MAX_BLOCK_SIZE).fill(0.05))
+    channels: Array.from({ length: inputChannels }, () => Array(MAX_BLOCK_SIZE).fill(0)),
+    inputBuses: inputChannels > 0 ? [{ index: 0, channels: bus0Channels }] : []
   };
 }
 

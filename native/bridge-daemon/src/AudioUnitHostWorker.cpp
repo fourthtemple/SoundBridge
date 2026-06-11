@@ -511,6 +511,38 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
   return channels;
 }
 
+bool parseMainInputBusChannels(
+    const std::string& encoded,
+    std::uint32_t frames,
+    std::vector<std::vector<float>>& channels) {
+  if (encoded.empty() || encoded == "-") {
+    return false;
+  }
+
+  std::stringstream stream(encoded);
+  std::string token;
+  std::size_t seenBuses = 0;
+  while (seenBuses < kMaxWorkerChannels && std::getline(stream, token, ';')) {
+    if (token.empty()) {
+      continue;
+    }
+    ++seenBuses;
+    const auto separator = token.find('=');
+    if (separator == std::string::npos) {
+      continue;
+    }
+    std::uint32_t index = 0;
+    if (!parseUint32Arg(token.substr(0, separator).c_str(), 0, kMaxWorkerChannels - 1, index)) {
+      continue;
+    }
+    if (index == 0) {
+      channels = parseChannels(token.substr(separator + 1), frames);
+      return true;
+    }
+  }
+  return false;
+}
+
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
   std::ostringstream output;
   output << "[";
@@ -1381,8 +1413,10 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
             std::cout << "{\"error\":\"invalid_render_arguments\"}" << std::endl;
             continue;
           }
-          const auto channels = host.render(frames, renderSampleRate, parseChannels(encodedChannels, frames), transport);
-          std::cout << mainOutputBusBlockToJson(channels) << std::endl;
+          auto channels = parseChannels(encodedChannels, frames);
+          parseMainInputBusChannels(encodedInputBuses, frames, channels);
+          const auto renderedChannels = host.render(frames, renderSampleRate, std::move(channels), transport);
+          std::cout << mainOutputBusBlockToJson(renderedChannels) << std::endl;
           continue;
         }
 
