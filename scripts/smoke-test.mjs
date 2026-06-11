@@ -380,7 +380,20 @@ const nativeAuBlock = await request(
     instanceId: nativeAuInstance.instanceId,
     blockId: 20,
     sampleRate: 48000,
-    channels: [auInput, auInput]
+    channels: [auInput, auInput],
+    transport: {
+      playing: true,
+      recording: false,
+      loopActive: true,
+      tempo: 126,
+      timeSignatureNumerator: 3,
+      timeSignatureDenominator: 4,
+      projectTimeMusic: 24.5,
+      barPositionMusic: 24,
+      cycleStartMusic: 24,
+      cycleEndMusic: 32,
+      samplePosition: 1152000
+    }
   },
   true,
   pair.sessionToken
@@ -389,6 +402,13 @@ assert(nativeAuBlock.renderEngine === "native-au", "installed AU effect rendered
 assert(blockHasSignal(nativeAuBlock.channels), "installed AU effect produced processed audio");
 assert(nativeAuBlock.channels.length === nativeAuLayout.outputChannels, "installed AU render uses negotiated output channels");
 assertOutputBuses(nativeAuBlock, nativeAuLayout, "installed AU render reports bounded output buses");
+assert(
+  nativeAuBlock.transport?.playing === true &&
+    nativeAuBlock.transport?.loopActive === true &&
+    nativeAuBlock.transport?.tempo === 126 &&
+    nativeAuBlock.transport?.samplePosition === 1152000,
+  "installed AU render accepts bounded host transport callbacks"
+);
 const nativeAuLatency = await request(
   socket,
   "getLatency",

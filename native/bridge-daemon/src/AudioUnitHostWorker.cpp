@@ -10,11 +10,13 @@
 #endif
 
 #include <algorithm>
+#include <cerrno>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -40,12 +42,34 @@ constexpr std::uint32_t kMaxWorkerTailSamples = 1'048'576;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
+constexpr double kMaxWorkerTransportTempoBpm = 960.0;
+constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
+constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
 
 struct PendingMidiMessage {
   UInt32 status = 0x90;
   UInt32 data1 = 60;
   UInt32 data2 = 100;
   std::uint32_t sampleOffset = 0;
+};
+
+struct HostTransportContext {
+  bool playing = false;
+  bool recording = false;
+  bool loopActive = false;
+  bool hasTempo = false;
+  double tempo = 120.0;
+  bool hasTimeSignature = false;
+  Float32 timeSignatureNumerator = 4.0F;
+  UInt32 timeSignatureDenominator = 4;
+  bool hasProjectTimeMusic = false;
+  Float64 projectTimeMusic = 0.0;
+  bool hasBarPositionMusic = false;
+  Float64 barPositionMusic = 0.0;
+  bool hasCycle = false;
+  Float64 cycleStartMusic = 0.0;
+  Float64 cycleEndMusic = 0.0;
+  Float64 samplePosition = 0.0;
 };
 
 float sanitizeSample(const std::string& text) {
@@ -95,6 +119,136 @@ bool parseSampleRateArg(const char* text, double& out) {
     return false;
   }
   out = value;
+  return true;
+}
+
+bool parseTransportBool(const std::string& text, bool& out) {
+  if (text == "1") {
+    out = true;
+    return true;
+  }
+  if (text == "0") {
+    out = false;
+    return true;
+  }
+  return false;
+}
+
+bool parseTransportSamplePosition(const std::string& text, Float64& out) {
+  if (text.empty()) {
+    return false;
+  }
+  errno = 0;
+  char* end = nullptr;
+  const long long value = std::strtoll(text.c_str(), &end, 10);
+  if (end == text.c_str() || *end != '\0' || errno == ERANGE ||
+      value < 0 || value > kMaxWorkerTransportSamplePosition) {
+    return false;
+  }
+  out = static_cast<Float64>(value);
+  return true;
+}
+
+bool isPowerOfTwo(std::uint32_t value) {
+  return value > 0 && (value & (value - 1U)) == 0;
+}
+
+bool parseTransportContext(
+    const std::string& encoded,
+    double fallbackSampleTime,
+    HostTransportContext& out) {
+  out = HostTransportContext {};
+  out.samplePosition = static_cast<Float64>(std::max(0.0, fallbackSampleTime));
+  if (encoded.empty() || encoded == "-") {
+    return true;
+  }
+
+  bool sawNumerator = false;
+  bool sawDenominator = false;
+  bool sawCycleStart = false;
+  bool sawCycleEnd = false;
+
+  std::stringstream stream(encoded);
+  std::string token;
+  while (std::getline(stream, token, ',')) {
+    if (token.empty()) {
+      continue;
+    }
+    const auto separator = token.find('=');
+    if (separator == std::string::npos) {
+      return false;
+    }
+    const auto key = token.substr(0, separator);
+    const auto value = token.substr(separator + 1);
+
+    if (key == "playing") {
+      if (!parseTransportBool(value, out.playing)) {
+        return false;
+      }
+    } else if (key == "recording") {
+      if (!parseTransportBool(value, out.recording)) {
+        return false;
+      }
+    } else if (key == "loop") {
+      if (!parseTransportBool(value, out.loopActive)) {
+        return false;
+      }
+    } else if (key == "tempo") {
+      if (!parseDoubleArg(value.c_str(), 1.0, kMaxWorkerTransportTempoBpm, out.tempo)) {
+        return false;
+      }
+      out.hasTempo = true;
+    } else if (key == "num") {
+      std::uint32_t parsed = 4;
+      if (!parseUint32Arg(value.c_str(), 1, 64, parsed)) {
+        return false;
+      }
+      out.timeSignatureNumerator = static_cast<Float32>(parsed);
+      sawNumerator = true;
+    } else if (key == "den") {
+      std::uint32_t parsed = 4;
+      if (!parseUint32Arg(value.c_str(), 1, 64, parsed) || !isPowerOfTwo(parsed)) {
+        return false;
+      }
+      out.timeSignatureDenominator = static_cast<UInt32>(parsed);
+      sawDenominator = true;
+    } else if (key == "ppq") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.projectTimeMusic)) {
+        return false;
+      }
+      out.hasProjectTimeMusic = true;
+    } else if (key == "bar") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.barPositionMusic)) {
+        return false;
+      }
+      out.hasBarPositionMusic = true;
+    } else if (key == "cycleStart") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleStartMusic)) {
+        return false;
+      }
+      sawCycleStart = true;
+    } else if (key == "cycleEnd") {
+      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleEndMusic)) {
+        return false;
+      }
+      sawCycleEnd = true;
+    } else if (key == "sample") {
+      if (!parseTransportSamplePosition(value, out.samplePosition)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
+
+  if (sawNumerator != sawDenominator) {
+    return false;
+  }
+  out.hasTimeSignature = sawNumerator && sawDenominator;
+  if (sawCycleStart != sawCycleEnd || (sawCycleStart && out.cycleEndMusic < out.cycleStartMusic)) {
+    return false;
+  }
+  out.hasCycle = sawCycleStart && sawCycleEnd;
   return true;
 }
 
@@ -605,12 +759,20 @@ public:
   std::vector<std::vector<float>> render(
       std::uint32_t frames,
       double sampleRate,
-      std::vector<std::vector<float>> inputChannels) {
+      std::vector<std::vector<float>> inputChannels,
+      HostTransportContext transport) {
     if (std::abs(sampleRate - sampleRate_) > 0.01) {
       throw std::runtime_error("Audio Unit worker cannot change sample rate after initialization.");
     }
 
     frames = std::clamp<std::uint32_t>(frames, 1, maxBlockSize_);
+    transportStateChanged_ = currentTransportInitialized_ &&
+        (transport.playing != currentTransport_.playing ||
+         transport.recording != currentTransport_.recording ||
+         transport.loopActive != currentTransport_.loopActive ||
+         std::abs(transport.samplePosition - sampleTime_) > 0.5);
+    currentTransport_ = transport;
+    currentTransportInitialized_ = true;
     currentInput_ = std::move(inputChannels);
     currentInputFrames_ = frames;
     for (auto& channel : currentInput_) {
@@ -622,11 +784,15 @@ public:
 
     AudioTimeStamp timeStamp {};
     timeStamp.mFlags = kAudioTimeStampSampleTimeValid;
-    timeStamp.mSampleTime = sampleTime_;
+    timeStamp.mSampleTime = currentTransport_.samplePosition;
     AudioUnitRenderActionFlags flags = 0;
     checkStatus(AudioUnitRender(unit_, &flags, &timeStamp, 0, frames, outputList.get()), "AudioUnitRender");
-    sampleTime_ += frames;
+    sampleTime_ = currentTransport_.samplePosition + frames;
     return outputChannels;
+  }
+
+  double sampleTime() const {
+    return sampleTime_;
   }
 
 private:
@@ -814,6 +980,152 @@ private:
     return noErr;
   }
 
+  static OSStatus beatAndTempoCallback(
+      void* userData,
+      Float64* currentBeat,
+      Float64* currentTempo) {
+    auto* host = static_cast<HostedAudioUnit*>(userData);
+    if (host == nullptr) {
+      return kAudioUnitErr_CannotDoInCurrentContext;
+    }
+    const auto& transport = host->currentTransport_;
+    if ((currentBeat != nullptr && !transport.hasProjectTimeMusic) ||
+        (currentTempo != nullptr && !transport.hasTempo)) {
+      return kAudioUnitErr_CannotDoInCurrentContext;
+    }
+    if (currentBeat != nullptr) {
+      *currentBeat = transport.projectTimeMusic;
+    }
+    if (currentTempo != nullptr) {
+      *currentTempo = transport.tempo;
+    }
+    return noErr;
+  }
+
+  static OSStatus musicalTimeLocationCallback(
+      void* userData,
+      UInt32* deltaSampleOffsetToNextBeat,
+      Float32* timeSigNumerator,
+      UInt32* timeSigDenominator,
+      Float64* currentMeasureDownBeat) {
+    auto* host = static_cast<HostedAudioUnit*>(userData);
+    if (host == nullptr) {
+      return kAudioUnitErr_CannotDoInCurrentContext;
+    }
+    const auto& transport = host->currentTransport_;
+    if ((deltaSampleOffsetToNextBeat != nullptr && (!transport.hasProjectTimeMusic || !transport.hasTempo)) ||
+        ((timeSigNumerator != nullptr || timeSigDenominator != nullptr) && !transport.hasTimeSignature) ||
+        (currentMeasureDownBeat != nullptr && !transport.hasBarPositionMusic)) {
+      return kAudioUnitErr_CannotDoInCurrentContext;
+    }
+    if (deltaSampleOffsetToNextBeat != nullptr) {
+      *deltaSampleOffsetToNextBeat = host->samplesUntilNextBeat(transport);
+    }
+    if (timeSigNumerator != nullptr) {
+      *timeSigNumerator = transport.timeSignatureNumerator;
+    }
+    if (timeSigDenominator != nullptr) {
+      *timeSigDenominator = transport.timeSignatureDenominator;
+    }
+    if (currentMeasureDownBeat != nullptr) {
+      *currentMeasureDownBeat = transport.barPositionMusic;
+    }
+    return noErr;
+  }
+
+  static OSStatus transportStateCallback(
+      void* userData,
+      Boolean* isPlaying,
+      Boolean* transportStateChanged,
+      Float64* currentSampleInTimeLine,
+      Boolean* isCycling,
+      Float64* cycleStartBeat,
+      Float64* cycleEndBeat) {
+    return fillTransportState(userData, isPlaying, nullptr, transportStateChanged, currentSampleInTimeLine, isCycling, cycleStartBeat, cycleEndBeat);
+  }
+
+  static OSStatus transportState2Callback(
+      void* userData,
+      Boolean* isPlaying,
+      Boolean* isRecording,
+      Boolean* transportStateChanged,
+      Float64* currentSampleInTimeLine,
+      Boolean* isCycling,
+      Float64* cycleStartBeat,
+      Float64* cycleEndBeat) {
+    return fillTransportState(userData, isPlaying, isRecording, transportStateChanged, currentSampleInTimeLine, isCycling, cycleStartBeat, cycleEndBeat);
+  }
+
+  static OSStatus fillTransportState(
+      void* userData,
+      Boolean* isPlaying,
+      Boolean* isRecording,
+      Boolean* transportStateChanged,
+      Float64* currentSampleInTimeLine,
+      Boolean* isCycling,
+      Float64* cycleStartBeat,
+      Float64* cycleEndBeat) {
+    auto* host = static_cast<HostedAudioUnit*>(userData);
+    if (host == nullptr) {
+      return kAudioUnitErr_CannotDoInCurrentContext;
+    }
+    const auto& transport = host->currentTransport_;
+    if ((cycleStartBeat != nullptr || cycleEndBeat != nullptr) && !transport.hasCycle) {
+      return kAudioUnitErr_CannotDoInCurrentContext;
+    }
+    if (isPlaying != nullptr) {
+      *isPlaying = transport.playing ? 1 : 0;
+    }
+    if (isRecording != nullptr) {
+      *isRecording = transport.recording ? 1 : 0;
+    }
+    if (transportStateChanged != nullptr) {
+      *transportStateChanged = host->transportStateChanged_ ? 1 : 0;
+    }
+    if (currentSampleInTimeLine != nullptr) {
+      *currentSampleInTimeLine = transport.samplePosition;
+    }
+    if (isCycling != nullptr) {
+      *isCycling = (transport.loopActive && transport.hasCycle) ? 1 : 0;
+    }
+    if (cycleStartBeat != nullptr) {
+      *cycleStartBeat = transport.cycleStartMusic;
+    }
+    if (cycleEndBeat != nullptr) {
+      *cycleEndBeat = transport.cycleEndMusic;
+    }
+    return noErr;
+  }
+
+  UInt32 samplesUntilNextBeat(const HostTransportContext& transport) const {
+    const auto beatFraction = transport.projectTimeMusic - std::floor(transport.projectTimeMusic);
+    if (beatFraction <= 0.000000001 || !transport.hasTempo || transport.tempo <= 0.0) {
+      return 0;
+    }
+    const auto samplesPerBeat = (60.0 / transport.tempo) * sampleRate_;
+    const auto samples = std::round((1.0 - beatFraction) * samplesPerBeat);
+    return static_cast<UInt32>(std::clamp<double>(
+        samples,
+        0.0,
+        static_cast<double>(std::numeric_limits<UInt32>::max())));
+  }
+
+  void installHostCallbacks() {
+    HostCallbackInfo callbacks {};
+    callbacks.hostUserData = this;
+    callbacks.beatAndTempoProc = &HostedAudioUnit::beatAndTempoCallback;
+    callbacks.musicalTimeLocationProc = &HostedAudioUnit::musicalTimeLocationCallback;
+    callbacks.transportStateProc = &HostedAudioUnit::transportStateCallback;
+    callbacks.transportStateProc2 = &HostedAudioUnit::transportState2Callback;
+    AudioUnitSetProperty(
+        unit_,
+        kAudioUnitProperty_HostCallbacks,
+        kAudioUnitScope_Global,
+        0,
+        &callbacks,
+        sizeof(callbacks));
+  }
+
   void configure() {
     UInt32 maxFrames = maxBlockSize_;
     checkStatus(
@@ -863,6 +1175,7 @@ private:
           "AudioUnitSetProperty input RenderCallback");
     }
 
+    installHostCallbacks();
     checkStatus(AudioUnitInitialize(unit_), "AudioUnitInitialize");
   }
 
@@ -875,7 +1188,10 @@ private:
   std::uint32_t outputChannels_ = 2;
   std::vector<std::vector<float>> currentInput_;
   std::uint32_t currentInputFrames_ = 0;
+  HostTransportContext currentTransport_;
   double sampleTime_ = 0.0;
+  bool currentTransportInitialized_ = false;
+  bool transportStateChanged_ = false;
 };
 
 int runAudioUnitHostWorkerMac(int argc, char** argv) {
@@ -1020,17 +1336,23 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
           std::uint32_t frames = 128;
           double renderSampleRate = sampleRate;
           std::string encodedChannels;
+          std::string encodedInputBuses;
+          std::string encodedTransport;
           std::string framesText;
           std::string sampleRateText;
           stream >> framesText;
           stream >> sampleRateText;
           stream >> encodedChannels;
+          stream >> encodedInputBuses;
+          stream >> encodedTransport;
+          HostTransportContext transport;
           if (!parseUint32Arg(framesText.c_str(), 1, kMaxWorkerFrames, frames) ||
-              !parseSampleRateArg(sampleRateText.c_str(), renderSampleRate)) {
+              !parseSampleRateArg(sampleRateText.c_str(), renderSampleRate) ||
+              !parseTransportContext(encodedTransport, host.sampleTime(), transport)) {
             std::cout << "{\"error\":\"invalid_render_arguments\"}" << std::endl;
             continue;
           }
-          const auto channels = host.render(frames, renderSampleRate, parseChannels(encodedChannels, frames));
+          const auto channels = host.render(frames, renderSampleRate, parseChannels(encodedChannels, frames), transport);
           std::cout << exampleInstrumentBlockToJson(channels) << std::endl;
           continue;
         }
