@@ -1,5 +1,6 @@
 #include "SoundBridge/AudioUnitHostWorker.h"
 
+#include "SoundBridge/AudioUnitHostWorkerSupport.h"
 #include "SoundBridge/Base64.h"
 #include "SoundBridge/NativePlugin.h"
 
@@ -29,6 +30,8 @@ namespace {
 
 #ifdef SOUNDBRIDGE_MACOS
 
+using namespace audio_unit_worker;
+
 // Hard limits applied to every value crossing the worker's stdin/argv boundary.
 // The parent daemon enforces its own caps, but the worker must not trust it.
 constexpr std::uint32_t kMaxWorkerFrames = 8192;
@@ -47,37 +50,6 @@ constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
 constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
 // Some AU effects return this for MusicDeviceMIDIEvent instead of a named AudioUnit error.
 constexpr OSStatus kAudioUnitUnimplementedStatus = -4;
-
-struct PendingMidiMessage {
-  UInt32 status = 0x90;
-  UInt32 data1 = 60;
-  UInt32 data2 = 100;
-  std::uint32_t sampleOffset = 0;
-};
-
-struct IndexedAudioBus {
-  std::uint32_t index = 0;
-  std::vector<std::vector<float>> channels;
-};
-
-struct HostTransportContext {
-  bool playing = false;
-  bool recording = false;
-  bool loopActive = false;
-  bool hasTempo = false;
-  double tempo = 120.0;
-  bool hasTimeSignature = false;
-  Float32 timeSignatureNumerator = 4.0F;
-  UInt32 timeSignatureDenominator = 4;
-  bool hasProjectTimeMusic = false;
-  Float64 projectTimeMusic = 0.0;
-  bool hasBarPositionMusic = false;
-  Float64 barPositionMusic = 0.0;
-  bool hasCycle = false;
-  Float64 cycleStartMusic = 0.0;
-  Float64 cycleEndMusic = 0.0;
-  Float64 samplePosition = 0.0;
-};
 
 float sanitizeSample(const std::string& text) {
   char* end = nullptr;
@@ -126,279 +98,6 @@ bool parseSampleRateArg(const char* text, double& out) {
     return false;
   }
   out = value;
-  return true;
-}
-
-bool parseTransportBool(const std::string& text, bool& out) {
-  if (text == "1") {
-    out = true;
-    return true;
-  }
-  if (text == "0") {
-    out = false;
-    return true;
-  }
-  return false;
-}
-
-bool parseTransportSamplePosition(const std::string& text, Float64& out) {
-  if (text.empty()) {
-    return false;
-  }
-  errno = 0;
-  char* end = nullptr;
-  const long long value = std::strtoll(text.c_str(), &end, 10);
-  if (end == text.c_str() || *end != '\0' || errno == ERANGE ||
-      value < 0 || value > kMaxWorkerTransportSamplePosition) {
-    return false;
-  }
-  out = static_cast<Float64>(value);
-  return true;
-}
-
-bool isPowerOfTwo(std::uint32_t value) {
-  return value > 0 && (value & (value - 1U)) == 0;
-}
-
-bool parseTransportContext(
-    const std::string& encoded,
-    double fallbackSampleTime,
-    HostTransportContext& out) {
-  out = HostTransportContext {};
-  out.samplePosition = static_cast<Float64>(std::max(0.0, fallbackSampleTime));
-  if (encoded.empty() || encoded == "-") {
-    return true;
-  }
-
-  bool sawNumerator = false;
-  bool sawDenominator = false;
-  bool sawCycleStart = false;
-  bool sawCycleEnd = false;
-
-  std::stringstream stream(encoded);
-  std::string token;
-  while (std::getline(stream, token, ',')) {
-    if (token.empty()) {
-      continue;
-    }
-    const auto separator = token.find('=');
-    if (separator == std::string::npos) {
-      return false;
-    }
-    const auto key = token.substr(0, separator);
-    const auto value = token.substr(separator + 1);
-
-    if (key == "playing") {
-      if (!parseTransportBool(value, out.playing)) {
-        return false;
-      }
-    } else if (key == "recording") {
-      if (!parseTransportBool(value, out.recording)) {
-        return false;
-      }
-    } else if (key == "loop") {
-      if (!parseTransportBool(value, out.loopActive)) {
-        return false;
-      }
-    } else if (key == "tempo") {
-      if (!parseDoubleArg(value.c_str(), 1.0, kMaxWorkerTransportTempoBpm, out.tempo)) {
-        return false;
-      }
-      out.hasTempo = true;
-    } else if (key == "num") {
-      std::uint32_t parsed = 4;
-      if (!parseUint32Arg(value.c_str(), 1, 64, parsed)) {
-        return false;
-      }
-      out.timeSignatureNumerator = static_cast<Float32>(parsed);
-      sawNumerator = true;
-    } else if (key == "den") {
-      std::uint32_t parsed = 4;
-      if (!parseUint32Arg(value.c_str(), 1, 64, parsed) || !isPowerOfTwo(parsed)) {
-        return false;
-      }
-      out.timeSignatureDenominator = static_cast<UInt32>(parsed);
-      sawDenominator = true;
-    } else if (key == "ppq") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.projectTimeMusic)) {
-        return false;
-      }
-      out.hasProjectTimeMusic = true;
-    } else if (key == "bar") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.barPositionMusic)) {
-        return false;
-      }
-      out.hasBarPositionMusic = true;
-    } else if (key == "cycleStart") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleStartMusic)) {
-        return false;
-      }
-      sawCycleStart = true;
-    } else if (key == "cycleEnd") {
-      if (!parseDoubleArg(value.c_str(), 0.0, kMaxWorkerTransportPositionMusic, out.cycleEndMusic)) {
-        return false;
-      }
-      sawCycleEnd = true;
-    } else if (key == "sample") {
-      if (!parseTransportSamplePosition(value, out.samplePosition)) {
-        return false;
-      }
-    } else {
-      return false;
-    }
-  }
-
-  if (sawNumerator != sawDenominator) {
-    return false;
-  }
-  out.hasTimeSignature = sawNumerator && sawDenominator;
-  if (sawCycleStart != sawCycleEnd || (sawCycleStart && out.cycleEndMusic < out.cycleStartMusic)) {
-    return false;
-  }
-  out.hasCycle = sawCycleStart && sawCycleEnd;
-  return true;
-}
-
-UInt32 scaled7Bit(double value) {
-  return static_cast<UInt32>(std::clamp(std::lround(std::clamp(value, 0.0, 1.0) * 127.0), 0L, 127L));
-}
-
-bool parseMidiEventToken(const std::string& token, PendingMidiMessage& message) {
-  std::vector<std::string> parts;
-  std::stringstream stream(token);
-  std::string part;
-  while (std::getline(stream, part, ':')) {
-    parts.push_back(part);
-  }
-  if (parts.empty()) {
-    return false;
-  }
-
-  auto parseChannelAndOffset = [&](std::size_t channelIndex, std::size_t offsetIndex, std::uint32_t& channel, std::uint32_t& offset) -> bool {
-    return parseUint32Arg(parts[channelIndex].c_str(), 0, 15, channel) &&
-        parseUint32Arg(parts[offsetIndex].c_str(), 0, kMaxWorkerFrames - 1, offset);
-  };
-
-  if (parts[0] == "on" || parts[0] == "off" || parts[0] == "poly") {
-    if (parts.size() != 5) {
-      return false;
-    }
-    std::uint32_t note = 60;
-    std::uint32_t channel = 0;
-    std::uint32_t offset = 0;
-    double value = parts[0] == "off" ? 0.0 : 0.8;
-    if (!parseUint32Arg(parts[1].c_str(), 0, 127, note) ||
-        !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
-        !parseChannelAndOffset(3, 4, channel, offset)) {
-      return false;
-    }
-    message.status = (parts[0] == "on" ? 0x90 : parts[0] == "off" ? 0x80 : 0xA0) | channel;
-    message.data1 = note;
-    message.data2 = scaled7Bit(value);
-    message.sampleOffset = offset;
-    return true;
-  }
-
-  if (parts[0] == "cc") {
-    if (parts.size() != 5) {
-      return false;
-    }
-    std::uint32_t controller = 0;
-    std::uint32_t channel = 0;
-    std::uint32_t offset = 0;
-    double value = 0.0;
-    if (!parseUint32Arg(parts[1].c_str(), 0, 127, controller) ||
-        !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
-        !parseChannelAndOffset(3, 4, channel, offset)) {
-      return false;
-    }
-    message.status = 0xB0 | channel;
-    message.data1 = controller;
-    message.data2 = scaled7Bit(value);
-    message.sampleOffset = offset;
-    return true;
-  }
-
-  if (parts[0] == "bend") {
-    if (parts.size() != 4) {
-      return false;
-    }
-    std::uint32_t channel = 0;
-    std::uint32_t offset = 0;
-    double value = 0.0;
-    if (!parseDoubleArg(parts[1].c_str(), -1.0, 1.0, value) ||
-        !parseChannelAndOffset(2, 3, channel, offset)) {
-      return false;
-    }
-    const auto bend = static_cast<UInt32>(
-        std::clamp(std::lround(((std::clamp(value, -1.0, 1.0) + 1.0) / 2.0) * 16383.0), 0L, 16383L));
-    message.status = 0xE0 | channel;
-    message.data1 = bend & 0x7F;
-    message.data2 = (bend >> 7) & 0x7F;
-    message.sampleOffset = offset;
-    return true;
-  }
-
-  if (parts[0] == "pressure") {
-    if (parts.size() != 4) {
-      return false;
-    }
-    std::uint32_t channel = 0;
-    std::uint32_t offset = 0;
-    double pressure = 0.0;
-    if (!parseDoubleArg(parts[1].c_str(), 0.0, 1.0, pressure) ||
-        !parseChannelAndOffset(2, 3, channel, offset)) {
-      return false;
-    }
-    message.status = 0xD0 | channel;
-    message.data1 = scaled7Bit(pressure);
-    message.data2 = 0;
-    message.sampleOffset = offset;
-    return true;
-  }
-
-  if (parts[0] == "program") {
-    if (parts.size() != 4) {
-      return false;
-    }
-    std::uint32_t program = 0;
-    std::uint32_t channel = 0;
-    std::uint32_t offset = 0;
-    if (!parseUint32Arg(parts[1].c_str(), 0, 127, program) ||
-        !parseChannelAndOffset(2, 3, channel, offset)) {
-      return false;
-    }
-    message.status = 0xC0 | channel;
-    message.data1 = program;
-    message.data2 = 0;
-    message.sampleOffset = offset;
-    return true;
-  }
-
-  return false;
-}
-
-bool parseMidiEvents(const std::string& encoded, std::vector<PendingMidiMessage>& messages) {
-  messages.clear();
-  if (encoded.empty() || encoded == "-") {
-    return true;
-  }
-
-  std::stringstream stream(encoded);
-  std::string token;
-  while (std::getline(stream, token, ';')) {
-    if (token.empty()) {
-      continue;
-    }
-    if (messages.size() >= kMaxWorkerMidiEvents) {
-      return false;
-    }
-    PendingMidiMessage message;
-    if (!parseMidiEventToken(token, message)) {
-      return false;
-    }
-    messages.push_back(message);
-  }
   return true;
 }
 
@@ -488,133 +187,6 @@ AudioStreamBasicDescription streamDescription(double sampleRate, std::uint32_t c
   description.mChannelsPerFrame = channels;
   description.mBitsPerChannel = 8 * sizeof(Float32);
   return description;
-}
-
-std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::uint32_t frames) {
-  frames = std::clamp<std::uint32_t>(frames, 1, kMaxWorkerFrames);
-  if (encoded.empty() || encoded == "-") {
-    return {};
-  }
-
-  std::vector<std::vector<float>> channels;
-  std::stringstream channelStream(encoded);
-  std::string channelText;
-  while (channels.size() < kMaxWorkerChannels && std::getline(channelStream, channelText, '|')) {
-    std::vector<float> channel;
-    channel.reserve(frames);
-    std::stringstream sampleStream(channelText);
-    std::string sampleText;
-    while (channel.size() < frames && std::getline(sampleStream, sampleText, ',')) {
-      if (sampleText.empty()) {
-        channel.push_back(0.0F);
-        continue;
-      }
-      channel.push_back(sanitizeSample(sampleText));
-    }
-    channel.resize(frames, 0.0F);
-    channels.push_back(std::move(channel));
-  }
-  return channels;
-}
-
-bool parseAudioBuses(
-    const std::string& encoded,
-    std::uint32_t frames,
-    std::vector<IndexedAudioBus>& buses) {
-  buses.clear();
-  if (encoded.empty() || encoded == "-") {
-    return true;
-  }
-
-  std::stringstream stream(encoded);
-  std::string token;
-  std::set<std::uint32_t> seenIndexes;
-  while (std::getline(stream, token, ';')) {
-    if (token.empty()) {
-      return false;
-    }
-    if (seenIndexes.size() >= kMaxWorkerChannels) {
-      return false;
-    }
-    const auto separator = token.find('=');
-    if (separator == std::string::npos) {
-      return false;
-    }
-    std::uint32_t index = 0;
-    if (!parseUint32Arg(token.substr(0, separator).c_str(), 0, kMaxWorkerChannels - 1, index)) {
-      return false;
-    }
-    if (!seenIndexes.insert(index).second) {
-      return false;
-    }
-    buses.push_back(IndexedAudioBus{
-        index,
-        parseChannels(token.substr(separator + 1), frames)});
-  }
-  return true;
-}
-
-const std::vector<std::vector<float>>* findBusChannels(const std::vector<IndexedAudioBus>& buses, std::uint32_t index) {
-  for (const auto& bus : buses) {
-    if (bus.index == index) {
-      return &bus.channels;
-    }
-  }
-  return nullptr;
-}
-
-std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
-  std::ostringstream output;
-  output << "[";
-  for (std::size_t channelIndex = 0; channelIndex < channels.size(); ++channelIndex) {
-    if (channelIndex > 0) {
-      output << ",";
-    }
-    output << "[";
-    for (std::size_t frame = 0; frame < channels[channelIndex].size(); ++frame) {
-      if (frame > 0) {
-        output << ",";
-      }
-      const float sample = channels[channelIndex][frame];
-      output << (std::isfinite(sample) ? sample : 0.0F);
-    }
-    output << "]";
-  }
-  output << "]";
-  return output.str();
-}
-
-std::string mainOutputBusBlockToJson(const std::vector<std::vector<float>>& channels) {
-  const auto channelsJson = audioChannelsToJson(channels);
-  return std::string("{\"channels\":") + channelsJson +
-      ",\"outputBuses\":[{\"index\":0,\"channels\":" + channelsJson + "}]}";
-}
-
-std::unique_ptr<AudioBufferList, void (*)(AudioBufferList*)> makeAudioBufferList(
-    std::vector<std::vector<float>>& channels,
-    std::uint32_t channelCount,
-    std::uint32_t frames) {
-  channels.resize(channelCount);
-  for (auto& channel : channels) {
-    channel.resize(frames, 0.0F);
-  }
-
-  const auto bufferListSize = sizeof(AudioBufferList) + sizeof(AudioBuffer) * (channelCount > 0 ? channelCount - 1 : 0);
-  auto* raw = static_cast<AudioBufferList*>(std::calloc(1, bufferListSize));
-  if (raw == nullptr) {
-    throw std::bad_alloc();
-  }
-
-  raw->mNumberBuffers = channelCount;
-  for (std::uint32_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
-    raw->mBuffers[channelIndex].mNumberChannels = 1;
-    raw->mBuffers[channelIndex].mDataByteSize = frames * sizeof(Float32);
-    raw->mBuffers[channelIndex].mData = channels[channelIndex].data();
-  }
-
-  return {raw, [](AudioBufferList* value) {
-            std::free(value);
-          }};
 }
 
 class HostedAudioUnit {
@@ -828,16 +400,16 @@ public:
            << ",\"inputChannels\":" << inputChannels_
            << ",\"outputChannels\":" << outputChannels_
            << ",\"inputBuses\":" << activeInputBusCount()
-           << ",\"outputBuses\":1"
+           << ",\"outputBuses\":" << activeOutputBusCount()
            << ",\"inputBusLayouts\":" << inputBusLayoutsToJson()
-           << ",\"outputBusLayouts\":" << mainBusLayoutToJson("output", outputChannels_, true)
+           << ",\"outputBusLayouts\":" << outputBusLayoutsToJson()
            << ",\"sampleRate\":" << sampleRate_
            << ",\"maxBlockSize\":" << maxBlockSize_
            << "}";
     return output.str();
   }
 
-  std::vector<std::vector<float>> render(
+  RenderedAudio render(
       std::uint32_t frames,
       double sampleRate,
       std::vector<std::vector<float>> inputChannels,
@@ -866,16 +438,31 @@ public:
       }
     }
 
-    std::vector<std::vector<float>> outputChannels;
-    auto outputList = makeAudioBufferList(outputChannels, outputChannels_, frames);
+    RenderedAudio rendered;
+    auto outputList = makeAudioBufferList(rendered.channels, outputChannels_, frames);
 
     AudioTimeStamp timeStamp {};
     timeStamp.mFlags = kAudioTimeStampSampleTimeValid;
     timeStamp.mSampleTime = currentTransport_.samplePosition;
     AudioUnitRenderActionFlags flags = 0;
     checkStatus(AudioUnitRender(unit_, &flags, &timeStamp, 0, frames, outputList.get()), "AudioUnitRender");
+    rendered.outputBuses.push_back(IndexedAudioBus{0, rendered.channels});
+
+    for (std::uint32_t busIndex = 1; busIndex < outputBusActive_.size(); ++busIndex) {
+      if (!outputBusActive_[busIndex]) {
+        continue;
+      }
+      std::vector<std::vector<float>> busChannels;
+      auto busOutputList = makeAudioBufferList(busChannels, outputChannels_, frames);
+      AudioUnitRenderActionFlags busFlags = 0;
+      checkStatus(
+          AudioUnitRender(unit_, &busFlags, &timeStamp, busIndex, frames, busOutputList.get()),
+          "AudioUnitRender auxiliary output");
+      rendered.outputBuses.push_back(IndexedAudioBus{busIndex, std::move(busChannels)});
+    }
+
     sampleTime_ = currentTransport_.samplePosition + frames;
-    return outputChannels;
+    return rendered;
   }
 
   double sampleTime() const {
@@ -885,6 +472,10 @@ public:
 private:
   std::uint32_t activeInputBusCount() const {
     return static_cast<std::uint32_t>(std::count(inputBusActive_.begin(), inputBusActive_.end(), true));
+  }
+
+  std::uint32_t activeOutputBusCount() const {
+    return static_cast<std::uint32_t>(std::count(outputBusActive_.begin(), outputBusActive_.end(), true));
   }
 
   std::string inputBusLayoutsToJson() const {
@@ -904,6 +495,30 @@ private:
              << ",\"name\":\"" << (index == 0 ? "Main Input" : "Aux Input " + std::to_string(index)) << "\""
              << ",\"type\":\"" << (index == 0 ? "main" : "aux") << "\""
              << ",\"channels\":" << std::min<std::uint32_t>(inputChannels_, kMaxWorkerChannels)
+             << ",\"active\":true}";
+      wrote = true;
+    }
+    output << "]";
+    return output.str();
+  }
+
+  std::string outputBusLayoutsToJson() const {
+    std::ostringstream output;
+    output << "[";
+    bool wrote = false;
+    for (std::uint32_t index = 0; index < outputBusActive_.size(); ++index) {
+      if (!outputBusActive_[index]) {
+        continue;
+      }
+      if (wrote) {
+        output << ",";
+      }
+      output << "{\"index\":" << index
+             << ",\"direction\":\"output\""
+             << ",\"mediaType\":\"audio\""
+             << ",\"name\":\"" << (index == 0 ? "Main Output" : "Aux Output " + std::to_string(index)) << "\""
+             << ",\"type\":\"" << (index == 0 ? "main" : "aux") << "\""
+             << ",\"channels\":" << std::min<std::uint32_t>(outputChannels_, kMaxWorkerChannels)
              << ",\"active\":true}";
       wrote = true;
     }
@@ -1270,16 +885,22 @@ private:
             sizeof(maxFrames)),
         "AudioUnitSetProperty MaximumFramesPerSlice");
 
+    outputBusCount_ = audioUnitElementCount(kAudioUnitScope_Output, 1);
+    outputBusActive_.assign(outputBusCount_, false);
     const auto outputFormat = streamDescription(sampleRate_, outputChannels_);
-    checkStatus(
-        AudioUnitSetProperty(
-            unit_,
-            kAudioUnitProperty_StreamFormat,
-            kAudioUnitScope_Output,
-            0,
-            &outputFormat,
-            sizeof(outputFormat)),
-        "AudioUnitSetProperty output StreamFormat");
+    for (std::uint32_t busIndex = 0; busIndex < outputBusCount_; ++busIndex) {
+      const auto formatStatus = AudioUnitSetProperty(
+          unit_,
+          kAudioUnitProperty_StreamFormat,
+          kAudioUnitScope_Output,
+          busIndex,
+          &outputFormat,
+          sizeof(outputFormat));
+      if (busIndex == 0) {
+        checkStatus(formatStatus, "AudioUnitSetProperty output StreamFormat");
+      }
+      outputBusActive_[busIndex] = formatStatus == noErr;
+    }
 
     if (inputChannels_ > 0) {
       inputBusCount_ = audioUnitElementCount(kAudioUnitScope_Input, 1);
@@ -1328,7 +949,9 @@ private:
   std::uint32_t inputChannels_ = 2;
   std::uint32_t outputChannels_ = 2;
   std::uint32_t inputBusCount_ = 0;
+  std::uint32_t outputBusCount_ = 0;
   std::vector<bool> inputBusActive_;
+  std::vector<bool> outputBusActive_;
   std::vector<IndexedAudioBus> currentInputBuses_;
   std::uint32_t currentInputFrames_ = 0;
   HostTransportContext currentTransport_;
@@ -1501,13 +1124,13 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
             std::cout << "{\"error\":\"invalid_render_arguments\"}" << std::endl;
             continue;
           }
-          const auto renderedChannels = host.render(
+          const auto rendered = host.render(
               frames,
               renderSampleRate,
               std::move(channels),
               std::move(inputBuses),
               transport);
-          std::cout << mainOutputBusBlockToJson(renderedChannels) << std::endl;
+          std::cout << renderedAudioToJson(rendered) << std::endl;
           continue;
         }
 
