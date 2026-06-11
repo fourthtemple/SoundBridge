@@ -9,18 +9,13 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | Area | Status | Notes |
 | --- | --- | --- |
 | Original findings #1-#9 | Fixed | Remediated in the daemon (`scripts/mock-daemon.mjs`), native C++ workers, protocol schema, and docs. |
-| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 21/21 checks passing. |
+| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 23/23 checks passing. |
 | Example render argument hardening | Fixed | Example render entry points reject unknown example plugin ids before numeric argument parsing. |
-| Full plugin-hosting surface | Open roadmap | Broader MIDI, richer parameter automation, state, latency, bus negotiation, plugin UI, and file access need feature-specific controls as they are implemented. |
-| Third-party worker sandboxing | Open roadmap | Worker processes isolate crashes today, but OS-level sandboxing for malicious third-party plugin code is not complete. |
+| VST3/AU opaque state | Fixed | Native state is bounded, opaque, plugin-id bound, and restored through worker processes. |
+| Full plugin-hosting surface | Open roadmap | Broader MIDI, richer parameter automation, latency, bus negotiation, LV2 hosting, plugin UI, and file access need feature-specific controls as they are implemented. |
+| Third-party worker sandboxing | Last-stage hardening | Worker processes isolate crashes today, but OS-level sandboxing for malicious third-party plugin code is intentionally tracked after the core host features. |
 
 ## Open Roadmap Items
-
-### OS-level Worker Sandboxing
-
-SoundBridge should add an operating-system sandbox around third-party plugin worker processes before it is presented as a hardened general-purpose plugin host. On macOS, the host should evaluate App Sandbox and seatbelt-profile options, with workers receiving only the brokered audio, MIDI, parameter, and state access they need.
-
-This is separate from the fixed findings below. The current worker-process boundary contains plugin crashes and narrows daemon blast radius, but it does not fully contain a malicious plugin.
 
 ### Full VST3/AU/LV2 Hosting Surface
 
@@ -30,11 +25,16 @@ Full plugin hosting should be tracked as security-sensitive roadmap work, not ju
 | --- | --- | --- |
 | MIDI event lists | Malformed or oversized event batches can stress workers or adapter code. | Validate event count, byte size, timing offsets, channel/note ranges, and reject malformed events before worker dispatch. |
 | Parameter enumeration and automation | Plugin-controlled names, units, ids, and display strings can break JSON, UI, logs, or automation paths. | Cap counts and string lengths, escape text, normalize values, rate-limit automation bursts, and verify instance ownership. |
-| State save/restore | State blobs are opaque plugin-controlled data and can be huge or maliciously malformed. | Enforce blob-size limits, keep blobs opaque, bind state to the producing instance/session, and never interpret state as a path or command. |
 | Latency reporting | Invalid or extreme latency can break scheduling and monitoring. | Clamp to sane numeric ranges and reject negative, NaN, or extreme values. |
 | Bus negotiation | Bad channel, block-size, or sample-rate negotiation can cause large allocations or crashes. | Apply hard resource limits at the daemon boundary and inside every worker before allocation. |
 | Plugin editor/UI hosting | Native editor code exposes windowing, focus, clipboard, drag/drop, and file-dialog surfaces. | Host editors in a separate UI worker or broker process, never in the daemon, and broker UI actions explicitly. |
 | Presets, samples, caches, licensing | Plugins often expect filesystem and sometimes network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
+
+### OS-level Worker Sandboxing
+
+SoundBridge should add an operating-system sandbox around third-party plugin worker processes as the final hardening layer after the core host features are working. On macOS, the host should evaluate App Sandbox and seatbelt-profile options, with workers receiving only the brokered audio, MIDI, parameter, and state access they need.
+
+This is separate from the fixed findings below. The current worker-process boundary contains plugin crashes and narrows daemon blast radius, but it does not fully contain a malicious plugin.
 
 ## Resolved Findings
 

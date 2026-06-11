@@ -155,6 +155,24 @@ export interface AudioBlockResponse {
   renderEngine?: "bundle-worker" | "bundle-executable" | "native-example" | "js-fallback" | string;
 }
 
+export interface GetStateRequest {
+  instanceId: string;
+}
+
+export interface GetStateResponse {
+  state: string;
+}
+
+export interface SetStateRequest {
+  instanceId: string;
+  state: string;
+}
+
+export interface SetStateResponse {
+  restored: boolean;
+  parameters: PluginParameter[];
+}
+
 export type MidiEvent =
   | {
       type: "noteOn";

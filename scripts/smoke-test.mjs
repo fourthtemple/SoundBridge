@@ -166,6 +166,34 @@ assert(
     Math.abs(nativeAuSetParameter.parameter.normalizedValue - nextAuValue) < 0.000001,
   "setParameter round-trips through the installed AU host worker"
 );
+const nativeAuSavedState = await request(socket, "getState", { instanceId: nativeAuInstance.instanceId }, true, pair.sessionToken);
+assert(typeof nativeAuSavedState.state === "string" && nativeAuSavedState.state.length > 0, "getState returns installed AU native state");
+const changedAuValue = nextAuValue > 0.5 ? 0.25 : 0.75;
+await request(
+  socket,
+  "setParameter",
+  {
+    instanceId: nativeAuInstance.instanceId,
+    parameterId: nativeAuParameter.id,
+    normalizedValue: changedAuValue
+  },
+  true,
+  pair.sessionToken
+);
+const nativeAuRestored = await request(
+  socket,
+  "setState",
+  { instanceId: nativeAuInstance.instanceId, state: nativeAuSavedState.state },
+  true,
+  pair.sessionToken
+);
+const restoredAuParameter = nativeAuRestored.parameters?.find((parameter) => parameter.id === nativeAuParameter.id);
+assert(
+  nativeAuRestored.restored === true &&
+    restoredAuParameter &&
+    Math.abs(restoredAuParameter.normalizedValue - nextAuValue) < 0.000001,
+  "setState restores installed AU native state"
+);
 const auInput = Array.from({ length: 128 }, (_, index) => Math.sin(index / 8));
 const nativeAuBlock = await request(
   socket,
@@ -225,6 +253,34 @@ if (nativeVst3Parameter) {
     nativeVst3SetParameter.parameter?.id === nativeVst3Parameter.id &&
       Math.abs(nativeVst3SetParameter.parameter.normalizedValue - nextVst3Value) < 0.000001,
     "setParameter round-trips through an installed VST3 host worker parameter when exposed"
+  );
+  const nativeVst3SavedState = await request(socket, "getState", { instanceId: nativeVst3Instance.instanceId }, true, pair.sessionToken);
+  assert(typeof nativeVst3SavedState.state === "string" && nativeVst3SavedState.state.length > 0, "getState returns installed VST3 native state");
+  const changedVst3Value = nextVst3Value > 0.5 ? 0.25 : 0.75;
+  await request(
+    socket,
+    "setParameter",
+    {
+      instanceId: nativeVst3Instance.instanceId,
+      parameterId: nativeVst3Parameter.id,
+      normalizedValue: changedVst3Value
+    },
+    true,
+    pair.sessionToken
+  );
+  const nativeVst3Restored = await request(
+    socket,
+    "setState",
+    { instanceId: nativeVst3Instance.instanceId, state: nativeVst3SavedState.state },
+    true,
+    pair.sessionToken
+  );
+  const restoredVst3Parameter = nativeVst3Restored.parameters?.find((parameter) => parameter.id === nativeVst3Parameter.id);
+  assert(
+    nativeVst3Restored.restored === true &&
+      restoredVst3Parameter &&
+      Math.abs(restoredVst3Parameter.normalizedValue - nextVst3Value) < 0.000001,
+    "setState restores installed VST3 native state"
   );
 }
 const vst3Input = Array.from({ length: 128 }, (_, index) => Math.sin(index / 8));

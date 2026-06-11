@@ -6,6 +6,7 @@ add_executable(soundbridge-daemon
   src/main.cpp
   src/AudioUnitHostWorker.cpp
   src/AudioUnitScanner.cpp
+  src/Base64.cpp
   src/ExampleInstrumentRenderer.cpp
   src/Lv2Scanner.cpp
   src/NativePlugin.cpp
@@ -61,6 +62,7 @@ if(APPLE AND SOUNDBRIDGE_VST3_SDK_PATH AND EXISTS "${SOUNDBRIDGE_VST3_SDK_PATH}/
     "${SOUNDBRIDGE_VST3_SDK_PATH}/pluginterfaces/base/coreiids.cpp"
     "${SOUNDBRIDGE_VST3_SDK_PATH}/pluginterfaces/base/funknown.cpp"
     "${SOUNDBRIDGE_VST3_SDK_PATH}/pluginterfaces/base/ustring.cpp"
+    "${SOUNDBRIDGE_VST3_SDK_PATH}/public.sdk/source/common/memorystream.cpp"
     "${SOUNDBRIDGE_VST3_SDK_PATH}/public.sdk/source/main/pluginfactoryvst3.cpp"
     "${SOUNDBRIDGE_VST3_SDK_PATH}/public.sdk/source/vst/hosting/eventlist.cpp"
     "${SOUNDBRIDGE_VST3_SDK_PATH}/public.sdk/source/vst/hosting/hostclasses.cpp"

@@ -22,6 +22,8 @@ const MAX_BLOCK_SIZE = envInteger("SOUNDBRIDGE_MAX_BLOCK_SIZE", 8192);
 const MAX_MIDI_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_MIDI_EVENTS_PER_REQUEST", 4096);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
 const MAX_PLUGIN_PARAMETER_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETER_TEXT_BYTES", 160);
+const MAX_PLUGIN_STATE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_BYTES", 384 * 1024);
+const MAX_PLUGIN_STATE_ENVELOPE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_ENVELOPE_BYTES", 1024 * 1024);
 const MAX_PAIR_ATTEMPTS_PER_CONNECTION = envInteger("SOUNDBRIDGE_MAX_PAIR_ATTEMPTS", 5);
 const MIN_SAMPLE_RATE = 8000;
 const MAX_SAMPLE_RATE = 384000;
@@ -516,46 +518,123 @@ async function applyParameterValue(instance, parameterIndex, normalizedValue) {
   instance.parameters[parameterIndex] = makeUpdatedParameter(parameter, normalizedValue);
 }
 
-function getState(instanceId, session) {
+async function getState(instanceId, session) {
   const instance = getInstance(instanceId, session);
-  const state = Buffer.from(
-    JSON.stringify({
-      version: 1,
-      pluginId: instance.pluginId,
-      format: instance.format,
-      parameters: Object.fromEntries(
-        instance.parameters.map((parameter) => [parameter.id, parameter.normalizedValue])
-      )
-    }),
-    "utf8"
-  ).toString("base64");
+  const nativeState = await getNativeState(instance);
+  const state = encodeStateEnvelope({
+    version: nativeState ? 2 : 1,
+    pluginId: instance.pluginId,
+    format: instance.format,
+    parameters: Object.fromEntries(
+      instance.parameters.map((parameter) => [parameter.id, parameter.normalizedValue])
+    ),
+    ...(nativeState ? { nativeState } : {})
+  });
 
   return { state };
 }
 
 async function setState(instanceId, state, session) {
   const instance = getInstance(instanceId, session);
-  let parsed;
-  try {
-    parsed = JSON.parse(Buffer.from(String(state), "base64").toString("utf8"));
-  } catch {
-    throw protocolError("bad_state", "State was not valid SoundBridge mock state.");
-  }
+  const parsed = decodeStateEnvelope(state);
 
   if (parsed.pluginId !== instance.pluginId) {
     throw protocolError("state_plugin_mismatch", "State belongs to a different plugin.");
   }
 
-  for (const [parameterIndex, parameter] of instance.parameters.entries()) {
-    if (parsed.parameters && Object.hasOwn(parsed.parameters, parameter.id)) {
-      const value = clamp01(Number(parsed.parameters[parameter.id]));
-      await applyParameterValue(instance, parameterIndex, value);
+  const nativeState = normalizeNativeState(parsed.nativeState, instance.format);
+  if (nativeState && instance.worker && typeof instance.worker.setState === "function") {
+    await instance.worker.setState(nativeState);
+    const nativeParameters = await instance.worker.getParameters();
+    if (nativeParameters.length > 0) {
+      instance.parameters = nativeParameters;
+      instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
+    }
+  } else {
+    for (const [parameterIndex, parameter] of instance.parameters.entries()) {
+      if (parsed.parameters && Object.hasOwn(parsed.parameters, parameter.id)) {
+        const value = clamp01(Number(parsed.parameters[parameter.id]));
+        await applyParameterValue(instance, parameterIndex, value);
+      }
     }
   }
   return {
     restored: true,
     parameters: instance.parameters.map((parameter) => ({ ...parameter }))
   };
+}
+
+async function getNativeState(instance) {
+  if (!instance.worker || typeof instance.worker.getState !== "function") {
+    return undefined;
+  }
+  return instance.worker.getState();
+}
+
+function encodeStateEnvelope(envelope) {
+  const json = JSON.stringify(envelope);
+  const encoded = Buffer.from(json, "utf8").toString("base64");
+  if (Buffer.byteLength(encoded, "utf8") > MAX_PLUGIN_STATE_ENVELOPE_BYTES) {
+    throw protocolError("state_too_large", "Plugin state exceeded the configured state envelope limit.", {
+      maxStateEnvelopeBytes: MAX_PLUGIN_STATE_ENVELOPE_BYTES
+    });
+  }
+  return encoded;
+}
+
+function decodeStateEnvelope(state) {
+  const text = String(state ?? "");
+  if (
+    text.length === 0 ||
+    Buffer.byteLength(text, "utf8") > MAX_PLUGIN_STATE_ENVELOPE_BYTES ||
+    !isBase64Text(text)
+  ) {
+    throw protocolError("bad_state", "State was not valid SoundBridge state.");
+  }
+
+  try {
+    const decoded = Buffer.from(text, "base64");
+    return JSON.parse(decoded.toString("utf8"));
+  } catch (error) {
+    if (error?.code) {
+      throw error;
+    }
+    throw protocolError("bad_state", "State was not valid SoundBridge state.");
+  }
+}
+
+function normalizeNativeState(nativeState, format) {
+  if (nativeState == null) {
+    return undefined;
+  }
+  if (!nativeState || typeof nativeState !== "object" || nativeState.format !== format) {
+    throw protocolError("bad_state", "State belongs to a different native plugin format.");
+  }
+
+  if (format === "au") {
+    return {
+      format,
+      state: normalizeStatePart(nativeState.state, "nativeState.state")
+    };
+  }
+
+  if (format === "vst3") {
+    const component = normalizeStatePart(nativeState.component, "nativeState.component");
+    const controller = normalizeStatePart(nativeState.controller, "nativeState.controller");
+    const totalBytes = decodedBase64Length(component) + decodedBase64Length(controller);
+    if (totalBytes > MAX_PLUGIN_STATE_BYTES) {
+      throw protocolError("state_too_large", "Native plugin state exceeded the configured state limit.", {
+        maxStateBytes: MAX_PLUGIN_STATE_BYTES
+      });
+    }
+    return {
+      format,
+      component,
+      controller
+    };
+  }
+
+  return undefined;
 }
 
 async function processAudioBlock(payload, session) {
@@ -972,6 +1051,28 @@ class NativeHostWorker {
       return undefined;
     }
     return normalizeWorkerParameter(parsed.parameter);
+  }
+
+  async getState() {
+    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+      return undefined;
+    }
+    const parsed = await this.request("getState");
+    return normalizeWorkerState(this.nativeHost.format, parsed.state);
+  }
+
+  async setState(nativeState) {
+    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+      return undefined;
+    }
+    const state = normalizeNativeState(nativeState, this.nativeHost.format);
+    if (!state) {
+      return undefined;
+    }
+    if (this.nativeHost.format === "au") {
+      return this.request(`setState ${state.state || "-"}`);
+    }
+    return this.request(`setState ${state.component || "-"} ${state.controller || "-"}`);
   }
 
   request(command) {
@@ -1835,6 +1936,69 @@ function normalizeWorkerParameter(parameter) {
     stepCount: Math.max(0, Math.min(1_000_000, Math.floor(Number(parameter.stepCount ?? 0)))),
     readOnly: Boolean(parameter.readOnly)
   };
+}
+
+function normalizeWorkerState(format, state) {
+  if (format === "au") {
+    return {
+      format,
+      state: normalizeStatePart(state, "worker.state")
+    };
+  }
+
+  if (format === "vst3") {
+    if (!state || typeof state !== "object") {
+      return {
+        format,
+        component: "",
+        controller: ""
+      };
+    }
+    const component = normalizeStatePart(state.component, "worker.state.component");
+    const controller = normalizeStatePart(state.controller, "worker.state.controller");
+    const totalBytes = decodedBase64Length(component) + decodedBase64Length(controller);
+    if (totalBytes > MAX_PLUGIN_STATE_BYTES) {
+      throw protocolError("state_too_large", "Native plugin state exceeded the configured state limit.", {
+        maxStateBytes: MAX_PLUGIN_STATE_BYTES
+      });
+    }
+    return {
+      format,
+      component,
+      controller
+    };
+  }
+
+  return undefined;
+}
+
+function normalizeStatePart(value, label) {
+  const text = String(value ?? "");
+  if (text.length === 0) {
+    return "";
+  }
+  if (!isBase64Text(text)) {
+    throw protocolError("bad_state", `${label} was not valid base64.`);
+  }
+  const decodedLength = decodedBase64Length(text);
+  if (decodedLength > MAX_PLUGIN_STATE_BYTES) {
+    throw protocolError("state_too_large", `${label} exceeded the configured state limit.`, {
+      maxStateBytes: MAX_PLUGIN_STATE_BYTES
+    });
+  }
+  return text;
+}
+
+function isBase64Text(text) {
+  return typeof text === "string" && text.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/u.test(text);
+}
+
+function decodedBase64Length(text) {
+  if (!text) {
+    return 0;
+  }
+  const padding = text.endsWith("==") ? 2 : text.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((text.length / 4) * 3) - padding);
 }
 
 function finiteNumber(value, fallback) {

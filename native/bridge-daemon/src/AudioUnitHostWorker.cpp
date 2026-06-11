@@ -1,10 +1,12 @@
 #include "SoundBridge/AudioUnitHostWorker.h"
 
+#include "SoundBridge/Base64.h"
 #include "SoundBridge/ExampleInstrumentRenderer.h"
 #include "SoundBridge/NativePlugin.h"
 
 #ifdef SOUNDBRIDGE_MACOS
 #include <AudioToolbox/AudioToolbox.h>
+#include <CoreFoundation/CoreFoundation.h>
 #endif
 
 #include <algorithm>
@@ -31,6 +33,7 @@ constexpr std::uint32_t kMaxWorkerFrames = 8192;
 constexpr std::uint32_t kMaxWorkerChannels = 32;
 constexpr std::size_t kMaxWorkerParameters = 1024;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
+constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
@@ -301,6 +304,48 @@ public:
     return std::string("{\"parameter\":") + parameterInfoToJson(parameterId, info) + "}";
   }
 
+  std::string stateToJson() const {
+    return std::string("{\"state\":\"") + stateBase64() + "\"}";
+  }
+
+  std::string setState(const std::string& stateText) {
+    if (stateText == "-") {
+      return "{\"ok\":true}";
+    }
+
+    const auto decoded = base64Decode(stateText, kMaxWorkerStateBytes);
+    CFDataRef data = CFDataCreate(kCFAllocatorDefault, decoded.data(), static_cast<CFIndex>(decoded.size()));
+    if (data == nullptr) {
+      throw std::runtime_error("Audio Unit state data allocation failed.");
+    }
+
+    CFErrorRef error = nullptr;
+    CFPropertyListRef classInfo = CFPropertyListCreateWithData(
+        kCFAllocatorDefault,
+        data,
+        kCFPropertyListImmutable,
+        nullptr,
+        &error);
+    CFRelease(data);
+    if (error != nullptr) {
+      CFRelease(error);
+    }
+    if (classInfo == nullptr) {
+      throw std::runtime_error("Audio Unit state was not a valid property list.");
+    }
+
+    const auto status = AudioUnitSetProperty(
+        unit_,
+        kAudioUnitProperty_ClassInfo,
+        kAudioUnitScope_Global,
+        0,
+        &classInfo,
+        sizeof(classInfo));
+    CFRelease(classInfo);
+    checkStatus(status, "AudioUnitSetProperty ClassInfo");
+    return "{\"ok\":true}";
+  }
+
   std::vector<std::vector<float>> render(
       std::uint32_t frames,
       double sampleRate,
@@ -329,6 +374,45 @@ public:
   }
 
 private:
+  std::string stateBase64() const {
+    CFPropertyListRef classInfo = nullptr;
+    UInt32 classInfoSize = sizeof(classInfo);
+    const auto status = AudioUnitGetProperty(
+        unit_,
+        kAudioUnitProperty_ClassInfo,
+        kAudioUnitScope_Global,
+        0,
+        &classInfo,
+        &classInfoSize);
+    if (status != noErr || classInfo == nullptr) {
+      return "";
+    }
+
+    CFErrorRef error = nullptr;
+    CFDataRef data = CFPropertyListCreateData(
+        kCFAllocatorDefault,
+        classInfo,
+        kCFPropertyListBinaryFormat_v1_0,
+        0,
+        &error);
+    CFRelease(classInfo);
+    if (error != nullptr) {
+      CFRelease(error);
+    }
+    if (data == nullptr) {
+      return "";
+    }
+
+    const auto size = static_cast<std::size_t>(CFDataGetLength(data));
+    if (size > kMaxWorkerStateBytes) {
+      CFRelease(data);
+      throw std::runtime_error("state_too_large");
+    }
+    const auto encoded = base64Encode(CFDataGetBytePtr(data), size);
+    CFRelease(data);
+    return encoded;
+  }
+
   std::vector<std::string> parameterJsonList() const {
     UInt32 propertySize = 0;
     Boolean writable = false;
@@ -579,6 +663,22 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
 
         if (command == "parameters") {
           std::cout << host.parametersToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "getState") {
+          std::cout << host.stateToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "setState") {
+          std::string stateText;
+          stream >> stateText;
+          if (stateText.empty()) {
+            std::cout << "{\"error\":\"invalid_state_arguments\"}" << std::endl;
+            continue;
+          }
+          std::cout << host.setState(stateText) << std::endl;
           continue;
         }
 

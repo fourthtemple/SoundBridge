@@ -1,5 +1,6 @@
 #include "SoundBridge/Vst3HostWorker.h"
 
+#include "SoundBridge/Base64.h"
 #include "SoundBridge/ExampleInstrumentRenderer.h"
 #include "SoundBridge/NativePlugin.h"
 
@@ -10,6 +11,7 @@
 #include "pluginterfaces/vst/ivsteditcontroller.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstmessage.h"
+#include "public.sdk/source/common/memorystream.h"
 #include "public.sdk/source/vst/hosting/eventlist.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 #include "public.sdk/source/vst/hosting/module.h"
@@ -44,6 +46,7 @@ constexpr std::size_t kMaxWorkerMidiEvents = 4096;
 constexpr std::size_t kMaxWorkerParameters = 1024;
 constexpr std::size_t kMaxWorkerParameterChanges = 4096;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
+constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
@@ -517,6 +520,36 @@ public:
     throw std::runtime_error("unknown_parameter");
   }
 
+  std::string stateToJson() const {
+    std::ostringstream output;
+    output << "{\"state\":{"
+           << "\"component\":\"" << componentStateBase64() << "\""
+           << ",\"controller\":\"" << controllerStateBase64() << "\""
+           << "}}";
+    return output.str();
+  }
+
+  std::string setState(const std::string& componentStateText, const std::string& controllerStateText) {
+    if (componentStateText != "-") {
+      auto componentState = base64Decode(componentStateText, kMaxWorkerStateBytes);
+      Steinberg::MemoryStream componentStream(componentState.data(), static_cast<Steinberg::TSize>(componentState.size()));
+      checkResult(component_->setState(&componentStream), "IComponent::setState");
+
+      if (controller_) {
+        componentStream.seek(0, Steinberg::IBStream::kIBSeekSet, nullptr);
+        controller_->setComponentState(&componentStream);
+      }
+    }
+
+    if (controller_ && controllerStateText != "-") {
+      auto controllerState = base64Decode(controllerStateText, kMaxWorkerStateBytes);
+      Steinberg::MemoryStream controllerStream(controllerState.data(), static_cast<Steinberg::TSize>(controllerState.size()));
+      checkResult(controller_->setState(&controllerStream), "IEditController::setState");
+    }
+
+    return "{\"ok\":true}";
+  }
+
 private:
   void initializeController() {
     controller_ = Steinberg::FUnknownPtr<Steinberg::Vst::IEditController>(component_);
@@ -566,6 +599,38 @@ private:
     controllerConnection_ = nullptr;
     componentConnected_ = false;
     controllerConnected_ = false;
+  }
+
+  std::string componentStateBase64() const {
+    Steinberg::MemoryStream stream;
+    if (component_->getState(&stream) != Steinberg::kResultOk) {
+      return "";
+    }
+    return streamToBase64(stream, "component_state_too_large");
+  }
+
+  std::string controllerStateBase64() const {
+    if (!controller_) {
+      return "";
+    }
+
+    Steinberg::MemoryStream stream;
+    if (controller_->getState(&stream) != Steinberg::kResultOk) {
+      return "";
+    }
+    return streamToBase64(stream, "controller_state_too_large");
+  }
+
+  std::string streamToBase64(Steinberg::MemoryStream& stream, const std::string& sizeError) const {
+    const auto size = stream.getSize();
+    if (size <= 0) {
+      return "";
+    }
+    if (static_cast<std::size_t>(size) > kMaxWorkerStateBytes) {
+      throw std::runtime_error(sizeError);
+    }
+    const auto* data = reinterpret_cast<const std::uint8_t*>(stream.getData());
+    return base64Encode(data, static_cast<std::size_t>(size));
   }
 
   std::string parameterInfoToJson(const Steinberg::Vst::ParameterInfo& info) const {
@@ -746,6 +811,27 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
 
         if (command == "parameters") {
           std::cout << host.parametersToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "getState") {
+          std::cout << host.stateToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "setState") {
+          std::string componentStateText;
+          std::string controllerStateText;
+          stream >> componentStateText;
+          stream >> controllerStateText;
+          if (componentStateText.empty()) {
+            std::cout << "{\"error\":\"invalid_state_arguments\"}" << std::endl;
+            continue;
+          }
+          if (controllerStateText.empty()) {
+            controllerStateText = "-";
+          }
+          std::cout << host.setState(componentStateText, controllerStateText) << std::endl;
           continue;
         }
 

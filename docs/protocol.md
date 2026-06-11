@@ -203,6 +203,10 @@ Sets one normalized parameter value. Values outside `0..1` are rejected. For ins
 
 State is opaque base64. Hosts store it without interpreting it.
 
+The reference daemon wraps state in a bounded base64 JSON envelope that records the producing `pluginId`, `format`, normalized parameter snapshot, and, for installed VST3/AU instances, a `nativeState` payload. `setState` rejects state produced by a different plugin id. Native state is bounded before it is returned to the host or restored into a worker.
+
+Installed VST3 state stores the component and edit-controller state streams. Installed Audio Unit state stores the CoreAudio `kAudioUnitProperty_ClassInfo` property list. Hosts should treat both as opaque bytes.
+
 ### `processAudioBlock`
 
 MVP request:

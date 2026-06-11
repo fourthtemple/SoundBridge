@@ -129,6 +129,14 @@
           "then": { "properties": { "payload": { "$ref": "#/$defs/setParameterRequest" } } }
         },
         {
+          "if": { "properties": { "command": { "const": "getState" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/getStateRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "setState" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/setStateRequest" } } }
+        },
+        {
           "if": { "properties": { "command": { "const": "sendMidiEvents" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/sendMidiEventsRequest" } } }
         }
@@ -315,6 +323,23 @@
         "instanceId": { "type": "string", "minLength": 1 },
         "parameterId": { "type": "string", "minLength": 1, "maxLength": 64 },
         "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "getStateRequest": {
+      "type": "object",
+      "required": ["instanceId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "setStateRequest": {
+      "type": "object",
+      "required": ["instanceId", "state"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 },
+        "state": { "type": "string", "minLength": 1, "maxLength": 1048576 }
       }
     },
     "sendMidiEventsRequest": {

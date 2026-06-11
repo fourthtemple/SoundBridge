@@ -27,7 +27,7 @@ public:
   bool sdkAvailable() const;
   std::string status() const;
 
-  // Parameter/state support is still pending; audio processing lives in Vst3HostWorker.
+  // Real parameter/state/audio work lives in the isolated Vst3HostWorker.
   std::vector<NativeParameterInfo> parametersForInstance(const std::string& instanceId) const;
   std::uint32_t latencySamplesForInstance(const std::string& instanceId) const;
 };
