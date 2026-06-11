@@ -48,8 +48,8 @@ export class SoundBridgeAudioNode extends EventTarget {
   ): Promise<SoundBridgeAudioNode> {
     const normalized: Required<SoundBridgeAudioNodeOptions> = {
       instanceId: options.instanceId,
-      inputChannels: options.inputChannels ?? 2,
-      outputChannels: options.outputChannels ?? 2,
+      inputChannels: Math.max(1, Math.min(32, Math.floor(options.inputChannels ?? 2))),
+      outputChannels: Math.max(1, Math.min(32, Math.floor(options.outputChannels ?? 2))),
       maxInFlightBlocks: options.maxInFlightBlocks ?? 8,
       workletUrl: options.workletUrl ?? "/packages/web-client/dist/soundbridge-worklet.js"
     };

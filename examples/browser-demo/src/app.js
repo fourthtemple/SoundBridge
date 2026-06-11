@@ -226,7 +226,7 @@ async function doEnsureBridgeInstance(recreate = false) {
   const option = elements.pluginSelect.selectedOptions[0];
   const pluginKind = option?.dataset.kind ?? "effect";
   const pluginFormat = option?.dataset.format ?? "unknown";
-  const { instanceId } = await client.createInstance({
+  const created = await client.createInstance({
     pluginId,
     format: pluginFormat,
     sampleRate: audioContext.sampleRate,
@@ -234,14 +234,17 @@ async function doEnsureBridgeInstance(recreate = false) {
     inputChannels: pluginKind === "instrument" ? 0 : 2,
     outputChannels: 2
   });
+  const { instanceId } = created;
+  const inputChannels = created.layout?.inputChannels ?? (pluginKind === "instrument" ? 0 : 2);
+  const outputChannels = created.layout?.outputChannels ?? 2;
 
   selectedInstanceId = instanceId;
   activePluginId = pluginId;
   elements.renderEngine.textContent = "Waiting";
   bridge = await SoundBridgeAudioNode.create(audioContext, client, {
     instanceId,
-    inputChannels: 2,
-    outputChannels: 2,
+    inputChannels,
+    outputChannels,
     maxInFlightBlocks: 8,
     workletUrl: "/packages/web-client/dist/soundbridge-worklet.js?v=20260610e"
   });
@@ -602,6 +605,8 @@ function formatRenderEngine(renderEngine) {
       return "Native AU";
     case "native-vst3":
       return "Native VST3";
+    case "native-lv2":
+      return "Native LV2";
     case "js-fallback":
       return "JS fallback";
     default:

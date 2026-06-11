@@ -1,10 +1,13 @@
 import crypto from "node:crypto";
 import net from "node:net";
+import { spawn } from "node:child_process";
 
 const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47370);
 const PAIRING_TOKEN = process.env.SOUNDBRIDGE_PAIRING_TOKEN ?? "dev-token";
 const ORIGIN = "http://127.0.0.1:5173";
+const NATIVE_RENDERER = process.env.SOUNDBRIDGE_NATIVE_RENDERER ?? "native/bridge-daemon/build-current/soundbridge-daemon";
+const LV2_FIXTURE_BUNDLE = "native/example-plugins/LV2/soundbridge-example-gain.lv2";
 const MAX_PLUGIN_LATENCY_SAMPLES = 1_048_576;
 const MAX_PLUGIN_TAIL_SAMPLES = 1_048_576;
 const MAX_AUDIO_CHANNELS = 32;
@@ -32,11 +35,7 @@ const exampleFormats = ["vst3", "au", "lv2"];
 for (const format of exampleFormats) {
   const formatCapabilities = hello.capabilities?.pluginFormats?.[format];
   assert(formatCapabilities?.scan === true, `hello reports ${format} scanning capability`);
-  if (format === "au" || format === "vst3") {
-    assert(formatCapabilities?.host === true, `hello reports installed ${format.toUpperCase()} binary hosting`);
-  } else {
-    assert(formatCapabilities?.host === false, `hello does not overstate installed ${format} binary hosting`);
-  }
+  assert(formatCapabilities?.host === true, `hello reports installed ${format.toUpperCase()} binary hosting`);
   assert(
     formatCapabilities?.exampleHost === nativeExampleRendererAvailable,
     `hello reports native ${format} example-host capability accurately`
@@ -45,6 +44,7 @@ for (const format of exampleFormats) {
     assert(typeof formatCapabilities?.notes === "string" && formatCapabilities.notes.length > 0, `hello reports ${format} native host status notes`);
   }
 }
+await runNativeLv2WorkerSmoke();
 const expectedExampleSource = nativeExampleRendererAvailable ? "example-bundle" : "builtin-example";
 
 const { plugins } = await request(socket, "listPlugins", {}, true, pair.sessionToken);
@@ -576,6 +576,100 @@ for (const format of exampleFormats) {
 socket.destroy();
 
 console.log("SoundBridge mock protocol smoke test passed.");
+
+async function runNativeLv2WorkerSmoke() {
+  const worker = spawn(
+    NATIVE_RENDERER,
+    ["--host-lv2-worker", LV2_FIXTURE_BUNDLE, "48000", "128", "2", "2", "effect"],
+    { stdio: ["pipe", "pipe", "pipe"] }
+  );
+  worker.stderr.setEncoding("utf8");
+  worker.stderr.on("data", (chunk) => {
+    const message = String(chunk).trim();
+    if (message) {
+      console.warn(`LV2 worker stderr: ${message}`);
+    }
+  });
+
+  const lines = [];
+  let buffer = "";
+  let waiter;
+  worker.stdout.setEncoding("utf8");
+  worker.stdout.on("data", (chunk) => {
+    buffer += chunk;
+    let newline;
+    while ((newline = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) {
+        lines.push(line);
+      }
+      if (waiter) {
+        const current = waiter;
+        waiter = undefined;
+        current();
+      }
+    }
+  });
+
+  const readJsonLine = async () => {
+    const started = Date.now();
+    while (lines.length === 0) {
+      if (Date.now() - started > 5000) {
+        throw new Error("LV2 worker timed out");
+      }
+      await new Promise((resolve) => {
+        waiter = resolve;
+        setTimeout(resolve, 25);
+      });
+    }
+    return JSON.parse(lines.shift());
+  };
+
+  const requestWorker = async (command) => {
+    worker.stdin.write(`${command}\n`, "utf8");
+    const response = await readJsonLine();
+    if (response.error) {
+      throw new Error(response.error);
+    }
+    return response;
+  };
+
+  try {
+    const ready = await readJsonLine();
+    assert(ready.ok === true && ready.ready === true, "native LV2 worker reports ready");
+
+    const parameters = await requestWorker("parameters");
+    const gain = parameters.parameters?.find((parameter) => parameter.id === "gain");
+    assert(gain?.automatable === true, "native LV2 worker exposes control ports as bounded parameters");
+
+    const layout = await requestWorker("layout");
+    assertLayoutReport(layout, 2, 2, 48000, 128, "native LV2 worker reports layout");
+
+    const set = await requestWorker("setParameter gain 0.75 0");
+    assert(
+      set.parameter?.id === "gain" && Math.abs(set.parameter.normalizedValue - 0.75) < 0.000001,
+      "native LV2 worker updates a control port"
+    );
+
+    const rendered = await requestWorker("render 4 48000 0.1,0.2,0.3,0.4|0.1,0.1,0.1,0.1");
+    assert(rendered.channels?.length === 2, "native LV2 worker rendered stereo output");
+    assert(Math.abs(rendered.channels[0][0] - 0.15) < 0.00001, "native LV2 worker processed audio through the plugin");
+
+    const latency = await requestWorker("latency");
+    assert(latency.latencySamples === 0, "native LV2 worker reports conservative latency");
+    const tail = await requestWorker("tail");
+    assert(tail.tailSamples === 0 && tail.infiniteTail === false, "native LV2 worker reports conservative tail time");
+  } finally {
+    worker.stdin.write("quit\n");
+    worker.stdin.end();
+    setTimeout(() => {
+      if (!worker.killed) {
+        worker.kill();
+      }
+    }, 250).unref?.();
+  }
+}
 
 function request(socket, command, payload, includeSession, sessionToken) {
   const id = `smoke-${++requestSeq}`;

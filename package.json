@@ -15,6 +15,7 @@
     "scan": "native/bridge-daemon/build-current/soundbridge-daemon --scan-installed",
     "scan:vst3": "native/bridge-daemon/build-current/soundbridge-daemon --scan-vst3",
     "scan:au": "native/bridge-daemon/build-current/soundbridge-daemon --scan-au",
+    "scan:lv2": "native/bridge-daemon/build-current/soundbridge-daemon --scan-lv2",
     "mock:daemon": "node scripts/mock-daemon.mjs",
     "demo": "node scripts/demo-server.mjs",
     "smoke:mock": "node scripts/smoke-test.mjs",

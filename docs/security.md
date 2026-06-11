@@ -63,9 +63,10 @@ Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, param
 | --- | --- | --- |
 | MIDI event lists | Oversized or malformed event batches can stress workers or confuse adapters. | Bound event count, byte size, timing offsets, channel/note ranges, and reject malformed events. |
 | Parameter enumeration and automation | Plugin-controlled names/units/ids can break JSON, UI, or automation paths. | Cap counts and string lengths, escape text, normalize values, and enforce per-instance ownership. |
-| State save/restore | Opaque blobs can be huge or maliciously malformed. | VST3/AU now enforce blob-size limits, keep state opaque, bind it to the producing instance/session, and never interpret it as a path or command; keep the same rule for LV2. |
+| State save/restore | Opaque blobs can be huge or maliciously malformed. | VST3/AU now enforce blob-size limits, keep state opaque, bind it to the producing instance/session, and never interpret it as a path or command; LV2 state extension support must follow the same rule before it is enabled. |
 | Latency and tail reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges, preserve explicit infinite-tail signals, and treat negative, NaN, or extreme values as invalid. |
 | Bus and layout negotiation | Bad channel/block/sample-rate combinations can trigger large allocations or crashes. | Keep hard resource limits at the daemon boundary and inside each worker before allocation, and expose only bounded negotiated layout metadata. |
+| LV2 extensions | Atom MIDI, state, worker, UI, and other extensions require host-provided feature data and callbacks. | Keep unsupported extensions disabled; enable each extension only with explicit feature structs, bounded data, ownership checks, and worker containment. |
 | Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Run editor code outside the daemon, broker UI actions explicitly, and keep web/local host ownership checks in place. |
 | Presets, samples, caches, licensing | Plugins may expect broad filesystem or network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
 

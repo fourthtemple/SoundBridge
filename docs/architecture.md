@@ -28,11 +28,11 @@ The daemon listens on loopback only. It provides:
 - opaque state save/restore
 - latency, tail-time, and error reporting
 
-The development daemon in this repository implements the protocol with a stereo gain effect, example bundle instruments, and native worker handoff for installed VST3/AU plugins. That lets Web DAWs integrate the browser transport while the production daemon is still taking shape.
+The development daemon in this repository implements the protocol with a stereo gain effect, example bundle instruments, and native worker handoff for installed VST3, AU, and compatible LV2 audio/control plugins. That lets Web DAWs integrate the browser transport while the production daemon is still taking shape.
 
 ### Native Plugin Hosts
 
-The macOS-first native daemon is C++17 today. C++ is the conservative choice because the VST3 SDK, JUCE, Audio Unit APIs, LV2 hosting stacks, real-time thread rules, and plugin crash isolation patterns are best supported there. The current skeleton performs real bundle discovery for VST3, AU, and LV2, then isolates future DSP hosting behind per-format host adapters.
+The macOS-first native daemon is C++17 today. C++ is the conservative choice because the VST3 SDK, JUCE, Audio Unit APIs, LV2 hosting stacks, real-time thread rules, and plugin crash isolation patterns are best supported there. The current skeleton performs real bundle discovery for VST3, AU, and LV2, then isolates DSP hosting behind per-format worker adapters.
 
 Format support is intentionally split:
 
@@ -40,9 +40,9 @@ Format support is intentionally split:
 | --- | --- | --- | --- |
 | VST3 | Active macOS bundle scanner with plist metadata | Steinberg VST3 SDK adapter | First real DSP target. Keep SDK optional and review licensing before vendoring. |
 | AU | Active macOS `.component` scanner plus AudioComponent registry metadata | Active CoreAudio AudioComponent worker | macOS-only. Runs installed AU binaries in a separate worker process. |
-| LV2 | Active `.lv2` bundle scanner | Optional LV2 stack adapter such as Lilv | Important for open-source plugin ecosystems; keep GPL components out of the core. |
+| LV2 | Active `.lv2` bundle scanner with bounded TTL parsing | Basic LV2 C-ABI audio/control worker | Important for open-source plugin ecosystems. Atom MIDI, state, worker, UI, and fuller extension support remain future work; keep GPL components out of the core. |
 
-The native daemon also exposes repo-local VST3/AU/LV2 example bundles through `--scan-examples`. The native build installs a small Mach-O helper into each example bundle, and the browser demo daemon launches a long-lived worker from that bundle executable per plugin instance. Note events are sent into that worker, and render calls advance worker-owned oscillator state across audio blocks. This means the website exercises scanned AU/VST/LV2 example bundle metadata plus native C++ example DSP over a worker-process boundary. Installed Audio Units use a real CoreAudio worker today. Installed VST3 audio effects use a Steinberg SDK worker when the SDK is available at build time. LV2 binary hosting remains behind a future host adapter.
+The native daemon also exposes repo-local VST3/AU/LV2 example bundles through `--scan-examples`. The native build installs a small Mach-O helper into each example instrument bundle, and the browser demo daemon launches a long-lived worker from that bundle executable per plugin instance. Note events are sent into that worker, and render calls advance worker-owned oscillator state across audio blocks. This means the website exercises scanned AU/VST/LV2 example bundle metadata plus native C++ example DSP over a worker-process boundary. Installed Audio Units use a real CoreAudio worker today. Installed VST3 audio effects use a Steinberg SDK worker when the SDK is available at build time. Compatible LV2 audio/control effects use the built-in LV2 C-ABI worker. A small repo-local LV2 gain dynamic library exists as a native worker regression fixture.
 
 The intended production topology is:
 

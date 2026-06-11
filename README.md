@@ -1,10 +1,10 @@
 # SoundBridge
 
-Host installed VST (VST3) and Audio Unit plugins from a website.
+Host installed VST (VST3), Audio Unit, and LV2 plugins from a website.
 
 SoundBridge runs a small local bridge daemon on the user's machine. Your browser app talks to that daemon over localhost WebSocket, and the daemon loads the native plugin.
 
-## Quick Start: Host VST/AU In A Web Page
+## Quick Start: Host VST/AU/LV2 In A Web Page
 
 Build the native bridge:
 
@@ -20,13 +20,14 @@ Confirm native hosting is available:
 npm run host-status
 ```
 
-You want to see `hostAvailable: true` for `vst3` and/or `au`.
+You want to see `hostAvailable: true` for the format you plan to use.
 
 List installed plugins:
 
 ```sh
 npm run scan:vst3
 npm run scan:au
+npm run scan:lv2
 ```
 
 Start the local bridge daemon:
@@ -68,7 +69,7 @@ Then create a plugin instance and put it in your Web Audio graph:
   await client.pair(pairingToken);
 
   const { plugins } = await client.scanPlugins({
-    formats: ["vst3", "au"]
+    formats: ["vst3", "au", "lv2"]
   });
 
   const plugin = plugins.find((candidate) =>
@@ -77,7 +78,7 @@ Then create a plugin instance and put it in your Web Audio graph:
   );
 
   if (!plugin) {
-    throw new Error("No hostable VST3 or AU effect found.");
+    throw new Error("No hostable VST3, AU, or LV2 effect found.");
   }
 
   const inputChannels = plugin.inputs || 2;
@@ -120,13 +121,13 @@ With `npm run bridge` running in one terminal:
 npm run demo
 ```
 
-Open <http://127.0.0.1:5173>. The demo can select installed VST3/AU plugins, create an instance, and process microphone or file input through the local bridge.
+Open <http://127.0.0.1:5173>. The demo can select installed VST3/AU/LV2 plugins that match the current host adapters, create an instance, and process microphone or file input through the local bridge.
 
 ## What Works Now
 
 - VST3: installed audio effects through the Steinberg VST3 SDK host worker, including parameter metadata, parameter writes, MIDI note events, negotiated layout reporting, rendering, bounded latency/tail reporting, and opaque state save/restore.
 - AU: installed macOS Audio Units through the CoreAudio host worker, including parameter metadata, parameter writes, negotiated layout reporting, rendering, MIDI note events where supported, bounded latency/tail reporting, and opaque state save/restore.
-- LV2: scanning and example bundles only; installed LV2 hosting is not wired yet.
+- LV2: installed basic audio/control LV2 effects through the native LV2 host worker, including bounded TTL metadata parsing, parameter metadata, parameter writes, negotiated layout reporting, rendering, and conservative latency/tail reporting. LV2 atom MIDI, state, worker, UI, and advanced extension support are still roadmap items.
 - VST2: not supported.
 
 VST3 hosting is enabled when `SOUNDBRIDGE_VST3_SDK_PATH` points to a Steinberg VST3 SDK checkout, or when the local development SDK path exists.
@@ -168,6 +169,7 @@ No plugins show up:
 ```sh
 npm run scan:vst3
 npm run scan:au
+npm run scan:lv2
 ```
 
 Installed VST3s are scanned from:
@@ -182,6 +184,17 @@ Installed Audio Units are scanned from the macOS AudioComponent registry and:
 ```text
 /Library/Audio/Plug-Ins/Components
 ~/Library/Audio/Plug-Ins/Components
+```
+
+Installed LV2 bundles are scanned from:
+
+```text
+/Library/Audio/Plug-Ins/LV2
+~/Library/Audio/Plug-Ins/LV2
+~/.lv2
+/opt/homebrew/lib/lv2
+/usr/local/lib/lv2
+/usr/lib/lv2
 ```
 
 The browser cannot connect:
@@ -199,6 +212,7 @@ npm run bridge
 npm run host-status
 npm run scan:vst3
 npm run scan:au
+npm run scan:lv2
 npm run check
 ```
 

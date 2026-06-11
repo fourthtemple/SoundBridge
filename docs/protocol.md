@@ -79,9 +79,9 @@ Example paired capability payload:
       },
       "lv2": {
         "scan": true,
-        "host": false,
+        "host": true,
         "exampleHost": true,
-        "notes": "LV2 scanner and SoundBridge example worker are active; LV2 binary hosting adapter is not linked yet."
+        "notes": "Basic LV2 audio/control host worker is available; LV2 atom MIDI, state, worker, and UI extensions remain disabled."
       }
     },
     "security": {
@@ -98,7 +98,7 @@ Example paired capability payload:
 }
 ```
 
-`host` means the daemon can instantiate installed binary plugins for that format. `exampleHost` means the daemon can run SoundBridge's repo-local example bundles for that format through the same browser protocol path; it must not be treated as proof that arbitrary installed VST3, Audio Unit, or LV2 binaries can be hosted. `notes` is optional human-readable status text from the native backend.
+`host` means the daemon can instantiate installed binary plugins for that format. `exampleHost` means the daemon can run SoundBridge's repo-local example bundles for that format through the same browser protocol path; it must not be treated as proof that arbitrary installed VST3, Audio Unit, or LV2 binaries can be hosted. The reference LV2 host currently means compatible basic audio/control LV2 plugins, not every LV2 extension profile. `notes` is optional human-readable status text from the native backend.
 
 `capabilities.security` describes local multi-host protections and is safe to expose before pairing. Production hosts should require `sessionBoundToOrigin` and `instanceOwnership` before exposing installed plugins to arbitrary web origins.
 
@@ -162,7 +162,7 @@ Returns plugin metadata:
 
 `format` is required and is one of `vst3`, `au`, `lv2`, `mock`, or `unknown`. `pluginId` must be stable within that format namespace; native daemons should prefix or otherwise scope ids so a VST3 and AU from the same vendor do not collide.
 
-`hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter is available. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
+`hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter or compatible host profile is available. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
 
 Plugin instances are owned by the session that creates them. Commands that reference `instanceId` must fail with `instance_access_denied` when another session attempts to control the instance.
 
@@ -235,7 +235,7 @@ Returns the negotiated channel and bus layout for an instance. `requestedInputCh
 
 ### `setParameter`
 
-Sets one normalized parameter value. Values outside `0..1` are rejected. For installed VST3 plugins, the reference daemon updates the edit controller and queues a processor-side `IParameterChanges` point for the next render block. For installed Audio Units, the reference daemon maps normalized values onto the CoreAudio parameter range and calls `AudioUnitSetParameter`. Broader sample-accurate automation curves are still future work.
+Sets one normalized parameter value. Values outside `0..1` are rejected. For installed VST3 plugins, the reference daemon updates the edit controller and queues a processor-side `IParameterChanges` point for the next render block. For installed Audio Units, the reference daemon maps normalized values onto the CoreAudio parameter range and calls `AudioUnitSetParameter`. For compatible LV2 audio/control plugins, the reference daemon maps normalized values onto bounded LV2 input control ports parsed from bundle TTL. Broader sample-accurate automation curves are still future work.
 
 ### `getState` / `setState`
 
@@ -243,7 +243,7 @@ State is opaque base64. Hosts store it without interpreting it.
 
 The reference daemon wraps state in a bounded base64 JSON envelope that records the producing `pluginId`, `format`, normalized parameter snapshot, and, for installed VST3/AU instances, a `nativeState` payload. `setState` rejects state produced by a different plugin id. Native state is bounded before it is returned to the host or restored into a worker.
 
-Installed VST3 state stores the component and edit-controller state streams. Installed Audio Unit state stores the CoreAudio `kAudioUnitProperty_ClassInfo` property list. Hosts should treat both as opaque bytes.
+Installed VST3 state stores the component and edit-controller state streams. Installed Audio Unit state stores the CoreAudio `kAudioUnitProperty_ClassInfo` property list. LV2 state extension support is not implemented yet, so compatible LV2 plugins currently round-trip SoundBridge's normalized parameter snapshot only. Hosts should treat native state payloads as opaque bytes.
 
 ### `processAudioBlock`
 
@@ -278,13 +278,13 @@ MVP response:
 }
 ```
 
-`renderEngine` is optional diagnostics for example instruments. Current values are `bundle-worker`, `bundle-executable`, `native-example`, or `js-fallback`. JSON arrays are intentionally only for the mock daemon and early validation. Production transports should use binary Float32 frames or shared memory.
+`renderEngine` is optional diagnostics. Current values include `bundle-worker`, `bundle-executable`, `native-example`, `native-au`, `native-vst3`, `native-lv2`, and `js-fallback`. JSON arrays are intentionally only for the mock daemon and early validation. Production transports should use binary Float32 frames or shared memory.
 
 Block size is bounded: the daemon clamps the frame count to the instance's `maxBlockSize`, accepts at most 32 channels, and clamps `sampleRate` to 8000–384000 Hz. Native host workers re-clamp these values before allocating.
 
 ### `sendMidiEvents`
 
-Sends MIDI-like events to an instrument, MIDI effect, or native plugin worker that accepts MIDI. The MVP supports bounded note events for example instruments and installed VST3 workers; production hosts should preserve event timestamps and support sample-accurate scheduling.
+Sends MIDI-like events to an instrument, MIDI effect, or native plugin worker that accepts MIDI. The MVP supports bounded note events for example instruments and installed VST3 workers. Audio Units receive note on/off where the CoreAudio unit accepts `MusicDeviceMIDIEvent`. LV2 atom/event MIDI ports are not implemented yet, so the basic LV2 audio/control worker does not deliver MIDI to plugins. Production hosts should preserve event timestamps and support sample-accurate scheduling.
 
 Request:
 

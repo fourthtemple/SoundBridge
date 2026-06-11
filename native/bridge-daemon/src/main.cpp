@@ -1,6 +1,7 @@
 #include "SoundBridge/AudioUnitHostWorker.h"
 #include "SoundBridge/AudioUnitScanner.h"
 #include "SoundBridge/ExampleInstrumentRenderer.h"
+#include "SoundBridge/Lv2HostWorker.h"
 #include "SoundBridge/Lv2Scanner.h"
 #include "SoundBridge/NativePlugin.h"
 #include "SoundBridge/PluginCatalog.h"
@@ -25,6 +26,7 @@ void printUsage() {
   std::cout << "  soundbridge-daemon --scan-lv2\n";
   std::cout << "  soundbridge-daemon --host-status\n";
   std::cout << "  soundbridge-daemon --host-au-worker <type> <subtype> <manufacturer> <sample-rate> <max-block> <inputs> <outputs> <kind>\n";
+  std::cout << "  soundbridge-daemon --host-lv2-worker <bundle-path> <sample-rate> <max-block> <inputs> <outputs> <kind>\n";
   std::cout << "  soundbridge-daemon --host-vst3-worker <bundle-path> <sample-rate> <max-block> <inputs> <outputs> <kind>\n";
   std::cout << "  soundbridge-daemon --render-example-block <plugin-id> <frames> <sample-rate> <gain> <tone> <detune> <note:velocity,...>\n";
 }
@@ -71,9 +73,9 @@ std::string hostStatusToJson() {
   output << formatStatusToJson(
       soundbridge::PluginFormat::Lv2,
       true,
-      false,
+      soundbridge::lv2HostWorkerAvailable(),
       true,
-      "LV2 scanner and SoundBridge example worker are active; LV2 binary hosting adapter is not linked yet.");
+      soundbridge::lv2HostWorkerStatus());
   output << "]";
   output << "}";
   return output.str();
@@ -132,6 +134,10 @@ int main(int argc, char** argv) {
 
   if (command == "--host-au-worker") {
     return soundbridge::runAudioUnitHostWorker(argc, argv);
+  }
+
+  if (command == "--host-lv2-worker") {
+    return soundbridge::runLv2HostWorker(argc, argv);
   }
 
   if (command == "--host-vst3-worker") {

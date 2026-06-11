@@ -20,11 +20,11 @@ try {
   await page.locator("#pairingToken").fill(PAIRING_TOKEN);
   await page.getByRole("button", { name: "Connect" }).click();
   await page.waitForFunction(() => document.querySelector("#connectionStatus")?.textContent === "Paired");
-  await page.waitForFunction(() => /AU(\/VST3)? host \+ examples|AU\/VST\/LV2 (bundle )?examples/.test(document.querySelector("#capabilityStatus")?.textContent ?? ""));
+  await page.waitForFunction(() => /AU(\/VST3)? host \+ examples|AU\/VST\/LV2 host ready|AU\/VST\/LV2 (bundle )?examples/.test(document.querySelector("#capabilityStatus")?.textContent ?? ""));
   const capabilityTitle = await page.locator("#capabilityStatus").getAttribute("title");
   assert(/VST3 SDK host worker is available/.test(capabilityTitle ?? ""), "Browser demo exposes native VST3 host-status notes.");
   assert(/Audio Unit scanner/.test(capabilityTitle ?? ""), "Browser demo exposes native AU host-status notes.");
-  assert(/LV2 scanner/.test(capabilityTitle ?? ""), "Browser demo exposes native LV2 host-status notes.");
+  assert(/LV2 (scanner|audio\/control host|host worker)|Basic LV2/.test(capabilityTitle ?? ""), "Browser demo exposes native LV2 host-status notes.");
 
   const options = await page.locator("#pluginSelect option").evaluateAll((nodes) =>
     nodes.map((node) => ({

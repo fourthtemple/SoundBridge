@@ -1107,7 +1107,7 @@ class NativeHostWorker {
   }
 
   async getParameters() {
-    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+    if (!["au", "vst3", "lv2"].includes(this.nativeHost.format)) {
       return [];
     }
     const parsed = await this.request("parameters");
@@ -1115,7 +1115,7 @@ class NativeHostWorker {
   }
 
   async setParameter(parameterId, normalizedValue) {
-    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+    if (!["au", "vst3", "lv2"].includes(this.nativeHost.format)) {
       return undefined;
     }
     const parsed = await this.request(`setParameter ${parameterId} ${normalizedValue} 0`);
@@ -1148,7 +1148,7 @@ class NativeHostWorker {
   }
 
   async getLatency() {
-    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+    if (!["au", "vst3", "lv2"].includes(this.nativeHost.format)) {
       return 0;
     }
     const parsed = await this.request("latency");
@@ -1156,7 +1156,7 @@ class NativeHostWorker {
   }
 
   async getTailTime() {
-    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+    if (!["au", "vst3", "lv2"].includes(this.nativeHost.format)) {
       return { tailSamples: 0, infiniteTail: false };
     }
     const parsed = await this.request("tail");
@@ -1164,7 +1164,7 @@ class NativeHostWorker {
   }
 
   async getLayout() {
-    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+    if (!["au", "vst3", "lv2"].includes(this.nativeHost.format)) {
       return clonePluginLayout(this.fallbackLayout);
     }
     const parsed = await this.request("layout");
@@ -1298,6 +1298,14 @@ function nativeHostWorkerArgs(nativeHost, instance) {
     ];
   }
 
+  if (nativeHost.format === "lv2") {
+    return [
+      "--host-lv2-worker",
+      nativeHost.bundlePath,
+      ...common
+    ];
+  }
+
   throw new Error(`Unsupported native host format: ${nativeHost.format}`);
 }
 
@@ -1307,6 +1315,8 @@ function formatNativeHostName(format) {
       return "Audio Unit";
     case "vst3":
       return "VST3";
+    case "lv2":
+      return "LV2";
     default:
       return String(format ?? "native");
   }
@@ -1481,13 +1491,20 @@ function decorateInstalledPlugin(plugin) {
     hostable,
     hostUnavailableReason: hostable
       ? undefined
-      : "Installed plugin scanning is available; binary hosting adapter is not linked yet.",
+      : hostUnavailableReasonForInstalledPlugin(plugin),
     inputs: defaultInputChannels(plugin),
     outputs: defaultOutputChannels(plugin),
     parameters: [],
     presets: [],
     nativeHost
   };
+}
+
+function hostUnavailableReasonForInstalledPlugin(plugin) {
+  if (plugin.format === "lv2" && NATIVE_HOST_STATUS.get("lv2")?.host === true) {
+    return "Installed LV2 scanning is available; this plugin does not match the basic audio/control LV2 host profile yet.";
+  }
+  return "Installed plugin scanning is available; binary hosting adapter is not linked yet.";
 }
 
 function nativeHostForInstalledPlugin(plugin) {
@@ -1519,6 +1536,24 @@ function nativeHostForInstalledPlugin(plugin) {
     return {
       format: "vst3",
       renderEngine: "native-vst3",
+      bundlePath: diagnostics.bundlePath
+    };
+  }
+
+  if (plugin.format === "lv2" && NATIVE_HOST_STATUS.get("lv2")?.host === true) {
+    if (
+      typeof diagnostics.bundlePath !== "string" ||
+      diagnostics.bundlePath.length === 0 ||
+      diagnostics.hasExecutable !== true ||
+      Number(plugin.outputs) <= 0 ||
+      plugin.kind === "instrument"
+    ) {
+      return undefined;
+    }
+
+    return {
+      format: "lv2",
+      renderEngine: "native-lv2",
       bundlePath: diagnostics.bundlePath
     };
   }

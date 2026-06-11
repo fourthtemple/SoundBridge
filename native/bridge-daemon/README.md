@@ -1,6 +1,6 @@
 # SoundBridge Native Bridge Daemon
 
-This is the macOS-first native daemon skeleton. It currently builds command-line scanners for VST3, Audio Unit, and LV2 plugins, plus worker-process hosting for Audio Unit and SDK-backed VST3 audio effects.
+This is the macOS-first native daemon skeleton. It currently builds command-line scanners for VST3, Audio Unit, and LV2 plugins, plus worker-process hosting for Audio Unit, SDK-backed VST3 audio effects, and basic LV2 audio/control effects.
 
 VST3:
 
@@ -22,7 +22,7 @@ LV2:
 - `/usr/local/lib/lv2`
 - `/usr/lib/lv2`
 
-It deliberately does not vendor Steinberg's VST3 SDK or require an LV2 stack yet. Audio Unit hosting is implemented through the macOS CoreAudio APIs. VST3 hosting is enabled when `SOUNDBRIDGE_VST3_SDK_PATH` points at a Steinberg SDK checkout or the local development SDK path is present; LV2 still needs an optional host adapter after dependency review.
+It deliberately does not vendor Steinberg's VST3 SDK or require an external LV2 stack. Audio Unit hosting is implemented through the macOS CoreAudio APIs. VST3 hosting is enabled when `SOUNDBRIDGE_VST3_SDK_PATH` points at a Steinberg SDK checkout or the local development SDK path is present. LV2 hosting uses the stable LV2 C ABI directly for bundle-local dynamic libraries with basic audio/control ports; atom MIDI, state, worker, UI, and other LV2 extensions remain future work.
 
 ## Build
 
@@ -47,25 +47,31 @@ native/bridge-daemon/build/soundbridge-daemon --host-status
 
 `--scan-au` combines `.component` bundle discovery with the macOS AudioComponent registry. Bundle hits are enriched with registry metadata when the component names match; registry-only built-in Audio Units are returned with `diagnostics.isRegistry: true` and no bundle path.
 
+`--scan-lv2` discovers `.lv2` bundles, reads bounded Turtle metadata, verifies bundle-local `lv2:binary` paths, and counts basic audio ports when present. Scanned plugins that do not match the basic audio/control worker profile remain discovery-only in the browser daemon.
+
 `--host-au-worker` runs the native Audio Unit host worker used by the browser daemon. It instantiates one AudioComponent, accepts newline-delimited `parameters`, `setParameter`, `getState`, `setState`, `latency`, `tail`, `layout`, `noteOn`, `noteOff`, `render`, and `quit` commands, and renders JSON float audio blocks back to the daemon process. Bounded parameter metadata is read from CoreAudio, normalized parameter writes are mapped back to each AU parameter range, opaque state is stored through the CoreAudio class-info property list, and plugin latency/tail/layout data are reported from CoreAudio properties and the negotiated worker setup.
 
 `--host-vst3-worker` runs the native VST3 host worker used by the browser daemon when the SDK is linked. It loads one `.vst3` bundle through Steinberg's module loader, creates the audio component and edit controller, configures a realtime 32-bit stereo processing setup, accepts newline-delimited `parameters`, `setParameter`, `getState`, `setState`, `latency`, `tail`, `layout`, `render`, `midi`, `noteOn`, `noteOff`, and `quit` commands, and renders JSON float audio blocks back to the daemon process. Bounded note events are queued in the worker and delivered to the plugin as a VST3 `IEventList` on the next render block. Bounded parameter changes update the edit controller and are delivered to DSP as VST3 `IParameterChanges` on the next render block. Opaque state is stored as bounded VST3 component and edit-controller streams, and plugin latency/tail/layout data are reported from `IAudioProcessor` and the negotiated bus setup.
+
+`--host-lv2-worker` runs the native LV2 host worker used by the browser daemon for compatible installed LV2 effects. It loads one `.lv2` bundle-local dynamic library through `lv2_descriptor`, accepts newline-delimited `parameters`, `setParameter`, `latency`, `tail`, `layout`, `render`, `noteOn`, `noteOff`, and `quit` commands, and renders JSON float audio blocks back to the daemon process. The worker exposes bounded input control ports as parameters, maps normalized writes back onto each LV2 port range, reports the fixed LV2 audio port layout, and returns conservative zero latency/tail metadata until the relevant LV2 extensions are implemented.
 
 `--scan-examples` returns the repo-local AU/VST/LV2 example bundles used by the browser demo:
 
 - `vst3:soundbridge-example-polysynth.vst3`
 - `au:soundbridge-example-tonewheel.component`
 - `lv2:soundbridge-example-wavefold.lv2`
+- `lv2:soundbridge-example-gain.lv2`
 
-`--host-status` reports `exampleHostAvailable` separately from real binary plugin `hostAvailable`. On macOS, AU reports `hostAvailable: true`; VST3 reports `hostAvailable: true` when the SDK worker is linked; LV2 remains false until its binary host adapter is linked.
+`--host-status` reports `exampleHostAvailable` separately from real binary plugin `hostAvailable`. On macOS, AU reports `hostAvailable: true`; VST3 reports `hostAvailable: true` when the SDK worker is linked; LV2 reports `hostAvailable: true` when the basic LV2 audio/control worker is available.
 
 The example bundles live at:
 
 - `native/example-plugins/VST3/soundbridge-example-polysynth.vst3`
 - `native/example-plugins/Components/soundbridge-example-tonewheel.component`
 - `native/example-plugins/LV2/soundbridge-example-wavefold.lv2`
+- `native/example-plugins/LV2/soundbridge-example-gain.lv2`
 
-The native build installs a shared Mach-O helper into each bundle:
+The native build installs a shared Mach-O helper into each instrument bundle:
 
 - `Contents/MacOS/soundbridge-example-polysynth`
 - `Contents/MacOS/soundbridge-example-tonewheel`
@@ -73,6 +79,8 @@ The native build installs a shared Mach-O helper into each bundle:
 
 Those helpers are not full VST3 SDK, AudioComponent, or LV2 binaries. They are SoundBridge example executables that render the instrument blocks used by the website demo.
 They support both one-shot rendering and worker mode. Worker mode owns note state and oscillator phase across render calls:
+
+The LV2 gain fixture is different: it is a small real LV2 dynamic library used by the native worker smoke path.
 
 ```sh
 native/example-plugins/VST3/soundbridge-example-polysynth.vst3/Contents/MacOS/soundbridge-example-polysynth --worker
@@ -103,11 +111,11 @@ Arguments are plugin id, frame count, sample rate, normalized gain, normalized t
 Full VST3/AU/LV2 hosting should land as core compatibility work with feature-specific security controls. The near-term goal is that musicians can load, tweak, save, reopen, automate, and route real plugins. OS-level worker sandboxing remains the final hardening layer after the core host behavior is working.
 
 - Broaden VST3 MIDI beyond bounded `noteOn`/`noteOff` event lists. Add additional event types only with event-count, byte-size, timing-offset, channel/note, and worker-queue limits.
-- Broaden VST3/AU parameter automation beyond one bounded value point per block, and add LV2 parameter enumeration/automation. Cap parameter counts and string lengths, escape plugin-controlled text, keep parameter writes normalized, and rate-limit automation bursts per instance.
+- Broaden VST3/AU/LV2 parameter automation beyond one bounded value point per block. Cap parameter counts and string lengths, escape plugin-controlled text, keep parameter writes normalized, and rate-limit automation bursts per instance.
 - Strengthen advanced bus and format negotiation for VST3 and AU, including sidechains and multi-output layouts. Keep hard channel, block-size, sample-rate, and allocation limits at the daemon boundary and again inside workers.
 - Add plugin editor/UI hosting only through a separate UI worker or broker process. Do not load native editor code into the daemon; broker windowing, focus, clipboard, drag/drop, and file dialogs explicitly.
 - Broker preset, sample, cache, and licensing file access. Avoid ambient filesystem access from plugin workers; grant only narrow, user-approved paths where practical.
-- Add an LV2 host adapter behind an optional dependency boundary with the same worker, validation, state, bus, and sandbox rules.
+- Add LV2 atom MIDI, state, worker, UI, and extension-feature support behind the same worker, validation, state, bus, and sandbox rules.
 - Implement factory/class metadata extraction for all supported formats without exposing private filesystem paths unless diagnostics are explicitly enabled.
 - Add an internal real-time-safe audio queue between daemon and worker.
 - Add OS-level worker sandboxing as the final hardening milestone once core hosting compatibility is in place.

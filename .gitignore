@@ -8,3 +8,4 @@ native/bridge-daemon/build-*/
 native/example-plugins/VST3/*/Contents/MacOS/*
 native/example-plugins/Components/*/Contents/MacOS/*
 native/example-plugins/LV2/*/soundbridge-example-wavefold
+native/example-plugins/LV2/*/*.so

@@ -8,6 +8,7 @@ add_executable(soundbridge-daemon
   src/AudioUnitScanner.cpp
   src/Base64.cpp
   src/ExampleInstrumentRenderer.cpp
+  src/Lv2HostWorker.cpp
   src/Lv2Scanner.cpp
   src/NativePlugin.cpp
   src/PluginCatalog.cpp
@@ -21,14 +22,25 @@ add_executable(soundbridge-example-instrument
   src/ExampleInstrumentRenderer.cpp
 )
 
+add_library(soundbridge-example-lv2-gain MODULE
+  src/ExampleLv2GainPlugin.cpp
+)
+
 target_compile_features(soundbridge-daemon PRIVATE cxx_std_17)
 target_compile_features(soundbridge-example-instrument PRIVATE cxx_std_17)
+target_compile_features(soundbridge-example-lv2-gain PRIVATE cxx_std_17)
 target_include_directories(soundbridge-daemon PRIVATE include)
 target_include_directories(soundbridge-example-instrument PRIVATE include)
+set_target_properties(soundbridge-example-lv2-gain PROPERTIES
+  PREFIX ""
+  OUTPUT_NAME "soundbridge-example-lv2-gain"
+  SUFFIX ".so"
+)
 target_compile_definitions(soundbridge-daemon PRIVATE
   SOUNDBRIDGE_VERSION="${PROJECT_VERSION}"
   SOUNDBRIDGE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../.."
 )
+target_link_libraries(soundbridge-daemon PRIVATE ${CMAKE_DL_LIBS})
 
 if(APPLE)
   target_compile_definitions(soundbridge-daemon PRIVATE SOUNDBRIDGE_MACOS=1)
@@ -86,6 +98,9 @@ set(SOUNDBRIDGE_EXAMPLE_AU_EXECUTABLE
 set(SOUNDBRIDGE_EXAMPLE_LV2_EXECUTABLE
   "${CMAKE_CURRENT_SOURCE_DIR}/../example-plugins/LV2/soundbridge-example-wavefold.lv2/soundbridge-example-wavefold"
 )
+set(SOUNDBRIDGE_EXAMPLE_LV2_GAIN_MODULE
+  "${CMAKE_CURRENT_SOURCE_DIR}/../example-plugins/LV2/soundbridge-example-gain.lv2/soundbridge-example-lv2-gain.so"
+)
 
 add_custom_command(TARGET soundbridge-example-instrument POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "$<SHELL_PATH:${CMAKE_CURRENT_SOURCE_DIR}/../example-plugins/VST3/soundbridge-example-polysynth.vst3/Contents/MacOS>"
@@ -95,4 +110,10 @@ add_custom_command(TARGET soundbridge-example-instrument POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:soundbridge-example-instrument>" "$<SHELL_PATH:${SOUNDBRIDGE_EXAMPLE_AU_EXECUTABLE}>"
   COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:soundbridge-example-instrument>" "$<SHELL_PATH:${SOUNDBRIDGE_EXAMPLE_LV2_EXECUTABLE}>"
   COMMENT "Installing SoundBridge example instrument executables into repo-local AU/VST/LV2 bundles"
+)
+
+add_custom_command(TARGET soundbridge-example-lv2-gain POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory "$<SHELL_PATH:${CMAKE_CURRENT_SOURCE_DIR}/../example-plugins/LV2/soundbridge-example-gain.lv2>"
+  COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:soundbridge-example-lv2-gain>" "$<SHELL_PATH:${SOUNDBRIDGE_EXAMPLE_LV2_GAIN_MODULE}>"
+  COMMENT "Installing SoundBridge LV2 gain fixture into repo-local LV2 bundle"
 )
