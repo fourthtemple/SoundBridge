@@ -8,6 +8,7 @@ const HOST = "127.0.0.1";
 const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47991);
 const TOKEN = "dev-token";
 const ORIGIN = "http://127.0.0.1:5173";
+const DISALLOWED_ORIGIN = "https://evil.example";
 
 let passed = 0;
 let seq = 0;
@@ -51,6 +52,9 @@ async function run() {
   const rebind = await rawHandshake(HOST, PORT, "evil.example", ORIGIN);
   check(rebind.status !== "101", "WS upgrade with non-loopback Host header is rejected (DNS-rebinding defense)");
   rebind.socket?.destroy();
+
+  // A2. Origin allowlists must deny unapproved origins while preserving approved origins.
+  await checkOriginAllowlist();
 
   // B. Loopback Host header upgrades normally.
   const main = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
@@ -921,6 +925,48 @@ async function run() {
 }
 
 // ---- helpers ----
+async function checkOriginAllowlist() {
+  const allowlistPort = PORT + 1;
+  const allowlisted = spawn("node", ["scripts/mock-daemon.mjs"], {
+    env: {
+      ...process.env,
+      SOUNDBRIDGE_HOST: HOST,
+      SOUNDBRIDGE_PORT: String(allowlistPort),
+      SOUNDBRIDGE_PAIRING_TOKEN: TOKEN,
+      SOUNDBRIDGE_ALLOWED_ORIGINS: ORIGIN
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  allowlisted.stderr.on("data", () => {});
+  try {
+    await waitForListen(allowlisted);
+    const denied = await connect(HOST, allowlistPort, `${HOST}:${allowlistPort}`, DISALLOWED_ORIGIN);
+    const deniedPair = await request(
+      denied,
+      "pair",
+      { origin: DISALLOWED_ORIGIN, pairingToken: TOKEN },
+      false
+    ).then(
+      () => ({ ok: true }),
+      (error) => ({ code: error.code })
+    );
+    check(deniedPair.code === "origin_not_allowed", "origin allowlist rejects unapproved browser origins");
+    denied.socket?.destroy();
+
+    const approved = await connect(HOST, allowlistPort, `${HOST}:${allowlistPort}`, ORIGIN);
+    const approvedPair = await request(approved, "pair", { origin: ORIGIN, pairingToken: TOKEN }, false);
+    check(
+      typeof approvedPair.sessionToken === "string" && approvedPair.sessionToken.length > 0,
+      "origin allowlist accepts approved browser origins"
+    );
+    const hello = await request(approved, "hello", {}, true, approvedPair.sessionToken);
+    check(hello.capabilities?.security?.originAllowlist === true, "hello advertises active origin allowlist");
+    approved.socket?.destroy();
+  } finally {
+    allowlisted.kill("SIGKILL");
+  }
+}
+
 function waitForListen(child) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("daemon did not start")), 8000);
