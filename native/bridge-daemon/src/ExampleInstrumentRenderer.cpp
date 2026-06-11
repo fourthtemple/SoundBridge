@@ -142,7 +142,11 @@ std::string exampleInstrumentBlockToJson(const std::vector<std::vector<float>>& 
       if (frame > 0) {
         output << ",";
       }
-      output << channels[channelIndex][frame];
+      // Non-finite floats would serialize as "nan"/"inf", which is invalid
+      // JSON and would corrupt the worker line protocol. Plugins are
+      // untrusted, so sanitize here.
+      const float sample = channels[channelIndex][frame];
+      output << (std::isfinite(sample) ? sample : 0.0F);
     }
     output << "]";
   }
@@ -151,10 +155,11 @@ std::string exampleInstrumentBlockToJson(const std::vector<std::vector<float>>& 
 }
 
 std::vector<ExampleVoice> parseExampleVoices(const std::string& voices) {
+  constexpr std::size_t kMaxVoices = 128;
   std::vector<ExampleVoice> parsed;
   std::stringstream stream(voices);
   std::string token;
-  while (std::getline(stream, token, ',')) {
+  while (parsed.size() < kMaxVoices && std::getline(stream, token, ',')) {
     if (token.empty()) {
       continue;
     }

@@ -26,7 +26,54 @@ namespace soundbridge {
 
 namespace {
 
+#ifdef SOUNDBRIDGE_ENABLE_VST3_SDK
+
+// Hard limits applied to every value crossing the worker's stdin/argv boundary.
+// The parent daemon enforces its own caps, but the worker must not trust it.
+constexpr std::uint32_t kMaxWorkerFrames = 8192;
+constexpr std::uint32_t kMaxWorkerChannels = 32;
+constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
+constexpr double kMinWorkerSampleRate = 8000.0;
+constexpr double kMaxWorkerSampleRate = 384000.0;
+
+float sanitizeSample(const std::string& text) {
+  char* end = nullptr;
+  const double value = std::strtod(text.c_str(), &end);
+  if (end == text.c_str() || !std::isfinite(value)) {
+    return 0.0F;
+  }
+  return static_cast<float>(std::clamp(value, -16.0, 16.0));
+}
+
+bool parseUint32Arg(const char* text, std::uint32_t minValue, std::uint32_t maxValue, std::uint32_t& out) {
+  if (text == nullptr || *text == '\0') {
+    return false;
+  }
+  char* end = nullptr;
+  const unsigned long value = std::strtoul(text, &end, 10);
+  if (end == text || *end != '\0' || value < minValue || value > maxValue) {
+    return false;
+  }
+  out = static_cast<std::uint32_t>(value);
+  return true;
+}
+
+bool parseSampleRateArg(const char* text, double& out) {
+  if (text == nullptr || *text == '\0') {
+    return false;
+  }
+  char* end = nullptr;
+  const double value = std::strtod(text, &end);
+  if (end == text || *end != '\0' || !std::isfinite(value) ||
+      value < kMinWorkerSampleRate || value > kMaxWorkerSampleRate) {
+    return false;
+  }
+  out = value;
+  return true;
+}
+
 std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::uint32_t frames) {
+  frames = std::clamp<std::uint32_t>(frames, 1, kMaxWorkerFrames);
   if (encoded.empty() || encoded == "-") {
     return {};
   }
@@ -34,24 +81,23 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
   std::vector<std::vector<float>> channels;
   std::stringstream channelStream(encoded);
   std::string channelText;
-  while (std::getline(channelStream, channelText, '|')) {
+  while (channels.size() < kMaxWorkerChannels && std::getline(channelStream, channelText, '|')) {
     std::vector<float> channel;
+    channel.reserve(frames);
     std::stringstream sampleStream(channelText);
     std::string sampleText;
-    while (std::getline(sampleStream, sampleText, ',')) {
+    while (channel.size() < frames && std::getline(sampleStream, sampleText, ',')) {
       if (sampleText.empty()) {
         channel.push_back(0.0F);
         continue;
       }
-      channel.push_back(static_cast<float>(std::strtod(sampleText.c_str(), nullptr)));
+      channel.push_back(sanitizeSample(sampleText));
     }
     channel.resize(frames, 0.0F);
     channels.push_back(std::move(channel));
   }
   return channels;
 }
-
-#ifdef SOUNDBRIDGE_ENABLE_VST3_SDK
 
 void checkResult(Steinberg::tresult result, const std::string& operation) {
   if (result != Steinberg::kResultOk) {
@@ -281,17 +327,29 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
     return 2;
   }
 
+  double sampleRate = 48000.0;
+  std::uint32_t maxBlockSize = 128;
+  std::uint32_t inputChannels = 0;
+  std::uint32_t outputChannels = 2;
+  if (!parseSampleRateArg(argv[3], sampleRate) ||
+      !parseUint32Arg(argv[4], 1, kMaxWorkerFrames, maxBlockSize) ||
+      !parseUint32Arg(argv[5], 0, kMaxWorkerChannels, inputChannels) ||
+      !parseUint32Arg(argv[6], 1, kMaxWorkerChannels, outputChannels)) {
+    std::cout << "{\"error\":\"invalid_worker_arguments\"}" << std::endl;
+    return 2;
+  }
+
   try {
-    HostedVst3Effect host(
-        argv[2],
-        std::strtod(argv[3], nullptr),
-        static_cast<std::uint32_t>(std::strtoul(argv[4], nullptr, 10)),
-        static_cast<std::uint32_t>(std::strtoul(argv[5], nullptr, 10)),
-        static_cast<std::uint32_t>(std::strtoul(argv[6], nullptr, 10)));
+    HostedVst3Effect host(argv[2], sampleRate, maxBlockSize, inputChannels, outputChannels);
 
     std::cout << "{\"ok\":true,\"ready\":true}" << std::endl;
     std::string line;
     while (std::getline(std::cin, line)) {
+      if (line.size() > kMaxWorkerLineBytes) {
+        std::cout << "{\"error\":\"command_too_large\"}" << std::endl;
+        continue;
+      }
+
       std::stringstream stream(line);
       std::string command;
       stream >> command;
@@ -307,12 +365,19 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
 
         if (command == "render") {
           std::uint32_t frames = 128;
-          double sampleRate = 48000.0;
+          double renderSampleRate = sampleRate;
           std::string encodedChannels;
-          stream >> frames;
-          stream >> sampleRate;
+          std::string framesText;
+          std::string sampleRateText;
+          stream >> framesText;
+          stream >> sampleRateText;
           stream >> encodedChannels;
-          const auto channels = host.render(frames, sampleRate, parseChannels(encodedChannels, frames));
+          if (!parseUint32Arg(framesText.c_str(), 1, kMaxWorkerFrames, frames) ||
+              !parseSampleRateArg(sampleRateText.c_str(), renderSampleRate)) {
+            std::cout << "{\"error\":\"invalid_render_arguments\"}" << std::endl;
+            continue;
+          }
+          const auto channels = host.render(frames, renderSampleRate, parseChannels(encodedChannels, frames));
           std::cout << exampleInstrumentBlockToJson(channels) << std::endl;
           continue;
         }

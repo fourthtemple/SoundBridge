@@ -115,6 +115,16 @@ std::filesystem::path canonicalPathOrInput(const std::filesystem::path& path) {
   return canonical;
 }
 
+bool pathIsWithin(const std::filesystem::path& child, const std::filesystem::path& parent) {
+  auto childIt = child.begin();
+  for (auto parentIt = parent.begin(); parentIt != parent.end(); ++parentIt, ++childIt) {
+    if (childIt == child.end() || *childIt != *parentIt) {
+      return false;
+    }
+  }
+  return true;
+}
+
 std::filesystem::path exampleExecutablePath(
     const std::filesystem::path& bundlePath,
     const std::string& manifest) {
@@ -123,12 +133,34 @@ std::filesystem::path exampleExecutablePath(
     return {};
   }
 
-  const auto executablePath = bundlePath / *executableName;
+  // Reject anything that is not a plain file name. The manifest is untrusted
+  // content; a relative or absolute path here could point the daemon at an
+  // arbitrary binary outside the bundle.
+  const std::filesystem::path namePath(*executableName);
+  if (namePath.is_absolute() || namePath.filename() != namePath) {
+    return {};
+  }
+
+  const auto executablePath = bundlePath / namePath;
   std::error_code error;
   if (!std::filesystem::is_regular_file(executablePath, error) || error) {
     return {};
   }
-  return canonicalPathOrInput(executablePath);
+  if (std::filesystem::is_symlink(std::filesystem::symlink_status(executablePath, error)) || error) {
+    return {};
+  }
+
+  // Resolve symlinks in the full path and require the result to stay inside
+  // the (resolved) bundle directory.
+  const auto canonicalBundle = std::filesystem::canonical(bundlePath, error);
+  if (error) {
+    return {};
+  }
+  const auto canonicalExecutable = std::filesystem::canonical(executablePath, error);
+  if (error || !pathIsWithin(canonicalExecutable, canonicalBundle)) {
+    return {};
+  }
+  return canonicalExecutable;
 }
 
 void applySoundBridgeManifest(NativePluginInfo& info, const std::filesystem::path& bundlePath) {
