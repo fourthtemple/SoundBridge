@@ -279,7 +279,7 @@ if (nativeLv2Effect) {
   );
   assert(
     nativeLv2RestoredMidiBlock.channels?.[0]?.[0] > 0.06 && nativeLv2RestoredMidiBlock.channels[0][0] < 0.16,
-    "setState restores installed LV2 extension state"
+    "setState restores installed LV2 file-backed extension state"
   );
   await request(socket, "destroyInstance", { instanceId: nativeLv2Instance.instanceId }, true, pair.sessionToken);
 }

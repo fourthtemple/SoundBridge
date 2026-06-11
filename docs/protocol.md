@@ -81,7 +81,7 @@ Example paired capability payload:
         "scan": true,
         "host": true,
         "exampleHost": true,
-        "notes": "Basic LV2 audio/control host worker is available with bounded atom MIDI and portable POD state delivery; LV2 file-backed state, worker, and UI extensions remain disabled."
+        "notes": "Basic LV2 audio/control host worker is available with bounded atom MIDI and brokered portable/file-backed state delivery; LV2 worker and UI extensions remain disabled."
       }
     },
     "security": {
@@ -99,7 +99,7 @@ Example paired capability payload:
 }
 ```
 
-`host` means the daemon can instantiate installed binary plugins for that format. `exampleHost` means the daemon can run SoundBridge's repo-local example bundles for that format through the same browser protocol path; it must not be treated as proof that arbitrary installed VST3, Audio Unit, or LV2 binaries can be hosted. The reference LV2 host currently means compatible basic audio/control LV2 plugins with optional atom/event MIDI input ports and bounded portable POD `state:interface` properties, not every LV2 extension profile. `notes` is optional human-readable status text from the native backend.
+`host` means the daemon can instantiate installed binary plugins for that format. `exampleHost` means the daemon can run SoundBridge's repo-local example bundles for that format through the same browser protocol path; it must not be treated as proof that arbitrary installed VST3, Audio Unit, or LV2 binaries can be hosted. The reference LV2 host currently means compatible basic audio/control LV2 plugins with optional atom/event MIDI input ports, bounded portable POD `state:interface` properties, and brokered file-backed state through LV2 state path features, not every LV2 extension profile. `notes` is optional human-readable status text from the native backend.
 
 `capabilities.security` describes local multi-host protections and is safe to expose before pairing. Production hosts should require `sessionBoundToOrigin` and `instanceOwnership` before exposing installed plugins to arbitrary web origins.
 
@@ -299,7 +299,7 @@ State is opaque base64. Hosts store it without interpreting it.
 
 The reference daemon wraps state in a bounded base64 JSON envelope that records the producing `pluginId`, `format`, normalized parameter snapshot, and, for installed VST3/AU/LV2 instances that expose native worker state, a `nativeState` payload. `setState` rejects state produced by a different plugin id. Native state is bounded before it is returned to the host or restored into a worker.
 
-Installed VST3 state stores the component and edit-controller state streams. Installed Audio Unit state stores the CoreAudio `kAudioUnitProperty_ClassInfo` property list. Compatible basic LV2 audio/control plugins store bounded control-port state keyed by LV2 port index and can also save/restore bounded portable POD `state:interface` properties. LV2 file-backed state is still future work and must go through the same state and file-broker rules before it is enabled. Hosts should treat native state payloads as opaque bytes.
+Installed VST3 state stores the component and edit-controller state streams. Installed Audio Unit state stores the CoreAudio `kAudioUnitProperty_ClassInfo` property list. Compatible basic LV2 audio/control plugins store bounded control-port state keyed by LV2 port index and can also save/restore bounded portable POD `state:interface` properties. LV2 file-backed state is supported only through brokered `state:makePath`, `state:mapPath`, and `state:freePath` callbacks: paths must be relative, path text is bounded, symlinks and traversal are rejected, file bytes are capped, and the host stores the resulting files as opaque state payload data. Hosts should treat native state payloads as opaque bytes.
 
 ### `processAudioBlock`
 

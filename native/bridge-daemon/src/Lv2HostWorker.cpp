@@ -9,6 +9,7 @@
 #endif
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -62,6 +63,9 @@ using LV2_URID = std::uint32_t;
 using LV2_URID_Map_Handle = void*;
 using LV2_URID_Unmap_Handle = void*;
 using LV2_State_Handle = void*;
+using LV2_State_Free_Path_Handle = void*;
+using LV2_State_Map_Path_Handle = void*;
+using LV2_State_Make_Path_Handle = void*;
 
 struct LV2_URID_Map {
   LV2_URID_Map_Handle handle;
@@ -103,6 +107,22 @@ struct LV2_State_Interface {
       const LV2_Feature* const* features);
 };
 
+struct LV2_State_Map_Path {
+  LV2_State_Map_Path_Handle handle;
+  char* (*abstract_path)(LV2_State_Map_Path_Handle handle, const char* absolutePath);
+  char* (*absolute_path)(LV2_State_Map_Path_Handle handle, const char* abstractPath);
+};
+
+struct LV2_State_Make_Path {
+  LV2_State_Make_Path_Handle handle;
+  char* (*path)(LV2_State_Make_Path_Handle handle, const char* path);
+};
+
+struct LV2_State_Free_Path {
+  LV2_State_Free_Path_Handle handle;
+  void (*free_path)(LV2_State_Free_Path_Handle handle, char* path);
+};
+
 struct LV2_Atom {
   std::uint32_t size;
   LV2_URID type;
@@ -137,6 +157,10 @@ constexpr std::size_t kMaxWorkerParameterChanges = 4096;
 constexpr std::size_t kMaxWorkerMidiEvents = 4096;
 constexpr std::size_t kMaxWorkerStateProperties = 1024;
 constexpr std::size_t kMaxWorkerStatePropertyBytes = 64 * 1024;
+constexpr std::size_t kMaxWorkerStateFiles = 64;
+constexpr std::size_t kMaxWorkerStateFileBytes = 64 * 1024;
+constexpr std::size_t kMaxWorkerStateFileTotalBytes = 192 * 1024;
+constexpr std::size_t kMaxWorkerStatePathBytes = 256;
 constexpr std::size_t kMaxWorkerUriBytes = 512;
 constexpr std::size_t kMaxWorkerUridMappings = 4096;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
@@ -151,12 +175,17 @@ constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
 constexpr const char* kLv2AtomSequenceUri = "http://lv2plug.in/ns/ext/atom#Sequence";
 constexpr const char* kLv2AtomFrameTimeUri = "http://lv2plug.in/ns/ext/atom#frameTime";
 constexpr const char* kLv2AtomFloatUri = "http://lv2plug.in/ns/ext/atom#Float";
+constexpr const char* kLv2AtomPathUri = "http://lv2plug.in/ns/ext/atom#Path";
 constexpr const char* kLv2MidiEventUri = "http://lv2plug.in/ns/ext/midi#MidiEvent";
 constexpr const char* kLv2StateInterfaceUri = "http://lv2plug.in/ns/ext/state#interface";
+constexpr const char* kLv2StateFreePathUri = "http://lv2plug.in/ns/ext/state#freePath";
+constexpr const char* kLv2StateMakePathUri = "http://lv2plug.in/ns/ext/state#makePath";
+constexpr const char* kLv2StateMapPathUri = "http://lv2plug.in/ns/ext/state#mapPath";
 constexpr LV2_URID kUridAtomSequence = 1;
 constexpr LV2_URID kUridAtomFrameTime = 2;
 constexpr LV2_URID kUridMidiEvent = 3;
 constexpr LV2_URID kUridAtomFloat = 4;
+constexpr LV2_URID kUridAtomPath = 5;
 constexpr std::uint32_t kLv2StateSuccess = 0;
 constexpr std::uint32_t kLv2StateErrUnknown = 1;
 constexpr std::uint32_t kLv2StateErrBadType = 2;
@@ -215,6 +244,16 @@ struct Lv2StateProperty {
   std::vector<std::uint8_t> value;
 };
 
+struct Lv2StateFile {
+  std::string abstractPath;
+  std::vector<std::uint8_t> value;
+};
+
+struct Lv2SavedExtensionState {
+  std::vector<Lv2StateProperty> properties;
+  std::vector<Lv2StateFile> files;
+};
+
 struct Lv2RestoredStateProperty {
   LV2_URID key = 0;
   LV2_URID type = 0;
@@ -230,7 +269,8 @@ public:
     addKnown(kUridAtomFrameTime, kLv2AtomFrameTimeUri);
     addKnown(kUridMidiEvent, kLv2MidiEventUri);
     addKnown(kUridAtomFloat, kLv2AtomFloatUri);
-    nextUrid_ = kUridAtomFloat + 1;
+    addKnown(kUridAtomPath, kLv2AtomPathUri);
+    nextUrid_ = kUridAtomPath + 1;
   }
 
   LV2_URID map(const char* uri) {
@@ -274,13 +314,18 @@ private:
   }
 
   std::vector<Lv2MappedUri> mappings_;
-  LV2_URID nextUrid_ = kUridAtomFloat + 1;
+  LV2_URID nextUrid_ = kUridAtomPath + 1;
 };
+
+class Lv2StateFileBroker;
 
 struct Lv2StateSaveContext {
   Lv2UridMapper* mapper = nullptr;
   std::vector<Lv2StateProperty>* properties = nullptr;
+  std::vector<Lv2StateFile>* files = nullptr;
+  Lv2StateFileBroker* fileBroker = nullptr;
   std::size_t totalValueBytes = 0;
+  std::size_t totalFileBytes = 0;
 };
 
 struct Lv2StateRestoreContext {
@@ -523,6 +568,239 @@ std::string base64ToStateString(const std::string& encoded, std::size_t maxBytes
   return std::string(decoded.begin(), decoded.end());
 }
 
+class Lv2StateFileBroker {
+public:
+  Lv2StateFileBroker() {
+    const auto seed = std::chrono::steady_clock::now().time_since_epoch().count();
+    const auto base = std::filesystem::temp_directory_path() /
+        ("soundbridge-lv2-state-" + std::to_string(seed));
+    for (std::uint32_t index = 0; index < 32; ++index) {
+      auto candidate = base;
+      if (index > 0) {
+        candidate += "-" + std::to_string(index);
+      }
+      std::error_code error;
+      if (std::filesystem::create_directory(candidate, error)) {
+        root_ = std::move(candidate);
+        return;
+      }
+    }
+    throw std::runtime_error("lv2_state_broker_unavailable");
+  }
+
+  Lv2StateFileBroker(const Lv2StateFileBroker&) = delete;
+  Lv2StateFileBroker& operator=(const Lv2StateFileBroker&) = delete;
+
+  ~Lv2StateFileBroker() {
+    std::error_code error;
+    std::filesystem::remove_all(root_, error);
+  }
+
+  char* makePath(const char* pathText) {
+    const auto relativePath = safeRelativePath(pathText);
+    if (!relativePath) {
+      return nullptr;
+    }
+    const auto absolutePath = (root_ / *relativePath).lexically_normal();
+    std::error_code error;
+    std::filesystem::create_directories(absolutePath.parent_path(), error);
+    if (error) {
+      return nullptr;
+    }
+    return duplicateCString(absolutePath.string());
+  }
+
+  char* abstractPath(const char* absolutePathText) {
+    if (absolutePathText == nullptr || *absolutePathText == '\0') {
+      return nullptr;
+    }
+    std::error_code error;
+    const auto root = std::filesystem::weakly_canonical(root_, error);
+    if (error) {
+      return nullptr;
+    }
+    const auto absolutePath = std::filesystem::weakly_canonical(std::filesystem::path(absolutePathText), error);
+    if (error || !pathIsInsideRoot(absolutePath, root)) {
+      return nullptr;
+    }
+    const auto relativePath = std::filesystem::relative(absolutePath, root, error);
+    if (error || !safeRelativePath(relativePath.generic_string().c_str())) {
+      return nullptr;
+    }
+    return duplicateCString(relativePath.generic_string());
+  }
+
+  char* absolutePath(const char* abstractPathText) {
+    const auto relativePath = safeRelativePath(abstractPathText);
+    if (!relativePath) {
+      return nullptr;
+    }
+    return duplicateCString((root_ / *relativePath).lexically_normal().string());
+  }
+
+  bool recordFile(const std::string& abstractPath, std::vector<Lv2StateFile>& files, std::size_t& totalFileBytes) const {
+    if (files.size() >= kMaxWorkerStateFiles) {
+      return false;
+    }
+    for (const auto& file : files) {
+      if (file.abstractPath == abstractPath) {
+        return true;
+      }
+    }
+    const auto relativePath = safeRelativePath(abstractPath.c_str());
+    if (!relativePath) {
+      return false;
+    }
+    const auto absolutePath = (root_ / *relativePath).lexically_normal();
+    std::error_code error;
+    if (std::filesystem::is_symlink(std::filesystem::symlink_status(absolutePath, error)) || error ||
+        !std::filesystem::is_regular_file(absolutePath, error) || error) {
+      return false;
+    }
+    const auto size = std::filesystem::file_size(absolutePath, error);
+    if (error || size == 0 || size > kMaxWorkerStateFileBytes ||
+        totalFileBytes + size > kMaxWorkerStateFileTotalBytes) {
+      return false;
+    }
+    std::ifstream input(absolutePath, std::ios::binary);
+    if (!input) {
+      return false;
+    }
+    std::vector<std::uint8_t> bytes(size);
+    input.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!input) {
+      return false;
+    }
+    totalFileBytes += bytes.size();
+    files.push_back(Lv2StateFile{abstractPath, std::move(bytes)});
+    return true;
+  }
+
+  bool materializeFiles(const std::vector<Lv2StateFile>& files) {
+    std::size_t totalFileBytes = 0;
+    std::set<std::string> seenPaths;
+    for (const auto& file : files) {
+      if (file.value.empty() || file.value.size() > kMaxWorkerStateFileBytes ||
+          totalFileBytes + file.value.size() > kMaxWorkerStateFileTotalBytes) {
+        return false;
+      }
+      if (!seenPaths.insert(file.abstractPath).second) {
+        return false;
+      }
+      const auto relativePath = safeRelativePath(file.abstractPath.c_str());
+      if (!relativePath) {
+        return false;
+      }
+      const auto absolutePath = (root_ / *relativePath).lexically_normal();
+      std::error_code error;
+      std::filesystem::create_directories(absolutePath.parent_path(), error);
+      if (error || std::filesystem::is_symlink(std::filesystem::symlink_status(absolutePath, error))) {
+        return false;
+      }
+      std::ofstream output(absolutePath, std::ios::binary | std::ios::trunc);
+      if (!output) {
+        return false;
+      }
+      output.write(reinterpret_cast<const char*>(file.value.data()), static_cast<std::streamsize>(file.value.size()));
+      if (!output) {
+        return false;
+      }
+      totalFileBytes += file.value.size();
+    }
+    return true;
+  }
+
+  static void freePath(char* path) {
+    delete[] path;
+  }
+
+private:
+  static char* duplicateCString(const std::string& value) {
+    auto* output = new char[value.size() + 1];
+    std::memcpy(output, value.c_str(), value.size() + 1);
+    return output;
+  }
+
+  static std::optional<std::filesystem::path> safeRelativePath(const char* pathText) {
+    if (pathText == nullptr || *pathText == '\0') {
+      return std::nullopt;
+    }
+    const std::string text(pathText);
+    if (text.size() > kMaxWorkerStatePathBytes || text.find('\\') != std::string::npos) {
+      return std::nullopt;
+    }
+    if (std::any_of(text.begin(), text.end(), [](unsigned char character) {
+      return character == '\0' || character < 0x20 || character == 0x7F;
+    })) {
+      return std::nullopt;
+    }
+    const std::filesystem::path relativePath(text);
+    if (relativePath.empty() || relativePath.is_absolute()) {
+      return std::nullopt;
+    }
+    for (const auto& part : relativePath) {
+      const auto partText = part.generic_string();
+      if (partText.empty() || partText == "." || partText == "..") {
+        return std::nullopt;
+      }
+    }
+    return relativePath.lexically_normal();
+  }
+
+  static bool pathIsInsideRoot(const std::filesystem::path& child, const std::filesystem::path& root) {
+    auto childIterator = child.begin();
+    auto rootIterator = root.begin();
+    for (; rootIterator != root.end(); ++rootIterator, ++childIterator) {
+      if (childIterator == child.end() || *childIterator != *rootIterator) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  std::filesystem::path root_;
+};
+
+char* makeLv2StatePath(LV2_State_Make_Path_Handle handle, const char* path) {
+  if (handle == nullptr) {
+    return nullptr;
+  }
+  return static_cast<Lv2StateFileBroker*>(handle)->makePath(path);
+}
+
+char* abstractLv2StatePath(LV2_State_Map_Path_Handle handle, const char* absolutePath) {
+  if (handle == nullptr) {
+    return nullptr;
+  }
+  return static_cast<Lv2StateFileBroker*>(handle)->abstractPath(absolutePath);
+}
+
+char* absoluteLv2StatePath(LV2_State_Map_Path_Handle handle, const char* abstractPath) {
+  if (handle == nullptr) {
+    return nullptr;
+  }
+  return static_cast<Lv2StateFileBroker*>(handle)->absolutePath(abstractPath);
+}
+
+void freeLv2StatePath(LV2_State_Free_Path_Handle /* handle */, char* path) {
+  Lv2StateFileBroker::freePath(path);
+}
+
+std::string statePathValueToString(const void* value, std::size_t size) {
+  if (value == nullptr || size == 0 || size > kMaxWorkerStatePathBytes + 1) {
+    return "";
+  }
+  const auto* bytes = static_cast<const char*>(value);
+  std::size_t length = 0;
+  while (length < size && bytes[length] != '\0') {
+    ++length;
+  }
+  if (length == size) {
+    return "";
+  }
+  return std::string(bytes, bytes + length);
+}
+
 LV2_State_Status storeLv2StateProperty(
     LV2_State_Handle handle,
     std::uint32_t key,
@@ -534,9 +812,6 @@ LV2_State_Status storeLv2StateProperty(
   if (context == nullptr || context->mapper == nullptr || context->properties == nullptr || value == nullptr || size == 0) {
     return kLv2StateErrUnknown;
   }
-  if (!isPortablePodState(flags)) {
-    return kLv2StateErrBadFlags;
-  }
   if (size > kMaxWorkerStatePropertyBytes ||
       context->totalValueBytes + size > kMaxWorkerStateBytes / 2 ||
       context->properties->size() >= kMaxWorkerStateProperties) {
@@ -547,6 +822,19 @@ LV2_State_Status storeLv2StateProperty(
   const char* typeUri = context->mapper->unmap(type);
   if (keyUri == nullptr || typeUri == nullptr || !isValidStateUri(keyUri) || !isValidStateUri(typeUri)) {
     return kLv2StateErrBadType;
+  }
+  if (type == kUridAtomPath) {
+    if ((flags & kLv2StateIsPod) == 0 || (flags & kLv2StateIsNative) != 0 ||
+        context->fileBroker == nullptr || context->files == nullptr) {
+      return kLv2StateErrBadFlags;
+    }
+    const auto abstractPath = statePathValueToString(value, size);
+    if (abstractPath.empty() ||
+        !context->fileBroker->recordFile(abstractPath, *context->files, context->totalFileBytes)) {
+      return kLv2StateErrNoSpace;
+    }
+  } else if (!isPortablePodState(flags)) {
+    return kLv2StateErrBadFlags;
   }
 
   auto* bytes = static_cast<const std::uint8_t*>(value);
@@ -1213,12 +1501,18 @@ private:
       const auto& port = ports_[portIndex];
       state << "p " << port.index << " " << sanitizeStateValue(port.value) << "\n";
     }
-    for (const auto& property : extensionStateProperties()) {
+    const auto extensionState = extensionStateProperties();
+    for (const auto& property : extensionState.properties) {
       state << "s "
             << stateStringToBase64(property.keyUri) << " "
             << stateStringToBase64(property.typeUri) << " "
             << property.flags << " "
             << base64Encode(property.value.data(), property.value.size()) << "\n";
+    }
+    for (const auto& file : extensionState.files) {
+      state << "f "
+            << stateStringToBase64(file.abstractPath) << " "
+            << base64Encode(file.value.data(), file.value.size()) << "\n";
     }
     const auto text = state.str();
     if (text.size() > kMaxWorkerStateBytes) {
@@ -1245,7 +1539,9 @@ private:
 
     std::size_t restored = 0;
     std::size_t totalExtensionBytes = 0;
+    std::size_t totalFileBytes = 0;
     std::vector<Lv2RestoredStateProperty> extensionProperties;
+    std::vector<Lv2StateFile> extensionFiles;
     while (std::getline(lines, line)) {
       if (line.empty()) {
         continue;
@@ -1298,9 +1594,31 @@ private:
         extensionProperties.push_back(Lv2RestoredStateProperty{key, type, flags, std::move(value)});
         continue;
       }
+      if (prefix == "f") {
+        std::string pathText;
+        std::string valueText;
+        entry >> pathText;
+        entry >> valueText;
+        std::string extra;
+        entry >> extra;
+        if (!extra.empty() || extensionFiles.size() >= kMaxWorkerStateFiles) {
+          throw std::runtime_error("invalid_lv2_state");
+        }
+        auto abstractPath = base64ToStateString(pathText, kMaxWorkerStatePathBytes);
+        auto value = base64Decode(valueText, kMaxWorkerStateFileBytes);
+        if (abstractPath.empty() || value.empty()) {
+          throw std::runtime_error("invalid_lv2_state");
+        }
+        totalFileBytes += value.size();
+        if (totalFileBytes > kMaxWorkerStateFileTotalBytes) {
+          throw std::runtime_error("state_too_large");
+        }
+        extensionFiles.push_back(Lv2StateFile{std::move(abstractPath), std::move(value)});
+        continue;
+      }
       throw std::runtime_error("invalid_lv2_state");
     }
-    restoreExtensionState(extensionProperties);
+    restoreExtensionState(extensionProperties, extensionFiles);
   }
 
   void restoreControlStateLines(std::stringstream& lines) {
@@ -1350,18 +1668,37 @@ private:
     }
   }
 
-  std::vector<Lv2StateProperty> extensionStateProperties() {
-    std::vector<Lv2StateProperty> properties;
+  Lv2SavedExtensionState extensionStateProperties() {
+    Lv2SavedExtensionState savedState;
     if (stateInterface_ == nullptr || stateInterface_->save == nullptr || handle_ == nullptr) {
-      return properties;
+      return savedState;
     }
 
+    Lv2StateFileBroker fileBroker;
     LV2_URID_Map uridMap {&uridMapper_, &mapLv2Urid};
     LV2_URID_Unmap uridUnmap {&uridMapper_, &unmapLv2Urid};
+    LV2_State_Map_Path mapPath {&fileBroker, &abstractLv2StatePath, &absoluteLv2StatePath};
+    LV2_State_Make_Path makePath {&fileBroker, &makeLv2StatePath};
+    LV2_State_Free_Path freePath {&fileBroker, &freeLv2StatePath};
     LV2_Feature uridMapFeature {kLv2UridMapUri, &uridMap};
     LV2_Feature uridUnmapFeature {kLv2UridUnmapUri, &uridUnmap};
-    const LV2_Feature* const features[] = {&uridMapFeature, &uridUnmapFeature, nullptr};
-    Lv2StateSaveContext context {&uridMapper_, &properties, 0};
+    LV2_Feature mapPathFeature {kLv2StateMapPathUri, &mapPath};
+    LV2_Feature makePathFeature {kLv2StateMakePathUri, &makePath};
+    LV2_Feature freePathFeature {kLv2StateFreePathUri, &freePath};
+    const LV2_Feature* const features[] = {
+        &uridMapFeature,
+        &uridUnmapFeature,
+        &mapPathFeature,
+        &makePathFeature,
+        &freePathFeature,
+        nullptr};
+    Lv2StateSaveContext context {
+        &uridMapper_,
+        &savedState.properties,
+        &savedState.files,
+        &fileBroker,
+        0,
+        0};
     const auto status = stateInterface_->save(
         handle_,
         &storeLv2StateProperty,
@@ -1371,22 +1708,37 @@ private:
     if (status != kLv2StateSuccess) {
       throw std::runtime_error("lv2_state_save_failed");
     }
-    return properties;
+    return savedState;
   }
 
-  void restoreExtensionState(const std::vector<Lv2RestoredStateProperty>& properties) {
-    if (properties.empty()) {
+  void restoreExtensionState(
+      const std::vector<Lv2RestoredStateProperty>& properties,
+      const std::vector<Lv2StateFile>& files) {
+    if (properties.empty() && files.empty()) {
       return;
     }
     if (stateInterface_ == nullptr || stateInterface_->restore == nullptr || handle_ == nullptr) {
       throw std::runtime_error("lv2_state_extension_unavailable");
     }
 
+    Lv2StateFileBroker fileBroker;
+    if (!fileBroker.materializeFiles(files)) {
+      throw std::runtime_error("lv2_state_file_restore_failed");
+    }
     LV2_URID_Map uridMap {&uridMapper_, &mapLv2Urid};
     LV2_URID_Unmap uridUnmap {&uridMapper_, &unmapLv2Urid};
+    LV2_State_Map_Path mapPath {&fileBroker, &abstractLv2StatePath, &absoluteLv2StatePath};
+    LV2_State_Free_Path freePath {&fileBroker, &freeLv2StatePath};
     LV2_Feature uridMapFeature {kLv2UridMapUri, &uridMap};
     LV2_Feature uridUnmapFeature {kLv2UridUnmapUri, &uridUnmap};
-    const LV2_Feature* const features[] = {&uridMapFeature, &uridUnmapFeature, nullptr};
+    LV2_Feature mapPathFeature {kLv2StateMapPathUri, &mapPath};
+    LV2_Feature freePathFeature {kLv2StateFreePathUri, &freePath};
+    const LV2_Feature* const features[] = {
+        &uridMapFeature,
+        &uridUnmapFeature,
+        &mapPathFeature,
+        &freePathFeature,
+        nullptr};
     Lv2StateRestoreContext context {&properties};
     const bool reactivate = activated_ && descriptor_->deactivate != nullptr && descriptor_->activate != nullptr;
     if (reactivate) {
@@ -1870,7 +2222,7 @@ bool lv2HostWorkerAvailable() {
 
 std::string lv2HostWorkerStatus() {
 #ifndef _WIN32
-  return "Basic LV2 audio/control host worker is available with bounded atom MIDI and portable POD state delivery; LV2 file-backed state, worker, and UI extensions remain disabled.";
+  return "Basic LV2 audio/control host worker is available with bounded atom MIDI and brokered portable/file-backed state delivery; LV2 worker and UI extensions remain disabled.";
 #else
   return "LV2 host worker is not available on this platform build.";
 #endif

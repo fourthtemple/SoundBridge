@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <string>
 
 namespace {
 
@@ -30,6 +32,9 @@ struct LV2_Descriptor {
 
 using LV2_URID = std::uint32_t;
 using LV2_URID_Map_Handle = void*;
+using LV2_State_Free_Path_Handle = void*;
+using LV2_State_Map_Path_Handle = void*;
+using LV2_State_Make_Path_Handle = void*;
 
 struct LV2_URID_Map {
   LV2_URID_Map_Handle handle;
@@ -67,6 +72,22 @@ struct LV2_State_Interface {
       const LV2_Feature* const* features);
 };
 
+struct LV2_State_Map_Path {
+  LV2_State_Map_Path_Handle handle;
+  char* (*abstract_path)(LV2_State_Map_Path_Handle handle, const char* absolutePath);
+  char* (*absolute_path)(LV2_State_Map_Path_Handle handle, const char* abstractPath);
+};
+
+struct LV2_State_Make_Path {
+  LV2_State_Make_Path_Handle handle;
+  char* (*path)(LV2_State_Make_Path_Handle handle, const char* path);
+};
+
+struct LV2_State_Free_Path {
+  LV2_State_Free_Path_Handle handle;
+  void (*free_path)(LV2_State_Free_Path_Handle handle, char* path);
+};
+
 struct LV2_Atom {
   std::uint32_t size;
   LV2_URID type;
@@ -94,8 +115,13 @@ struct LV2_Atom_Event {
 
 constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
 constexpr const char* kLv2AtomFloatUri = "http://lv2plug.in/ns/ext/atom#Float";
+constexpr const char* kLv2AtomPathUri = "http://lv2plug.in/ns/ext/atom#Path";
 constexpr const char* kLv2MidiEventUri = "http://lv2plug.in/ns/ext/midi#MidiEvent";
+constexpr const char* kLv2StateFreePathUri = "http://lv2plug.in/ns/ext/state#freePath";
 constexpr const char* kLv2StateInterfaceUri = "http://lv2plug.in/ns/ext/state#interface";
+constexpr const char* kLv2StateMakePathUri = "http://lv2plug.in/ns/ext/state#makePath";
+constexpr const char* kLv2StateMapPathUri = "http://lv2plug.in/ns/ext/state#mapPath";
+constexpr const char* kMidiGainFileStateUri = "urn:soundbridge:example:lv2-gain#midiGainFile";
 constexpr const char* kMidiGainStateUri = "urn:soundbridge:example:lv2-gain#midiGain";
 constexpr std::uint32_t kLv2StateSuccess = 0;
 constexpr std::uint32_t kLv2StateErrBadType = 2;
@@ -120,8 +146,10 @@ struct GainPlugin {
   float* outputRight = nullptr;
   const LV2_Atom_Sequence* midiIn = nullptr;
   LV2_URID midiEventUrid = 0;
+  LV2_URID midiGainFileKeyUrid = 0;
   LV2_URID midiGainKeyUrid = 0;
   LV2_URID atomFloatUrid = 0;
+  LV2_URID atomPathUrid = 0;
   float midiGain = 1.0F;
 };
 
@@ -144,8 +172,10 @@ LV2_Handle instantiate(
       auto* uridMap = static_cast<const LV2_URID_Map*>((*feature)->data);
       if (uridMap->map != nullptr) {
         plugin->midiEventUrid = uridMap->map(uridMap->handle, kLv2MidiEventUri);
+        plugin->midiGainFileKeyUrid = uridMap->map(uridMap->handle, kMidiGainFileStateUri);
         plugin->midiGainKeyUrid = uridMap->map(uridMap->handle, kMidiGainStateUri);
         plugin->atomFloatUrid = uridMap->map(uridMap->handle, kLv2AtomFloatUri);
+        plugin->atomPathUrid = uridMap->map(uridMap->handle, kLv2AtomPathUri);
       }
     }
   }
@@ -219,24 +249,116 @@ void run(LV2_Handle instance, std::uint32_t sampleCount) {
   }
 }
 
+const LV2_State_Map_Path* stateMapPathFeature(const LV2_Feature* const* features) {
+  if (features == nullptr) {
+    return nullptr;
+  }
+  for (const LV2_Feature* const* feature = features; *feature != nullptr; ++feature) {
+    if ((*feature)->URI != nullptr && (*feature)->data != nullptr &&
+        std::strcmp((*feature)->URI, kLv2StateMapPathUri) == 0) {
+      return static_cast<const LV2_State_Map_Path*>((*feature)->data);
+    }
+  }
+  return nullptr;
+}
+
+const LV2_State_Make_Path* stateMakePathFeature(const LV2_Feature* const* features) {
+  if (features == nullptr) {
+    return nullptr;
+  }
+  for (const LV2_Feature* const* feature = features; *feature != nullptr; ++feature) {
+    if ((*feature)->URI != nullptr && (*feature)->data != nullptr &&
+        std::strcmp((*feature)->URI, kLv2StateMakePathUri) == 0) {
+      return static_cast<const LV2_State_Make_Path*>((*feature)->data);
+    }
+  }
+  return nullptr;
+}
+
+const LV2_State_Free_Path* stateFreePathFeature(const LV2_Feature* const* features) {
+  if (features == nullptr) {
+    return nullptr;
+  }
+  for (const LV2_Feature* const* feature = features; *feature != nullptr; ++feature) {
+    if ((*feature)->URI != nullptr && (*feature)->data != nullptr &&
+        std::strcmp((*feature)->URI, kLv2StateFreePathUri) == 0) {
+      return static_cast<const LV2_State_Free_Path*>((*feature)->data);
+    }
+  }
+  return nullptr;
+}
+
+void freeStatePath(const LV2_State_Free_Path* freePath, char* path) {
+  if (freePath != nullptr && freePath->free_path != nullptr && path != nullptr) {
+    freePath->free_path(freePath->handle, path);
+  }
+}
+
 LV2_State_Status saveState(
     LV2_Handle instance,
     LV2_State_Store_Function store,
     LV2_State_Handle handle,
     std::uint32_t /* flags */,
-    const LV2_Feature* const* /* features */) {
+    const LV2_Feature* const* features) {
   auto* plugin = static_cast<GainPlugin*>(instance);
   if (store == nullptr || plugin->midiGainKeyUrid == 0 || plugin->atomFloatUrid == 0) {
     return kLv2StateErrNoFeature;
   }
   const float value = std::clamp(plugin->midiGain, 0.0F, 1.0F);
-  return store(
+  const float fallbackValue = 1.0F;
+  const auto fallbackStatus = store(
       handle,
       plugin->midiGainKeyUrid,
-      &value,
-      sizeof(value),
+      &fallbackValue,
+      sizeof(fallbackValue),
       plugin->atomFloatUrid,
       kLv2StateIsPod | kLv2StateIsPortable);
+  if (fallbackStatus != kLv2StateSuccess) {
+    return fallbackStatus;
+  }
+
+  const auto* mapPath = stateMapPathFeature(features);
+  const auto* makePath = stateMakePathFeature(features);
+  const auto* freePath = stateFreePathFeature(features);
+  if (mapPath == nullptr || mapPath->abstract_path == nullptr || makePath == nullptr || makePath->path == nullptr ||
+      freePath == nullptr || freePath->free_path == nullptr || plugin->midiGainFileKeyUrid == 0 ||
+      plugin->atomPathUrid == 0) {
+    return kLv2StateSuccess;
+  }
+
+  char* absolutePath = makePath->path(makePath->handle, "midi-gain.txt");
+  if (absolutePath == nullptr) {
+    return kLv2StateSuccess;
+  }
+
+  {
+    std::ofstream output(absolutePath, std::ios::binary | std::ios::trunc);
+    if (!output) {
+      freeStatePath(freePath, absolutePath);
+      return kLv2StateSuccess;
+    }
+    output << value << "\n";
+    if (!output) {
+      freeStatePath(freePath, absolutePath);
+      return kLv2StateSuccess;
+    }
+  }
+
+  char* abstractPath = mapPath->abstract_path(mapPath->handle, absolutePath);
+  freeStatePath(freePath, absolutePath);
+  if (abstractPath == nullptr) {
+    return kLv2StateSuccess;
+  }
+
+  const auto pathStatus = store(
+      handle,
+      plugin->midiGainFileKeyUrid,
+      abstractPath,
+      std::strlen(abstractPath) + 1,
+      plugin->atomPathUrid,
+      kLv2StateIsPod | kLv2StateIsPortable);
+  freeStatePath(freePath, abstractPath);
+  return pathStatus;
 }
 
 LV2_State_Status restoreState(
@@ -244,7 +366,7 @@ LV2_State_Status restoreState(
     LV2_State_Retrieve_Function retrieve,
     LV2_State_Handle handle,
     std::uint32_t /* flags */,
-    const LV2_Feature* const* /* features */) {
+    const LV2_Feature* const* features) {
   auto* plugin = static_cast<GainPlugin*>(instance);
   if (retrieve == nullptr || plugin->midiGainKeyUrid == 0 || plugin->atomFloatUrid == 0) {
     return kLv2StateErrNoFeature;
@@ -264,6 +386,39 @@ LV2_State_Status restoreState(
   float restored = 1.0F;
   std::memcpy(&restored, value, sizeof(restored));
   plugin->midiGain = std::clamp(restored, 0.0F, 1.0F);
+
+  const auto* mapPath = stateMapPathFeature(features);
+  const auto* freePath = stateFreePathFeature(features);
+  if (mapPath == nullptr || mapPath->absolute_path == nullptr || freePath == nullptr ||
+      freePath->free_path == nullptr || plugin->midiGainFileKeyUrid == 0 || plugin->atomPathUrid == 0) {
+    return kLv2StateSuccess;
+  }
+
+  size = 0;
+  type = 0;
+  flags = 0;
+  const auto* pathValue = retrieve(handle, plugin->midiGainFileKeyUrid, &size, &type, &flags);
+  if (pathValue == nullptr) {
+    return kLv2StateSuccess;
+  }
+  if (size == 0 || type != plugin->atomPathUrid || (flags & kLv2StateIsPod) == 0 ||
+      std::memchr(pathValue, '\0', size) == nullptr) {
+    return kLv2StateErrBadType;
+  }
+
+  char* absolutePath = mapPath->absolute_path(mapPath->handle, static_cast<const char*>(pathValue));
+  if (absolutePath == nullptr) {
+    return kLv2StateSuccess;
+  }
+  std::ifstream input(absolutePath, std::ios::binary);
+  if (input) {
+    float fileValue = 1.0F;
+    input >> fileValue;
+    if (input) {
+      plugin->midiGain = std::clamp(fileValue, 0.0F, 1.0F);
+    }
+  }
+  freeStatePath(freePath, absolutePath);
   return kLv2StateSuccess;
 }
 
