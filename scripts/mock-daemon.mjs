@@ -603,34 +603,30 @@ function getPlugin(pluginId) {
 
 async function sendMidiEvents(instanceId, events, session) {
   const instance = getInstance(instanceId, session);
-  if (instance.kind !== "instrument") {
+  const acceptedEvents = normalizeMidiEvents(events, instance.maxBlockSize);
+  const hasNativeMidiWorker =
+    typeof instance.renderEngine === "string" &&
+    instance.renderEngine.startsWith("native-") &&
+    instance.worker &&
+    typeof instance.worker.sendMidiEvents === "function";
+  if (instance.kind !== "instrument" && !hasNativeMidiWorker) {
     return {
       accepted: false,
       eventCount: 0
     };
   }
 
-  const acceptedEvents = Array.isArray(events) ? events.slice(0, MAX_MIDI_EVENTS_PER_REQUEST) : [];
   for (const event of acceptedEvents) {
-    if (!event || typeof event !== "object") {
-      continue;
-    }
-
-    const note = Math.max(0, Math.min(127, Math.round(Number(event.note))));
-    if (!Number.isFinite(note)) {
-      continue;
-    }
-
-    if (event.type === "noteOn" && Number(event.velocity ?? 0) > 0) {
-      instance.voices.set(note, {
-        note,
-        frequency: midiNoteToFrequency(note),
-        velocity: clamp01(Number(event.velocity ?? 0.8)),
+    if (instance.kind === "instrument" && event.type === "noteOn" && event.velocity > 0) {
+      instance.voices.set(event.note, {
+        note: event.note,
+        frequency: midiNoteToFrequency(event.note),
+        velocity: event.velocity,
         phase: 0,
         phase2: 0
       });
-    } else if (event.type === "noteOff" || event.type === "noteOn") {
-      instance.voices.delete(note);
+    } else if (instance.kind === "instrument" && (event.type === "noteOff" || event.type === "noteOn")) {
+      instance.voices.delete(event.note);
     }
   }
 
@@ -780,19 +776,10 @@ class ExampleInstrumentWorker {
 
   async sendMidiEvents(events) {
     for (const event of events) {
-      if (!event || typeof event !== "object") {
-        continue;
-      }
-
-      const note = Math.max(0, Math.min(127, Math.round(Number(event.note))));
-      if (!Number.isFinite(note)) {
-        continue;
-      }
-
-      if (event.type === "noteOn" && Number(event.velocity ?? 0) > 0) {
-        await this.request(`noteOn ${note} ${clamp01(Number(event.velocity ?? 0.8))}`);
+      if (event.type === "noteOn" && event.velocity > 0) {
+        await this.request(`noteOn ${event.note} ${event.velocity} ${event.channel} ${event.time}`);
       } else if (event.type === "noteOff" || event.type === "noteOn") {
-        await this.request(`noteOff ${note}`);
+        await this.request(`noteOff ${event.note} ${event.velocity} ${event.channel} ${event.time}`);
       }
     }
   }
@@ -927,20 +914,16 @@ class NativeHostWorker {
   }
 
   async sendMidiEvents(events) {
+    if (this.nativeHost.format === "vst3") {
+      await this.request(`midi ${encodeMidiEvents(events)}`);
+      return;
+    }
+
     for (const event of events) {
-      if (!event || typeof event !== "object") {
-        continue;
-      }
-
-      const note = Math.max(0, Math.min(127, Math.round(Number(event.note))));
-      if (!Number.isFinite(note)) {
-        continue;
-      }
-
-      if (event.type === "noteOn" && Number(event.velocity ?? 0) > 0) {
-        await this.request(`noteOn ${note} ${clamp01(Number(event.velocity ?? 0.8))}`);
+      if (event.type === "noteOn" && event.velocity > 0) {
+        await this.request(`noteOn ${event.note} ${event.velocity} ${event.channel} ${event.time}`);
       } else if (event.type === "noteOff" || event.type === "noteOn") {
-        await this.request(`noteOff ${note}`);
+        await this.request(`noteOff ${event.note} ${event.velocity} ${event.channel} ${event.time}`);
       }
     }
   }
@@ -1756,6 +1739,60 @@ function encodeAudioChannels(channels, frames) {
     .join("|");
 }
 
+function encodeMidiEvents(events) {
+  if (!Array.isArray(events) || events.length === 0) {
+    return "-";
+  }
+
+  return events
+    .map((event) => {
+      const type = event.type === "noteOn" && event.velocity > 0 ? "on" : "off";
+      return [type, event.note, event.velocity, event.channel, event.time].join(":");
+    })
+    .join(";");
+}
+
+function normalizeMidiEvents(events, maxBlockSize) {
+  if (events == null) {
+    return [];
+  }
+  if (!Array.isArray(events)) {
+    throw protocolError("invalid_argument", "events must be an array.");
+  }
+  if (events.length > MAX_MIDI_EVENTS_PER_REQUEST) {
+    throw protocolError("invalid_argument", `events must contain at most ${MAX_MIDI_EVENTS_PER_REQUEST} MIDI events.`, {
+      maxMidiEventsPerRequest: MAX_MIDI_EVENTS_PER_REQUEST
+    });
+  }
+
+  return events.map((event, index) => {
+    if (!event || typeof event !== "object") {
+      throw protocolError("invalid_argument", `events[${index}] must be an object.`);
+    }
+    if (event.type !== "noteOn" && event.type !== "noteOff") {
+      throw protocolError("invalid_argument", `events[${index}].type must be noteOn or noteOff.`);
+    }
+
+    const note = requireIntInRange(event.note, 0, 127, `events[${index}].note`);
+    const channel = requireIntInRange(event.channel ?? 0, 0, 15, `events[${index}].channel`);
+    const velocity = requireNumberInRange(
+      event.velocity ?? (event.type === "noteOn" ? 0.8 : 0),
+      0,
+      1,
+      `events[${index}].velocity`
+    );
+    const maxOffset = Math.max(0, Math.min(MAX_BLOCK_SIZE, Number(maxBlockSize) || MAX_BLOCK_SIZE) - 1);
+    const time = requireIntInRange(event.time ?? 0, 0, maxOffset, `events[${index}].time`);
+    return {
+      type: event.type,
+      note,
+      velocity,
+      channel,
+      time
+    };
+  });
+}
+
 function clonePluginMetadata(plugin) {
   return {
     pluginId: plugin.pluginId,
@@ -1811,6 +1848,16 @@ function requireSampleRate(value, label = "sampleRate") {
   const number = Number(value);
   if (!Number.isFinite(number) || number < MIN_SAMPLE_RATE || number > MAX_SAMPLE_RATE) {
     throw protocolError("invalid_argument", `${label} must be a number in ${MIN_SAMPLE_RATE}..${MAX_SAMPLE_RATE} Hz.`, {
+      value
+    });
+  }
+  return number;
+}
+
+function requireNumberInRange(value, min, max, label) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < min || number > max) {
+    throw protocolError("invalid_argument", `${label} must be a number in ${min}..${max}.`, {
       value
     });
   }

@@ -238,7 +238,7 @@ Block size is bounded: the daemon clamps the frame count to the instance's `maxB
 
 ### `sendMidiEvents`
 
-Sends MIDI-like events to an instrument or MIDI effect instance. The MVP supports note events for example instruments; production hosts should preserve event timestamps and support sample-accurate scheduling.
+Sends MIDI-like events to an instrument, MIDI effect, or native plugin worker that accepts MIDI. The MVP supports bounded note events for example instruments and installed VST3 workers; production hosts should preserve event timestamps and support sample-accurate scheduling.
 
 Request:
 
@@ -261,6 +261,8 @@ Request:
   ]
 }
 ```
+
+`events` is bounded to 4096 items per request. Supported MVP event types are `noteOn` and `noteOff`; `note` is `0..127`, `velocity` is `0..1`, `channel` is `0..15`, and `time` is an integer sample offset into the next render block. Daemons must reject malformed or out-of-range MIDI events before dispatching them to a native worker.
 
 Response:
 

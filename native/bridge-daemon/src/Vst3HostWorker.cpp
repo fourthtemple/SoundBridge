@@ -7,6 +7,8 @@
 #include "pluginterfaces/base/funknown.h"
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstcomponent.h"
+#include "pluginterfaces/vst/ivstevents.h"
+#include "public.sdk/source/vst/hosting/eventlist.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
 #include "public.sdk/source/vst/hosting/module.h"
 #endif
@@ -20,6 +22,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace soundbridge {
@@ -32,9 +35,18 @@ namespace {
 // The parent daemon enforces its own caps, but the worker must not trust it.
 constexpr std::uint32_t kMaxWorkerFrames = 8192;
 constexpr std::uint32_t kMaxWorkerChannels = 32;
+constexpr std::size_t kMaxWorkerMidiEvents = 4096;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
+
+struct PendingMidiEvent {
+  bool noteOn = true;
+  std::uint8_t note = 60;
+  float velocity = 0.8F;
+  std::uint8_t channel = 0;
+  std::uint32_t sampleOffset = 0;
+};
 
 float sanitizeSample(const std::string& text) {
   char* end = nullptr;
@@ -72,6 +84,20 @@ bool parseSampleRateArg(const char* text, double& out) {
   return true;
 }
 
+bool parseDoubleArg(const char* text, double minValue, double maxValue, double& out) {
+  if (text == nullptr || *text == '\0') {
+    return false;
+  }
+  char* end = nullptr;
+  const double value = std::strtod(text, &end);
+  if (end == text || *end != '\0' || !std::isfinite(value) ||
+      value < minValue || value > maxValue) {
+    return false;
+  }
+  out = value;
+  return true;
+}
+
 std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::uint32_t frames) {
   frames = std::clamp<std::uint32_t>(frames, 1, kMaxWorkerFrames);
   if (encoded.empty() || encoded == "-") {
@@ -97,6 +123,93 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
     channels.push_back(std::move(channel));
   }
   return channels;
+}
+
+bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
+  std::vector<std::string> parts;
+  std::stringstream stream(token);
+  std::string part;
+  while (std::getline(stream, part, ':')) {
+    parts.push_back(part);
+  }
+  if (parts.size() != 5) {
+    return false;
+  }
+
+  if (parts[0] == "on") {
+    event.noteOn = true;
+  } else if (parts[0] == "off") {
+    event.noteOn = false;
+  } else {
+    return false;
+  }
+
+  std::uint32_t note = 60;
+  std::uint32_t channel = 0;
+  std::uint32_t sampleOffset = 0;
+  double velocity = event.noteOn ? 0.8 : 0.0;
+  if (!parseUint32Arg(parts[1].c_str(), 0, 127, note) ||
+      !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, velocity) ||
+      !parseUint32Arg(parts[3].c_str(), 0, 15, channel) ||
+      !parseUint32Arg(parts[4].c_str(), 0, kMaxWorkerFrames - 1, sampleOffset)) {
+    return false;
+  }
+
+  event.note = static_cast<std::uint8_t>(note);
+  event.velocity = static_cast<float>(velocity);
+  event.channel = static_cast<std::uint8_t>(channel);
+  event.sampleOffset = sampleOffset;
+  return true;
+}
+
+bool parseMidiEvents(const std::string& encoded, std::vector<PendingMidiEvent>& events) {
+  events.clear();
+  if (encoded.empty() || encoded == "-") {
+    return true;
+  }
+
+  std::stringstream stream(encoded);
+  std::string token;
+  while (std::getline(stream, token, ';')) {
+    if (token.empty()) {
+      continue;
+    }
+    if (events.size() >= kMaxWorkerMidiEvents) {
+      return false;
+    }
+    PendingMidiEvent event;
+    if (!parseMidiEventToken(token, event)) {
+      return false;
+    }
+    events.push_back(event);
+  }
+  return true;
+}
+
+Steinberg::Vst::Event makeVst3Event(const PendingMidiEvent& pending, std::uint32_t frames) {
+  Steinberg::Vst::Event event {};
+  event.busIndex = 0;
+  event.sampleOffset = static_cast<Steinberg::int32>(
+      std::clamp<std::uint32_t>(pending.sampleOffset, 0, frames > 0 ? frames - 1 : 0));
+  event.ppqPosition = 0.0;
+  event.flags = Steinberg::Vst::Event::kIsLive;
+  if (pending.noteOn && pending.velocity > 0.0F) {
+    event.type = Steinberg::Vst::Event::kNoteOnEvent;
+    event.noteOn.channel = static_cast<Steinberg::int16>(pending.channel);
+    event.noteOn.pitch = static_cast<Steinberg::int16>(pending.note);
+    event.noteOn.tuning = 0.0F;
+    event.noteOn.velocity = std::clamp(pending.velocity, 0.0F, 1.0F);
+    event.noteOn.length = 0;
+    event.noteOn.noteId = -1;
+  } else {
+    event.type = Steinberg::Vst::Event::kNoteOffEvent;
+    event.noteOff.channel = static_cast<Steinberg::int16>(pending.channel);
+    event.noteOff.pitch = static_cast<Steinberg::int16>(pending.note);
+    event.noteOff.velocity = std::clamp(pending.velocity, 0.0F, 1.0F);
+    event.noteOff.noteId = -1;
+    event.noteOff.tuning = 0.0F;
+  }
+  return event;
 }
 
 void checkResult(Steinberg::tresult result, const std::string& operation) {
@@ -236,7 +349,7 @@ public:
     outputBus.silenceFlags = 0;
     outputBus.channelBuffers32 = outputPointers.empty() ? nullptr : outputPointers.data();
 
-    Steinberg::Vst::ProcessData processData;
+    Steinberg::Vst::ProcessData processData {};
     processData.processMode = Steinberg::Vst::kRealtime;
     processData.symbolicSampleSize = Steinberg::Vst::kSample32;
     processData.numSamples = static_cast<Steinberg::int32>(frames);
@@ -244,10 +357,32 @@ public:
     processData.numOutputs = outputChannels_ > 0 ? 1 : 0;
     processData.inputs = inputChannels_ > 0 ? &inputBus : nullptr;
     processData.outputs = outputChannels_ > 0 ? &outputBus : nullptr;
+    auto midiEvents = std::move(pendingMidiEvents_);
+    pendingMidiEvents_.clear();
+    std::stable_sort(midiEvents.begin(), midiEvents.end(), [](const auto& left, const auto& right) {
+      return left.sampleOffset < right.sampleOffset;
+    });
+    Steinberg::Vst::EventList inputEvents(static_cast<Steinberg::int32>(midiEvents.size()));
+    for (const auto& midiEvent : midiEvents) {
+      auto vstEvent = makeVst3Event(midiEvent, frames);
+      inputEvents.addEvent(vstEvent);
+    }
+    processData.inputEvents = inputEvents.getEventCount() > 0 ? &inputEvents : nullptr;
+    processData.outputEvents = nullptr;
 
     checkResult(processor_->process(processData), "IAudioProcessor::process");
     sampleTime_ += frames;
     return outputChannels;
+  }
+
+  void enqueueMidiEvents(std::vector<PendingMidiEvent> events) {
+    if (events.empty()) {
+      return;
+    }
+    if (pendingMidiEvents_.size() + events.size() > kMaxWorkerMidiEvents) {
+      throw std::runtime_error("too_many_queued_midi_events");
+    }
+    pendingMidiEvents_.insert(pendingMidiEvents_.end(), events.begin(), events.end());
   }
 
 private:
@@ -316,6 +451,7 @@ private:
   std::uint32_t outputChannels_ = 2;
   Steinberg::int32 inputBusCount_ = 0;
   Steinberg::int32 outputBusCount_ = 0;
+  std::vector<PendingMidiEvent> pendingMidiEvents_;
   double sampleTime_ = 0.0;
   bool initialized_ = false;
   bool active_ = false;
@@ -359,7 +495,35 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
 
       try {
         if (command == "noteOn" || command == "noteOff") {
+          int note = 60;
+          double velocity = command == "noteOn" ? 0.8 : 0.0;
+          int channel = 0;
+          int sampleOffset = 0;
+          stream >> note >> velocity >> channel >> sampleOffset;
+          if (!std::isfinite(velocity)) {
+            velocity = 0.0;
+          }
+          PendingMidiEvent event;
+          event.noteOn = command == "noteOn" && velocity > 0.0;
+          event.note = static_cast<std::uint8_t>(std::clamp(note, 0, 127));
+          event.velocity = static_cast<float>(std::clamp(velocity, 0.0, 1.0));
+          event.channel = static_cast<std::uint8_t>(std::clamp(channel, 0, 15));
+          event.sampleOffset = static_cast<std::uint32_t>(std::clamp(sampleOffset, 0, static_cast<int>(kMaxWorkerFrames - 1)));
+          host.enqueueMidiEvents({event});
           std::cout << "{\"ok\":true}" << std::endl;
+          continue;
+        }
+
+        if (command == "midi") {
+          std::string encodedEvents;
+          stream >> encodedEvents;
+          std::vector<PendingMidiEvent> events;
+          if (!parseMidiEvents(encodedEvents, events)) {
+            std::cout << "{\"error\":\"invalid_midi_events\"}" << std::endl;
+            continue;
+          }
+          host.enqueueMidiEvents(events);
+          std::cout << "{\"ok\":true,\"eventCount\":" << events.size() << "}" << std::endl;
           continue;
         }
 

@@ -46,4 +46,4 @@ Hosts should:
 - The mock plugin is a gain effect.
 - The demo uses a `MessagePort` queue between main thread and AudioWorklet for compatibility.
 - Installed VST3 audio effects can instantiate and render when the Steinberg SDK worker is linked; installed Audio Units can instantiate and render through the CoreAudio worker; LV2 binary hosting still needs a per-format host adapter.
-- The website-playable VST3/AU/LV2 instruments are repo-local example bundles rendered by the native example renderer; full MIDI event lists, parameter enumeration, state, latency, bus negotiation, plugin UI, and brokered filesystem access are still security-sensitive native milestones.
+- The website-playable VST3/AU/LV2 instruments are repo-local example bundles rendered by the native example renderer; broader MIDI event types, parameter enumeration, state, latency, bus negotiation, plugin UI, and brokered filesystem access are still security-sensitive native milestones.

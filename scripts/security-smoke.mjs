@@ -136,7 +136,33 @@ async function run() {
   );
   check(Math.abs(processed.channels[0][0]) > 0.1, "gain at 0.75 boosts the signal (happy path intact)");
 
-  // I. Cross-session instance access is still denied.
+  // I. MIDI input is bounded even when the target plugin is not MIDI-capable.
+  const tooManyMidiEvents = Array.from({ length: 4097 }, () => ({ type: "noteOn", note: 60, velocity: 0.8 }));
+  const midiTooLarge = await request(
+    main,
+    "sendMidiEvents",
+    { instanceId: created.instanceId, events: tooManyMidiEvents },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(midiTooLarge.code === "invalid_argument", "sendMidiEvents rejects oversized MIDI batches");
+
+  const midiBadChannel = await request(
+    main,
+    "sendMidiEvents",
+    { instanceId: created.instanceId, events: [{ type: "noteOn", note: 60, velocity: 0.8, channel: 99 }] },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(midiBadChannel.code === "invalid_argument", "sendMidiEvents rejects out-of-range MIDI fields");
+
+  // J. Cross-session instance access is still denied.
   const other = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
   const otherPair = await request(other, "pair", { origin: ORIGIN, pairingToken: TOKEN }, false);
   const denied = await request(

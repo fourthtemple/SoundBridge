@@ -175,6 +175,23 @@ const nativeVst3Instance = await request(
   pair.sessionToken
 );
 const vst3Input = Array.from({ length: 128 }, (_, index) => Math.sin(index / 8));
+const nativeVst3Midi = await request(
+  socket,
+  "sendMidiEvents",
+  {
+    instanceId: nativeVst3Instance.instanceId,
+    events: [
+      { type: "noteOn", note: 64, velocity: 0.5, channel: 0, time: 0 },
+      { type: "noteOff", note: 64, velocity: 0, channel: 0, time: 64 }
+    ]
+  },
+  true,
+  pair.sessionToken
+);
+assert(
+  nativeVst3Midi.accepted === true && nativeVst3Midi.eventCount === 2,
+  "installed VST3 host worker accepts bounded MIDI event lists"
+);
 const nativeVst3Block = await request(
   socket,
   "processAudioBlock",
