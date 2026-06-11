@@ -121,18 +121,24 @@ async function assertParameterStateRoundTrip(page, format) {
 async function assertPresetApply(page, format) {
   await page.waitForFunction(() => document.querySelectorAll("#presetSelect option").length >= 2);
   await page.locator("#presetSelect").selectOption({ index: 1 });
-  const preset = await page.locator("#presetSelect option").nth(1).evaluate((option) => ({
-    name: option.textContent ?? "",
-    parameters: JSON.parse(option.dataset.parameters ?? "{}")
-  }));
+  const presetName = await page.locator("#presetSelect option").nth(1).textContent();
+  const presetParameterDataset = await page.locator("#presetSelect option").nth(1).getAttribute("data-parameters");
+  assert(presetParameterDataset === null, `${format} preset option does not expose a browser-side parameter map.`);
+  await setSliderValue(page, "gain", "0.1");
   await page.getByRole("button", { name: "Apply Preset" }).click();
   await page.waitForFunction(
-    ({ expected }) => document.querySelector('.parameter-row[data-parameter-id="gain"] input[type="range"]')?.value === expected,
-    { expected: String(preset.parameters.gain) },
+    () => {
+      const value = document.querySelector('.parameter-row[data-parameter-id="gain"] input[type="range"]')?.value;
+      return value !== undefined && value !== "0.1";
+    },
+    undefined,
     { timeout: 3000 }
   );
   const logText = await page.locator("#log").evaluate((element) => element.value || element.textContent || "");
-  assert(logText === `Preset applied: ${preset.name}`, `${format} preset applied through browser UI.`);
+  assert(
+    logText.startsWith(`Preset applied: ${presetName}`) && /\(\d+ parameters?\)$/.test(logText),
+    `${format} preset applied through browser UI by daemon preset id.`
+  );
 }
 
 async function setSliderValue(page, parameterId, value) {

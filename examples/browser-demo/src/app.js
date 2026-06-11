@@ -489,7 +489,6 @@ function updatePresetControls() {
     const option = document.createElement("option");
     option.value = preset.id;
     option.textContent = preset.name;
-    option.dataset.parameters = JSON.stringify(preset.parameters ?? {});
     elements.presetSelect.append(option);
   }
 
@@ -544,10 +543,7 @@ async function applySelectedPreset() {
 
   try {
     await ensureBridgeInstance();
-    const entries = Object.entries(preset.parameters ?? {});
-    for (const [parameterId, normalizedValue] of entries) {
-      await client.setParameter(selectedInstanceId, parameterId, normalizedValue);
-    }
+    const applied = await client.setPreset(selectedInstanceId, preset.id);
     const { parameters } = await client.getParameters(selectedInstanceId);
     renderParameterControls({
       container: elements.parameterControls,
@@ -555,7 +551,7 @@ async function applySelectedPreset() {
       instanceId: selectedInstanceId,
       parameters
     });
-    log(`Preset applied: ${preset.name}`);
+    log(`Preset applied: ${preset.name} (${applied.parameterCount} parameter${applied.parameterCount === 1 ? "" : "s"})`);
   } catch (error) {
     logError(error);
   }

@@ -95,6 +95,10 @@ Then create a plugin instance and put it in your Web Audio graph:
   const negotiatedInputChannels = created.layout?.inputChannels ?? inputChannels;
   const negotiatedOutputChannels = created.layout?.outputChannels ?? outputChannels;
 
+  if (plugin.presets?.[0]) {
+    await client.setPreset(instanceId, plugin.presets[0].id);
+  }
+
   const pluginNode = await SoundBridgeAudioNode.create(audioContext, client, {
     instanceId,
     inputChannels: negotiatedInputChannels,
