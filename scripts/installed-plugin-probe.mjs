@@ -143,6 +143,17 @@ async function probePlugin(socket, session, plugin) {
     );
     await phase(result, "getTailTime", () => request(socket, "getTailTime", { instanceId }, true, session));
 
+    const midiEvents = midiEventsForBlock();
+    const midiAccepted = await phase(result, "sendMidiEvents", () =>
+      request(socket, "sendMidiEvents", { instanceId, events: midiEvents }, true, session)
+    );
+    if (midiAccepted.accepted !== true || midiAccepted.eventCount !== midiEvents.length) {
+      const error = new Error(`MIDI batch accepted=${midiAccepted.accepted} eventCount=${midiAccepted.eventCount}`);
+      error.code = "bad_midi_result";
+      throw error;
+    }
+    result.midiEventCount = midiAccepted.eventCount;
+
     const renderPayload = renderPayloadForLayout(instanceId, result.layout);
     const rendered = await phase(result, "processAudioBlock", async () => {
       const response = await request(socket, "processAudioBlock", renderPayload, true, session);
@@ -150,6 +161,19 @@ async function probePlugin(socket, session, plugin) {
       return response;
     });
     result.renderedChannels = Array.isArray(rendered.channels) ? rendered.channels.length : 0;
+
+    await phase(result, "sendMidiNoteOff", () =>
+      request(
+        socket,
+        "sendMidiEvents",
+        {
+          instanceId,
+          events: [{ type: "noteOff", note: 60, velocity: 0, channel: 0, time: 0 }]
+        },
+        true,
+        session
+      )
+    );
     result.ok = true;
   } catch (error) {
     result.error = errorSummary(error);
@@ -200,6 +224,17 @@ function renderPayloadForLayout(instanceId, layout) {
     sampleRate: SAMPLE_RATE,
     channels: Array.from({ length: inputChannels }, () => Array(MAX_BLOCK_SIZE).fill(0.05))
   };
+}
+
+function midiEventsForBlock() {
+  const offset = (fraction) => Math.min(MAX_BLOCK_SIZE - 1, Math.max(0, Math.floor(MAX_BLOCK_SIZE * fraction)));
+  return [
+    { type: "noteOn", note: 60, velocity: 0.7, channel: 0, time: 0 },
+    { type: "polyPressure", note: 60, pressure: 0.35, channel: 0, time: offset(0.125) },
+    { type: "controlChange", controller: 1, value: 0.4, channel: 0, time: offset(0.25) },
+    { type: "pitchBend", value: 0.1, channel: 0, time: offset(0.375) },
+    { type: "channelPressure", pressure: 0.3, channel: 0, time: offset(0.5) }
+  ];
 }
 
 function assertRenderMatchesLayout(rendered, layout) {

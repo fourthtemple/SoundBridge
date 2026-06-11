@@ -72,7 +72,7 @@ For installed-plugin compatibility checks, run:
 SOUNDBRIDGE_PROBE_FILTER=Cymatics SOUNDBRIDGE_PROBE_FORMATS=vst3,au npm run probe:installed
 ```
 
-The probe starts a temporary paired loopback daemon with an explicit origin allowlist and runs bounded create, parameter, state, latency, tail, render, and destroy checks against matching installed plugins. It is intended for compatibility evidence and debugging; it does not replace OS-level worker sandboxing.
+The probe starts a temporary paired loopback daemon with an explicit origin allowlist and runs bounded create, parameter, state, latency, tail, MIDI, render, output-bus layout, and destroy checks against matching installed plugins. It is intended for compatibility evidence and debugging; it does not replace OS-level worker sandboxing.
 
 The example bundles live at:
 

@@ -45,6 +45,8 @@ constexpr double kMaxWorkerSampleRate = 384000.0;
 constexpr double kMaxWorkerTransportTempoBpm = 960.0;
 constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
 constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
+// Some AU effects return this for MusicDeviceMIDIEvent instead of a named AudioUnit error.
+constexpr OSStatus kAudioUnitUnimplementedStatus = -4;
 
 struct PendingMidiMessage {
   UInt32 status = 0x90;
@@ -465,7 +467,8 @@ bool isUnsupportedMidiStatus(OSStatus status) {
       status == kAudioUnitErr_InvalidParameter ||
       status == kAudioUnitErr_InvalidElement ||
       status == kAudioUnitErr_InvalidPropertyValue ||
-      status == kAudioUnitErr_InvalidParameterValue;
+      status == kAudioUnitErr_InvalidParameterValue ||
+      status == kAudioUnitUnimplementedStatus;
 }
 
 AudioStreamBasicDescription streamDescription(double sampleRate, std::uint32_t channels) {

@@ -178,7 +178,7 @@ A plugin shows up but you want to verify real hosting:
 SOUNDBRIDGE_PROBE_FILTER=Cymatics SOUNDBRIDGE_PROBE_FORMATS=vst3,au npm run probe:installed
 ```
 
-The installed-plugin probe starts a temporary loopback daemon with a random pairing token and explicit origin allowlist, then runs bounded create/parameter/state/latency/tail/render checks against matching installed plugins. Set `SOUNDBRIDGE_PROBE_FILTER` to a plugin or vendor substring. Leave it empty only when you deliberately want to load every matching installed plugin.
+The installed-plugin probe starts a temporary loopback daemon with a random pairing token and explicit origin allowlist, then runs bounded create, parameter, state, latency, tail, MIDI, render, output-bus layout, and destroy checks against matching installed plugins. Set `SOUNDBRIDGE_PROBE_FILTER` to a plugin or vendor substring. Leave it empty only when you deliberately want to load every matching installed plugin.
 
 Installed VST3s are scanned from:
 
