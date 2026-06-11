@@ -9,6 +9,7 @@
 
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -145,11 +146,16 @@ int main(int argc, char** argv) {
 
     soundbridge::ExampleRenderConfig config;
     config.pluginId = argv[2];
-    config.frames = static_cast<std::uint32_t>(std::stoul(argv[3]));
-    config.sampleRate = std::stod(argv[4]);
-    config.gain = std::stod(argv[5]);
-    config.tone = std::stod(argv[6]);
-    config.detune = std::stod(argv[7]);
+    try {
+      config.frames = static_cast<std::uint32_t>(std::stoul(argv[3]));
+      config.sampleRate = std::stod(argv[4]);
+      config.gain = std::stod(argv[5]);
+      config.tone = std::stod(argv[6]);
+      config.detune = std::stod(argv[7]);
+    } catch (const std::exception& error) {
+      std::cerr << "--render-example-block received invalid numeric arguments: " << error.what() << "\n";
+      return 2;
+    }
     config.voices = soundbridge::parseExampleVoices(argv[8]);
     if (!soundbridge::isExampleInstrumentPluginId(config.pluginId)) {
       std::cerr << "Unknown example instrument plugin id: " << config.pluginId << "\n";

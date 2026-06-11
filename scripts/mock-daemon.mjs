@@ -16,6 +16,13 @@ const MAX_SESSIONS_PER_ORIGIN = envInteger("SOUNDBRIDGE_MAX_SESSIONS_PER_ORIGIN"
 const MAX_INSTANCES_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_INSTANCES_PER_SESSION", 8);
 const MAX_TOTAL_INSTANCES = envInteger("SOUNDBRIDGE_MAX_TOTAL_INSTANCES", 32);
 const MAX_WEBSOCKET_MESSAGE_BYTES = envInteger("SOUNDBRIDGE_MAX_WEBSOCKET_MESSAGE_BYTES", 1024 * 1024);
+const MAX_TOTAL_SESSIONS = envInteger("SOUNDBRIDGE_MAX_TOTAL_SESSIONS", 64);
+const MAX_AUDIO_CHANNELS = envInteger("SOUNDBRIDGE_MAX_AUDIO_CHANNELS", 32);
+const MAX_BLOCK_SIZE = envInteger("SOUNDBRIDGE_MAX_BLOCK_SIZE", 8192);
+const MAX_MIDI_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_MIDI_EVENTS_PER_REQUEST", 4096);
+const MAX_PAIR_ATTEMPTS_PER_CONNECTION = envInteger("SOUNDBRIDGE_MAX_PAIR_ATTEMPTS", 5);
+const MIN_SAMPLE_RATE = 8000;
+const MAX_SAMPLE_RATE = 384000;
 const ALLOWED_ORIGINS = envList("SOUNDBRIDGE_ALLOWED_ORIGINS");
 
 assertLoopbackHost(HOST, "SOUNDBRIDGE_HOST", "SOUNDBRIDGE_ALLOW_NON_LOOPBACK");
@@ -26,11 +33,18 @@ const NATIVE_HOST_STATUS = loadNativeHostStatus();
 
 const sessions = new Map();
 const instances = new Map();
-let instanceSeq = 0;
 
 const plugins = createPluginCatalog();
 
 const server = http.createServer((request, response) => {
+  if (!isLoopbackHostHeader(request.headers.host)) {
+    writeJson(response, 403, {
+      ok: false,
+      error: "forbidden_host"
+    });
+    return;
+  }
+
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${HOST}:${PORT}`}`);
 
   if (url.pathname === "/health") {
@@ -47,6 +61,11 @@ const server = http.createServer((request, response) => {
 });
 
 server.on("upgrade", (request, socket) => {
+  if (!isLoopbackHostHeader(request.headers.host)) {
+    socket.destroy();
+    return;
+  }
+
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? `${HOST}:${PORT}`}`);
   if (url.pathname !== "/bridge") {
     socket.destroy();
@@ -84,6 +103,12 @@ server.listen(PORT, HOST, () => {
   } else {
     console.log("Using pairing token from SOUNDBRIDGE_PAIRING_TOKEN.");
   }
+  if (ALLOWED_ORIGINS.length === 0) {
+    console.warn(
+      "WARNING: no origin allowlist set. Any browser origin holding the pairing token can pair. " +
+        "Set SOUNDBRIDGE_ALLOWED_ORIGINS (and ship a native per-origin approval prompt) before production use."
+    );
+  }
 });
 
 function attachWebSocket(socket, requestOrigin) {
@@ -91,7 +116,9 @@ function attachWebSocket(socket, requestOrigin) {
   const context = {
     connectionId: crypto.randomUUID(),
     requestOrigin: String(requestOrigin),
-    sessionTokens: new Set()
+    sessionTokens: new Set(),
+    pairFailures: 0,
+    terminate: () => socket.destroy()
   };
 
   const send = (message) => {
@@ -283,8 +310,12 @@ function helloResponse(paired) {
         sessionBoundToOrigin: true,
         instanceOwnership: true,
         cleanupOnDisconnect: true,
+        hostHeaderValidation: true,
         maxInstancesPerSession: MAX_INSTANCES_PER_SESSION,
-        maxTotalInstances: MAX_TOTAL_INSTANCES
+        maxTotalInstances: MAX_TOTAL_INSTANCES,
+        maxTotalSessions: MAX_TOTAL_SESSIONS,
+        maxAudioChannels: MAX_AUDIO_CHANNELS,
+        maxBlockSize: MAX_BLOCK_SIZE
       }
     }
   };
@@ -292,11 +323,18 @@ function helloResponse(paired) {
 
 function pair(payload, context) {
   cleanupExpiredSessions();
+  if (context.pairFailures >= MAX_PAIR_ATTEMPTS_PER_CONNECTION) {
+    throw protocolError("pairing_locked", "Too many failed pairing attempts on this connection.");
+  }
   const requestedOrigin = String(payload.origin ?? context.requestOrigin);
   if (context.requestOrigin === "unknown-origin") {
     throw protocolError("origin_required", "Pairing requires a WebSocket Origin header.");
   }
-  if (payload.pairingToken !== PAIRING_TOKEN) {
+  if (!tokenEquals(payload.pairingToken, PAIRING_TOKEN)) {
+    context.pairFailures += 1;
+    if (context.pairFailures >= MAX_PAIR_ATTEMPTS_PER_CONNECTION) {
+      context.terminate?.();
+    }
     throw protocolError("pairing_denied", "Invalid pairing token.");
   }
 
@@ -314,6 +352,12 @@ function pair(payload, context) {
     throw protocolError("quota_exceeded", "Too many active SoundBridge sessions for this origin.", {
       origin: requestedOrigin,
       maxSessionsPerOrigin: MAX_SESSIONS_PER_ORIGIN
+    });
+  }
+
+  if (sessions.size >= MAX_TOTAL_SESSIONS) {
+    throw protocolError("quota_exceeded", "The local SoundBridge daemon has reached its total session limit.", {
+      maxTotalSessions: MAX_TOTAL_SESSIONS
     });
   }
 
@@ -371,7 +415,12 @@ async function createInstance(payload, session) {
     });
   }
 
-  const instanceId = `inst-${++instanceSeq}`;
+  const sampleRate = requireSampleRate(payload.sampleRate ?? 48000);
+  const maxBlockSize = requireIntInRange(payload.maxBlockSize ?? 128, 1, MAX_BLOCK_SIZE, "maxBlockSize");
+  const inputChannels = requireIntInRange(payload.inputChannels ?? plugin.inputs ?? 2, 0, MAX_AUDIO_CHANNELS, "inputChannels");
+  const outputChannels = requireIntInRange(payload.outputChannels ?? plugin.outputs ?? 2, 1, MAX_AUDIO_CHANNELS, "outputChannels");
+
+  const instanceId = `inst-${crypto.randomUUID()}`;
   const parameters = plugin.parameters.map((parameter) => ({ ...parameter }));
   const instance = {
     instanceId,
@@ -383,10 +432,10 @@ async function createInstance(payload, session) {
     source: plugin.source ?? "unknown",
     executablePath: plugin.executablePath,
     engine: plugin.engine ?? "effect",
-    sampleRate: Number(payload.sampleRate ?? 48000),
-    maxBlockSize: Number(payload.maxBlockSize ?? 128),
-    inputChannels: Number(payload.inputChannels ?? plugin.inputs ?? 2),
-    outputChannels: Number(payload.outputChannels ?? plugin.outputs ?? 2),
+    sampleRate,
+    maxBlockSize,
+    inputChannels,
+    outputChannels,
     parameters,
     voices: new Map(),
     renderEngine: undefined,
@@ -484,13 +533,14 @@ function setState(instanceId, state, session) {
 
 async function processAudioBlock(payload, session) {
   const instance = getInstance(payload.instanceId, session);
-  const channels = Array.isArray(payload.channels) ? payload.channels : [];
-  const frames = Math.max(1, channels[0]?.length ?? Number(payload.frames ?? instance.maxBlockSize ?? 128));
+  const channels = Array.isArray(payload.channels) ? payload.channels.slice(0, MAX_AUDIO_CHANNELS) : [];
+  const frames = boundedFrames(channels[0]?.length ?? payload.frames ?? instance.maxBlockSize, instance.maxBlockSize);
+  const blockSampleRate = clampSampleRate(payload.sampleRate, instance.sampleRate);
 
   if (instance.kind === "instrument") {
     return {
       blockId: payload.blockId,
-      ...(await processInstrumentBlock(instance, frames, Number(payload.sampleRate ?? instance.sampleRate))),
+      ...(await processInstrumentBlock(instance, frames, blockSampleRate)),
       latencySamples: 0
     };
   }
@@ -500,7 +550,7 @@ async function processAudioBlock(payload, session) {
       blockId: payload.blockId,
       channels: await instance.worker.render({
         frames,
-        sampleRate: Number(payload.sampleRate ?? instance.sampleRate),
+        sampleRate: blockSampleRate,
         channels
       }),
       latencySamples: 0,
@@ -560,7 +610,7 @@ async function sendMidiEvents(instanceId, events, session) {
     };
   }
 
-  const acceptedEvents = Array.isArray(events) ? events : [];
+  const acceptedEvents = Array.isArray(events) ? events.slice(0, MAX_MIDI_EVENTS_PER_REQUEST) : [];
   for (const event of acceptedEvents) {
     if (!event || typeof event !== "object") {
       continue;
@@ -1745,6 +1795,68 @@ function clamp01(value) {
     return 0;
   }
   return Math.max(0, Math.min(1, value));
+}
+
+function requireIntInRange(value, min, max, label) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number < min || number > max) {
+    throw protocolError("invalid_argument", `${label} must be an integer in ${min}..${max}.`, {
+      value
+    });
+  }
+  return number;
+}
+
+function requireSampleRate(value, label = "sampleRate") {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < MIN_SAMPLE_RATE || number > MAX_SAMPLE_RATE) {
+    throw protocolError("invalid_argument", `${label} must be a number in ${MIN_SAMPLE_RATE}..${MAX_SAMPLE_RATE} Hz.`, {
+      value
+    });
+  }
+  return number;
+}
+
+function clampSampleRate(value, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return fallback;
+  }
+  return Math.max(MIN_SAMPLE_RATE, Math.min(MAX_SAMPLE_RATE, number));
+}
+
+function boundedFrames(requested, maxBlockSize) {
+  const number = Math.floor(Number(requested));
+  if (!Number.isFinite(number) || number < 1) {
+    return 1;
+  }
+  return Math.min(number, maxBlockSize);
+}
+
+function tokenEquals(provided, expected) {
+  const a = Buffer.from(String(provided ?? ""), "utf8");
+  const b = Buffer.from(String(expected ?? ""), "utf8");
+  if (a.length !== b.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(a, b);
+}
+
+function isLoopbackHostHeader(hostHeader) {
+  if (typeof hostHeader !== "string" || hostHeader.length === 0) {
+    return false;
+  }
+  let host = hostHeader.trim();
+  const bracketed = host.match(/^\[(.+)\]/);
+  if (bracketed) {
+    host = bracketed[1];
+  } else {
+    const lastColon = host.lastIndexOf(":");
+    if (lastColon !== -1 && host.indexOf(":") === lastColon) {
+      host = host.slice(0, lastColon);
+    }
+  }
+  return isLoopbackHost(host);
 }
 
 function protocolError(code, message, details) {

@@ -104,9 +104,9 @@ public:
       std::uint32_t inputChannels,
       std::uint32_t outputChannels)
       : sampleRate_(sampleRate),
-        maxBlockSize_(std::max<std::uint32_t>(1, maxBlockSize)),
-        requestedInputChannels_(inputChannels),
-        requestedOutputChannels_(std::max<std::uint32_t>(1, outputChannels)) {
+        maxBlockSize_(std::clamp<std::uint32_t>(maxBlockSize, 1, 8192)),
+        requestedInputChannels_(std::min<std::uint32_t>(inputChannels, 32)),
+        requestedOutputChannels_(std::clamp<std::uint32_t>(outputChannels, 1, 32)) {
     std::string loadError;
     module_ = VST3::Hosting::Module::create(bundlePath, loadError);
     if (!module_) {

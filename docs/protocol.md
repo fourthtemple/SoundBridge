@@ -1,6 +1,6 @@
 # Protocol
 
-The MVP protocol runs over `ws://127.0.0.1:47370/bridge`. The daemon must bind loopback only by default. All privileged commands require pairing.
+The MVP protocol runs over `ws://127.0.0.1:47370/bridge`. The daemon must bind loopback only by default. All privileged commands require pairing. Daemons must also reject any request or WebSocket upgrade whose `Host` header is not a loopback name (DNS-rebinding defense) and must validate and bound every numeric field on untrusted commands. See [Security](security.md) for the normative `Host`-header and resource-limit requirements; `packages/protocol/schema/protocol.schema.json` encodes the per-command field bounds.
 
 ## Envelope
 
@@ -183,6 +183,8 @@ Example:
 }
 ```
 
+Numeric fields are bounded and out-of-range values are rejected with `invalid_argument`: `sampleRate` 8000–384000 Hz, `maxBlockSize` 1–8192, `inputChannels` 0–32, `outputChannels` 1–32. See [Security → Resource Limits And Input Validation](security.md#resource-limits-and-input-validation).
+
 ### `destroyInstance`
 
 Releases an instance.
@@ -231,6 +233,8 @@ MVP response:
 ```
 
 `renderEngine` is optional diagnostics for example instruments. Current values are `bundle-worker`, `bundle-executable`, `native-example`, or `js-fallback`. JSON arrays are intentionally only for the mock daemon and early validation. Production transports should use binary Float32 frames or shared memory.
+
+Block size is bounded: the daemon clamps the frame count to the instance's `maxBlockSize`, accepts at most 32 channels, and clamps `sampleRate` to 8000–384000 Hz. Native host workers re-clamp these values before allocating.
 
 ### `sendMidiEvents`
 

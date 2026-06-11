@@ -44,6 +44,36 @@ Non-goals for the MVP:
 - Restart crashed plugin workers without killing the daemon.
 - Keep VST3, AU, and LV2 host adapters behind the same pairing and origin checks.
 - Prefer per-format worker processes so a crash or exploit in one plugin stack cannot poison all native hosting.
+- Reject any HTTP request or WebSocket upgrade whose `Host` header is not a loopback name, to defeat DNS rebinding.
+- Compare the pairing token in constant time and throttle/lock out repeated failed pairing attempts.
+- Validate and bound every numeric field on untrusted commands before allocating buffers or spawning workers.
+
+## DNS Rebinding And Host Headers
+
+Binding to loopback is necessary but not sufficient. A public website can use DNS rebinding to point its own name at `127.0.0.1` and reach the daemon from the browser. The browser still sends the site's real `Origin`, so the origin allowlist is the primary defense — but a daemon with an empty allowlist would then rely on the pairing token alone.
+
+Conforming daemons MUST reject any request or upgrade whose `Host` header is not `127.0.0.1`, `localhost`, or `[::1]` (optionally with the expected port). Production daemons MUST also ship a non-empty origin allowlist and/or a native per-origin approval prompt; the reference daemon warns at startup when no allowlist is configured. The reference daemon enforces the `Host` check on both the HTTP and WebSocket-upgrade paths.
+
+## Resource Limits And Input Validation
+
+Pairing and instance ownership stop other origins from reaching an instance, but a single authorized origin (including one compromised by XSS) can still try to exhaust the host. Instance-count quotas alone do not cover this: a single instance with an attacker-chosen channel count or block size can exhaust memory. Conforming daemons MUST validate and bound the numeric fields on untrusted commands and reject out-of-range values rather than coercing them.
+
+The reference daemon enforces these defaults (all overridable by environment variable for testing):
+
+| Limit | Default | Field(s) |
+| --- | --- | --- |
+| Sample rate | 8000–384000 Hz | `createInstance.sampleRate`, `processAudioBlock.sampleRate` |
+| Max block size | 1–8192 frames | `createInstance.maxBlockSize` |
+| Frames per block | clamped to the instance `maxBlockSize` | `processAudioBlock` |
+| Audio channels | 0–32 in, 1–32 out | `createInstance.inputChannels` / `outputChannels` |
+| MIDI events per request | 4096 | `sendMidiEvents.events` |
+| Sessions per origin | 8 | `pair` |
+| Total sessions | 64 | `pair` |
+| Instances per session / total | 8 / 32 | `createInstance` |
+| Pairing attempts per connection | 5, then the connection is closed | `pair` |
+| WebSocket message size | 1 MiB, enforced before pairing | all frames |
+
+Out-of-range `createInstance` values fail with `invalid_argument`. Native host workers independently clamp block size and channel counts before allocating, so a misbehaving daemon layer cannot drive a worker into an oversized allocation. `packages/protocol/schema/protocol.schema.json` encodes these bounds per command so other implementations can validate against the same contract.
 
 ## Development Token
 

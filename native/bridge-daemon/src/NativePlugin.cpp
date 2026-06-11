@@ -1,5 +1,6 @@
 #include "SoundBridge/NativePlugin.h"
 
+#include <cstdio>
 #include <sstream>
 
 namespace soundbridge {
@@ -40,7 +41,13 @@ std::string jsonEscape(const std::string& input) {
         output << "\\t";
         break;
       default:
-        output << value;
+        if (static_cast<unsigned char>(value) < 0x20) {
+          char escaped[7];
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned char>(value));
+          output << escaped;
+        } else {
+          output << value;
+        }
         break;
     }
   }

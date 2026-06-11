@@ -10,6 +10,7 @@ namespace soundbridge {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846264338327950288;
+constexpr std::uint32_t kMaxExampleFrames = 8192;
 
 double clamp01(double value) {
   if (!std::isfinite(value)) {
@@ -76,7 +77,7 @@ std::vector<std::vector<float>> ExampleInstrumentState::render(
     double gain,
     double tone,
     double detune) {
-  frames = std::max<std::uint32_t>(1, frames);
+  frames = std::clamp<std::uint32_t>(frames, 1, kMaxExampleFrames);
   std::vector<std::vector<float>> channels(2, std::vector<float>(frames, 0.0F));
   if (voices_.empty() || sampleRate <= 0.0) {
     return channels;

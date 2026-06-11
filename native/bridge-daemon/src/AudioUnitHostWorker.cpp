@@ -142,9 +142,9 @@ public:
       std::uint32_t inputChannels,
       std::uint32_t outputChannels)
       : sampleRate_(sampleRate),
-        maxBlockSize_(std::max<std::uint32_t>(1, maxBlockSize)),
-        inputChannels_(inputChannels),
-        outputChannels_(std::max<std::uint32_t>(1, outputChannels)) {
+        maxBlockSize_(std::clamp<std::uint32_t>(maxBlockSize, 1, 8192)),
+        inputChannels_(std::min<std::uint32_t>(inputChannels, 32)),
+        outputChannels_(std::clamp<std::uint32_t>(outputChannels, 1, 32)) {
     AudioComponentDescription description {};
     description.componentType = fourCharCodeFromString(componentType);
     description.componentSubType = fourCharCodeFromString(componentSubType);

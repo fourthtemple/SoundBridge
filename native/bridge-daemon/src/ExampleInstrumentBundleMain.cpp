@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 
 namespace {
@@ -102,11 +103,16 @@ int main(int argc, char** argv) {
 
   soundbridge::ExampleRenderConfig config;
   config.pluginId = pluginIdForExecutable(argv[0]);
-  config.frames = static_cast<std::uint32_t>(std::stoul(argv[2]));
-  config.sampleRate = std::stod(argv[3]);
-  config.gain = std::stod(argv[4]);
-  config.tone = std::stod(argv[5]);
-  config.detune = std::stod(argv[6]);
+  try {
+    config.frames = static_cast<std::uint32_t>(std::stoul(argv[2]));
+    config.sampleRate = std::stod(argv[3]);
+    config.gain = std::stod(argv[4]);
+    config.tone = std::stod(argv[5]);
+    config.detune = std::stod(argv[6]);
+  } catch (const std::exception& error) {
+    std::cerr << "--render-example-block received invalid numeric arguments: " << error.what() << "\n";
+    return 2;
+  }
   config.voices = soundbridge::parseExampleVoices(argv[7]);
 
   std::cout << soundbridge::exampleInstrumentBlockToJson(
