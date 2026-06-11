@@ -198,6 +198,7 @@ constexpr std::size_t kMaxWorkerUridMappings = 4096;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
+constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
 constexpr double kMaxWorkerTransportTempoBpm = 960.0;
@@ -205,6 +206,8 @@ constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
 constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
 constexpr const char* kLv2ControlStateMagic = "soundbridge-lv2-control-state-v1";
 constexpr const char* kLv2StateMagic = "soundbridge-lv2-state-v2";
+constexpr const char* kLv2LatencyUri = "http://lv2plug.in/ns/lv2core#latency";
+constexpr const char* kLv2ReportsLatencyUri = "http://lv2plug.in/ns/lv2core#reportsLatency";
 constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
 constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
 constexpr const char* kLv2AtomSequenceUri = "http://lv2plug.in/ns/ext/atom#Sequence";
@@ -277,6 +280,7 @@ struct Lv2Port {
   float value = 0.0F;
   bool acceptsMidi = false;
   bool acceptsTimePosition = false;
+  bool reportsLatency = false;
 };
 
 struct Lv2BundleMetadata {
@@ -1110,6 +1114,14 @@ bool blockContainsUri(const std::string& block, const char* prefixedName, const 
   return block.find(prefixedName) != std::string::npos || block.find(uri) != std::string::npos;
 }
 
+std::uint32_t boundedLatencySamples(double value) {
+  if (!std::isfinite(value) || value <= 0.0) {
+    return 0;
+  }
+  return static_cast<std::uint32_t>(
+      std::clamp(std::llround(value), 0LL, static_cast<long long>(kMaxWorkerLatencySamples)));
+}
+
 std::string readTextFile(const std::filesystem::path& path) {
   std::ifstream input(path);
   if (!input) {
@@ -1419,6 +1431,9 @@ std::optional<Lv2Port> parsePortBlock(const std::string& block) {
     port.type = Lv2PortType::Audio;
   } else if (block.find("lv2:ControlPort") != std::string::npos) {
     port.type = Lv2PortType::Control;
+    port.reportsLatency =
+        blockContainsUri(block, "lv2:reportsLatency", kLv2ReportsLatencyUri) ||
+        blockContainsUri(block, "lv2:latency", kLv2LatencyUri);
   } else if (block.find("atom:AtomPort") != std::string::npos || block.find("ev:EventPort") != std::string::npos) {
     port.acceptsMidi = blockContainsUri(block, "midi:MidiEvent", kLv2MidiEventUri);
     port.acceptsTimePosition = blockContainsUri(block, "time:Position", kLv2TimePositionUri);
@@ -1677,8 +1692,14 @@ public:
     throw std::runtime_error("unknown_parameter");
   }
 
-  std::string latencyToJson() const {
-    return "{\"latencySamples\":0}";
+  std::string latencyToJson() {
+    if (latencyPortIndex_) {
+      refreshInstantOutputPorts();
+    }
+    const auto latencySamples = latencyPortIndex_
+        ? boundedLatencySamples(ports_[*latencyPortIndex_].value)
+        : 0U;
+    return std::string("{\"latencySamples\":") + std::to_string(latencySamples) + "}";
   }
 
   std::string tailTimeToJson() const {
@@ -2013,6 +2034,9 @@ private:
         inputControlPortIndexes_.push_back(index);
       } else if (port.type == Lv2PortType::Control && port.direction == Lv2PortDirection::Output) {
         outputControlPortIndexes_.push_back(index);
+        if (port.reportsLatency && !latencyPortIndex_) {
+          latencyPortIndex_ = index;
+        }
       } else if (port.type == Lv2PortType::Midi && port.direction == Lv2PortDirection::Input) {
         inputMidiPortIndexes_.push_back(index);
       }
@@ -2124,6 +2148,15 @@ private:
     descriptor_->run(handle_, frames);
   }
 
+  void refreshInstantOutputPorts() {
+    if (handle_ == nullptr || descriptor_ == nullptr || descriptor_->run == nullptr) {
+      return;
+    }
+    prepareEmptyMidiBuffers();
+    connectPorts(0);
+    descriptor_->run(handle_, 0);
+  }
+
   void applyParameterChange(const PendingParameterChange& change) {
     for (const auto portIndex : inputControlPortIndexes_) {
       auto& port = ports_[portIndex];
@@ -2180,6 +2213,14 @@ private:
     for (std::size_t index = 0; index < inputMidiPortIndexes_.size(); ++index) {
       const auto& port = ports_[inputMidiPortIndexes_[index]];
       midiBuffers_[index] = midiSequenceBuffer(port, pendingMidiMessages_, frameOffset, frames, totalFrames, transport);
+    }
+  }
+
+  void prepareEmptyMidiBuffers() {
+    midiBuffers_.resize(inputMidiPortIndexes_.size());
+    for (std::size_t index = 0; index < inputMidiPortIndexes_.size(); ++index) {
+      const auto& port = ports_[inputMidiPortIndexes_[index]];
+      midiBuffers_[index] = midiSequenceBuffer(port, {}, 0, maxBlockSize_, maxBlockSize_, HostTransportContext {});
     }
   }
 
@@ -2474,6 +2515,7 @@ private:
   std::vector<std::size_t> inputControlPortIndexes_;
   std::vector<std::size_t> outputControlPortIndexes_;
   std::vector<std::size_t> inputMidiPortIndexes_;
+  std::optional<std::size_t> latencyPortIndex_;
   std::vector<std::vector<float>> inputBuffers_;
   std::vector<std::vector<float>> outputBuffers_;
   std::vector<std::vector<std::uint64_t>> midiBuffers_;
@@ -2655,7 +2697,7 @@ bool lv2HostWorkerAvailable() {
 
 std::string lv2HostWorkerStatus() {
 #ifndef _WIN32
-  return "Basic LV2 audio/control host worker is available with bounded atom MIDI and brokered portable/file-backed state delivery; LV2 worker and UI extensions remain disabled.";
+  return "Basic LV2 audio/control host worker is available with bounded atom MIDI, atom time-position transport, standard latency output-port reporting, and brokered portable/file-backed state delivery; LV2 UI extensions remain disabled.";
 #else
   return "LV2 host worker is not available on this platform build.";
 #endif

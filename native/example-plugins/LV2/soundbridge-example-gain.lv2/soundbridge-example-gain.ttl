@@ -38,10 +38,20 @@
     lv2:symbol "out_r" ;
     lv2:name "Output R"
   ], [
+    a lv2:OutputPort, lv2:ControlPort ;
+    lv2:index 5 ;
+    lv2:symbol "latency" ;
+    lv2:name "Latency" ;
+    lv2:designation lv2:latency ;
+    lv2:portProperty lv2:reportsLatency ;
+    lv2:default 17 ;
+    lv2:minimum 0 ;
+    lv2:maximum 1048576
+  ], [
     a lv2:InputPort, atom:AtomPort ;
     atom:bufferType atom:Sequence ;
     atom:supports midi:MidiEvent, time:Position ;
-    lv2:index 5 ;
+    lv2:index 6 ;
     lv2:symbol "midi_in" ;
     lv2:name "MIDI In"
   ] .

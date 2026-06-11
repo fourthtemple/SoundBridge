@@ -296,6 +296,15 @@ if (nativeLv2Effect) {
     nativeLv2RestoredMidiBlock.channels?.[0]?.[0] > 0.06 && nativeLv2RestoredMidiBlock.channels[0][0] < 0.16,
     "setState restores installed LV2 file-backed extension state"
   );
+  const nativeLv2Latency = await request(
+    socket,
+    "getLatency",
+    { instanceId: nativeLv2Instance.instanceId, transportLatencySamples: 32 },
+    true,
+    pair.sessionToken
+  );
+  assert(nativeLv2Latency.pluginLatencySamples === 17, "installed LV2 reports bounded plugin latency");
+  assertLatencyReport(nativeLv2Latency, 32, "installed LV2 reports bounded plugin and transport latency");
   await request(socket, "destroyInstance", { instanceId: nativeLv2Instance.instanceId }, true, pair.sessionToken);
 }
 
@@ -961,7 +970,7 @@ async function runNativeLv2WorkerSmoke() {
     );
 
     const latency = await requestWorker("latency");
-    assert(latency.latencySamples === 0, "native LV2 worker reports conservative latency");
+    assert(latency.latencySamples === 17, "native LV2 worker reports bounded latency output ports");
     const tail = await requestWorker("tail");
     assert(tail.tailSamples === 0 && tail.infiniteTail === false, "native LV2 worker reports conservative tail time");
 

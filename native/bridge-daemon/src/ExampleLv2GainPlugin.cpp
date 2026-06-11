@@ -123,6 +123,7 @@ constexpr const char* kLv2StateMakePathUri = "http://lv2plug.in/ns/ext/state#mak
 constexpr const char* kLv2StateMapPathUri = "http://lv2plug.in/ns/ext/state#mapPath";
 constexpr const char* kMidiGainFileStateUri = "urn:soundbridge:example:lv2-gain#midiGainFile";
 constexpr const char* kMidiGainStateUri = "urn:soundbridge:example:lv2-gain#midiGain";
+constexpr float kExampleLatencyFrames = 17.0F;
 constexpr std::uint32_t kLv2StateSuccess = 0;
 constexpr std::uint32_t kLv2StateErrBadType = 2;
 constexpr std::uint32_t kLv2StateErrNoFeature = 4;
@@ -135,7 +136,8 @@ enum PortIndex : std::uint32_t {
   kInputRight = 2,
   kOutputLeft = 3,
   kOutputRight = 4,
-  kMidiIn = 5,
+  kLatency = 5,
+  kMidiIn = 6,
 };
 
 struct GainPlugin {
@@ -144,6 +146,7 @@ struct GainPlugin {
   const float* inputRight = nullptr;
   float* outputLeft = nullptr;
   float* outputRight = nullptr;
+  float* latency = nullptr;
   const LV2_Atom_Sequence* midiIn = nullptr;
   LV2_URID midiEventUrid = 0;
   LV2_URID midiGainFileKeyUrid = 0;
@@ -200,6 +203,9 @@ void connectPort(LV2_Handle instance, std::uint32_t port, void* dataLocation) {
     case kOutputRight:
       plugin->outputRight = static_cast<float*>(dataLocation);
       break;
+    case kLatency:
+      plugin->latency = static_cast<float*>(dataLocation);
+      break;
     case kMidiIn:
       plugin->midiIn = static_cast<const LV2_Atom_Sequence*>(dataLocation);
       break;
@@ -237,6 +243,9 @@ void applyMidi(GainPlugin& plugin) {
 
 void run(LV2_Handle instance, std::uint32_t sampleCount) {
   auto* plugin = static_cast<GainPlugin*>(instance);
+  if (plugin->latency != nullptr) {
+    *plugin->latency = kExampleLatencyFrames;
+  }
   applyMidi(*plugin);
   const float gain = std::clamp(plugin->gain == nullptr ? 1.0F : *plugin->gain, 0.0F, 2.0F) * plugin->midiGain;
   for (std::uint32_t frame = 0; frame < sampleCount; ++frame) {

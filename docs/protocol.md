@@ -81,7 +81,7 @@ Example paired capability payload:
         "scan": true,
         "host": true,
         "exampleHost": true,
-        "notes": "Basic LV2 audio/control host worker is available with bounded atom MIDI and brokered portable/file-backed state delivery; LV2 worker and UI extensions remain disabled."
+        "notes": "Basic LV2 audio/control host worker is available with bounded atom MIDI, atom time-position transport, standard latency output-port reporting, and brokered portable/file-backed state delivery; LV2 UI extensions remain disabled."
       }
     },
     "security": {
@@ -466,7 +466,7 @@ Response:
 
 Reports plugin latency and bridge buffering. Installed VST3 workers read `IAudioProcessor::getLatencySamples()`;
 installed Audio Unit workers read `kAudioUnitProperty_Latency` and convert seconds to samples at the
-instance sample rate. Daemons must clamp plugin latency and any caller-provided
+instance sample rate. Compatible LV2 workers read standard control output ports marked with `lv2:reportsLatency` / `lv2:latency` after a zero-frame refresh run. Daemons must clamp plugin latency and any caller-provided
 `transportLatencySamples` to `0..1048576` before hosts use the value for scheduling.
 
 ```json

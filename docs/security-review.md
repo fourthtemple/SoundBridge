@@ -15,7 +15,7 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | VST3/AU latency reporting | Fixed | Native workers report plugin latency through the shared protocol, and the daemon bounds transport and reported totals. |
 | VST3/AU tail-time reporting | Fixed | Native workers report bounded tail time through the shared protocol, including explicit infinite-tail metadata for VST3. |
 | VST3/AU layout reporting | Fixed | Native workers report bounded negotiated channel and per-bus layout metadata through the shared protocol, and instance metadata reflects the effective channel counts. |
-| Basic LV2 audio/control hosting | Fixed | The native LV2 worker loads bundle-local dynamic libraries through the LV2 C ABI, bounds TTL metadata, exposes control ports as parameters, renders audio, and reports conservative latency/tail metadata. |
+| Basic LV2 audio/control hosting | Fixed | The native LV2 worker loads bundle-local dynamic libraries through the LV2 C ABI, bounds TTL metadata, exposes control ports as parameters, renders audio, reports bounded standard latency output ports, and reports conservative tail metadata. |
 | LV2 control-port state | Fixed | Compatible basic LV2 audio/control plugins now save and restore bounded opaque worker state for known input control ports. |
 | LV2 portable and file-backed extension state | Fixed | Compatible LV2 `state:interface` plugins can save and restore bounded POD+portable properties keyed by URI; file-backed state is supported only through brokered relative paths and capped embedded file bytes. |
 | LV2 atom MIDI delivery | Fixed | Compatible LV2 atom/event MIDI input ports receive bounded note, CC, pitch-bend, pressure, and program events through worker-owned LV2 atom sequence buffers. |
