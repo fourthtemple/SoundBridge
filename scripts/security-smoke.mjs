@@ -82,6 +82,19 @@ async function run() {
   check(r4.closed === true || r4.code === "pairing_locked", "after lockout the correct token cannot pair on that connection");
   lockSocket.socket?.destroy();
 
+  const mismatchSocket = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
+  const originMismatch = await request(
+    mismatchSocket,
+    "pair",
+    { origin: DISALLOWED_ORIGIN, pairingToken: TOKEN },
+    false
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(originMismatch.code === "origin_mismatch", "pair rejects origins that do not match the WebSocket Origin header");
+  mismatchSocket.socket?.destroy();
+
   // E. Correct token pairs.
   const paired = await request(main, "pair", { origin: ORIGIN, pairingToken: TOKEN }, false);
   check(typeof paired.sessionToken === "string" && paired.sessionToken.length > 0, "correct token pairs and returns a session token");
@@ -105,6 +118,13 @@ async function run() {
       pairedHello.capabilities?.security?.maxEditorsPerSession > 0,
     "paired hello advertises bounded generic editor brokering"
   );
+  const replay = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
+  const replayedSession = await request(replay, "hello", {}, true, session).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(replayedSession.code === "session_connection_mismatch", "session tokens cannot be replayed on a different WebSocket");
+  replay.socket?.destroy();
 
   // F. createInstance rejects out-of-range sizing instead of allocating.
   const huge = await request(main, "createInstance", { pluginId: "mock.gain", outputChannels: 1e9 }, true, session).then(

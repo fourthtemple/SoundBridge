@@ -9,7 +9,7 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | Area | Status | Notes |
 | --- | --- | --- |
 | Original findings #1-#9 | Fixed | Remediated in the daemon (`scripts/mock-daemon.mjs`), native C++ workers, protocol schema, and docs. |
-| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 79/79 checks passing. |
+| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 84/84 checks passing. |
 | Installed-plugin compatibility probe | Passing | `npm run probe:installed` starts a temporary paired loopback daemon with an explicit origin allowlist and bounded request sizes so real VST3/AU/LV2 create/state/MIDI/render/layout/automation-lane checks can be repeated without weakening the production security model. Last recorded hostable result: 71/71 plugins passing. |
 | Example render argument hardening | Fixed | Example render entry points reject unknown example plugin ids before numeric argument parsing. |
 | VST3/AU opaque state | Fixed | Native state is bounded, opaque, plugin-id bound, and restored through worker processes. |
