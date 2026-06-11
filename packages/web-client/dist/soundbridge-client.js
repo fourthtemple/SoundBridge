@@ -96,6 +96,10 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("getLatency", { instanceId, transportLatencySamples });
   }
 
+  getTailTime(instanceId) {
+    return this.request("getTailTime", { instanceId });
+  }
+
   heartbeat() {
     return this.request("heartbeat", { now: Date.now() });
   }

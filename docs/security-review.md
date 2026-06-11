@@ -9,10 +9,11 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | Area | Status | Notes |
 | --- | --- | --- |
 | Original findings #1-#9 | Fixed | Remediated in the daemon (`scripts/mock-daemon.mjs`), native C++ workers, protocol schema, and docs. |
-| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 25/25 checks passing. |
+| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 27/27 checks passing. |
 | Example render argument hardening | Fixed | Example render entry points reject unknown example plugin ids before numeric argument parsing. |
 | VST3/AU opaque state | Fixed | Native state is bounded, opaque, plugin-id bound, and restored through worker processes. |
 | VST3/AU latency reporting | Fixed | Native workers report plugin latency through the shared protocol, and the daemon bounds transport and reported totals. |
+| VST3/AU tail-time reporting | Fixed | Native workers report bounded tail time through the shared protocol, including explicit infinite-tail metadata for VST3. |
 | Full plugin-hosting surface | Open roadmap | Broader MIDI, richer parameter automation, bus negotiation, LV2 hosting, plugin UI, and file access need feature-specific controls as they are implemented. |
 | Third-party worker sandboxing | Last-stage hardening | Worker processes isolate crashes today, but OS-level sandboxing for malicious third-party plugin code is intentionally tracked after the core host features. |
 

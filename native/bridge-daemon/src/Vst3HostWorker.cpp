@@ -48,6 +48,7 @@ constexpr std::size_t kMaxWorkerParameterChanges = 4096;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
+constexpr std::uint32_t kMaxWorkerTailSamples = 1'048'576;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
@@ -558,6 +559,19 @@ public:
     return output.str();
   }
 
+  std::string tailTimeToJson() const {
+    const auto rawSamples = processor_->getTailSamples();
+    const auto infiniteTail = rawSamples == Steinberg::Vst::kInfiniteTail;
+    const auto samples = infiniteTail
+        ? kMaxWorkerTailSamples
+        : std::min<std::uint32_t>(rawSamples, kMaxWorkerTailSamples);
+    std::ostringstream output;
+    output << "{\"tailSamples\":" << samples
+           << ",\"infiniteTail\":" << (infiniteTail ? "true" : "false")
+           << "}";
+    return output.str();
+  }
+
 private:
   void initializeController() {
     controller_ = Steinberg::FUnknownPtr<Steinberg::Vst::IEditController>(component_);
@@ -845,6 +859,11 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
 
         if (command == "latency") {
           std::cout << host.latencyToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "tail") {
+          std::cout << host.tailTimeToJson() << std::endl;
           continue;
         }
 

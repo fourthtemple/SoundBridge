@@ -65,7 +65,7 @@ The protocol should be small and testable:
 - `pair` records origin, connection, expiry, and approval details
 - `scanPlugins` and `listPlugins` never expose private paths by default
 - `createInstance` returns an instance owned by one session
-- parameter, state, MIDI, audio, latency, and editor commands all verify instance ownership
+- parameter, state, MIDI, audio, latency, tail-time, and editor commands all verify instance ownership
 - binary transports negotiate capabilities rather than assuming browser features
 - version negotiation is explicit and backward-compatible additions are optional
 

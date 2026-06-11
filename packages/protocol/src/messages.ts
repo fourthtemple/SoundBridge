@@ -12,6 +12,7 @@ export type ProtocolCommand =
   | "processAudioBlock"
   | "sendMidiEvents"
   | "getLatency"
+  | "getTailTime"
   | "openEditor"
   | "closeEditor"
   | "heartbeat";
@@ -40,6 +41,7 @@ export interface HelloResponse {
     mockPlugins?: boolean;
     state?: boolean;
     latency?: boolean;
+    tail?: boolean;
     midi?: boolean;
     nativeExampleRenderer?: boolean;
     nativeEditor?: boolean;
@@ -138,6 +140,8 @@ export interface CreateInstanceResponse {
   instanceId: string;
   plugin: PluginMetadata;
   latencySamples: number;
+  tailSamples?: number;
+  infiniteTail?: boolean;
 }
 
 export interface AudioBlockRequest {
@@ -152,6 +156,8 @@ export interface AudioBlockResponse {
   blockId: number;
   channels: number[][];
   latencySamples: number;
+  tailSamples?: number;
+  infiniteTail?: boolean;
   renderEngine?: "bundle-worker" | "bundle-executable" | "native-example" | "js-fallback" | string;
 }
 
@@ -208,4 +214,13 @@ export interface GetLatencyResponse {
   pluginLatencySamples: number;
   transportLatencySamples: number;
   reportedLatencySamples: number;
+}
+
+export interface GetTailTimeRequest {
+  instanceId: string;
+}
+
+export interface GetTailTimeResponse {
+  tailSamples: number;
+  infiniteTail: boolean;
 }

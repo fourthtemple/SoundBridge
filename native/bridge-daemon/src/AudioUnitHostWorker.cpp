@@ -35,6 +35,7 @@ constexpr std::size_t kMaxWorkerParameters = 1024;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
+constexpr std::uint32_t kMaxWorkerTailSamples = 1'048'576;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
@@ -368,6 +369,30 @@ public:
         static_cast<double>(kMaxWorkerLatencySamples)));
     std::ostringstream output;
     output << "{\"latencySamples\":" << latencySamples << "}";
+    return output.str();
+  }
+
+  std::string tailTimeToJson() const {
+    Float64 tailSeconds = 0.0;
+    UInt32 propertySize = sizeof(tailSeconds);
+    if (AudioUnitGetProperty(
+            unit_,
+            kAudioUnitProperty_TailTime,
+            kAudioUnitScope_Global,
+            0,
+            &tailSeconds,
+            &propertySize) != noErr ||
+        !std::isfinite(tailSeconds) ||
+        tailSeconds < 0.0) {
+      tailSeconds = 0.0;
+    }
+
+    const auto tailSamples = static_cast<std::uint32_t>(std::clamp<double>(
+        std::round(tailSeconds * sampleRate_),
+        0.0,
+        static_cast<double>(kMaxWorkerTailSamples)));
+    std::ostringstream output;
+    output << "{\"tailSamples\":" << tailSamples << ",\"infiniteTail\":false}";
     return output.str();
   }
 
@@ -709,6 +734,11 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
 
         if (command == "latency") {
           std::cout << host.latencyToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "tail") {
+          std::cout << host.tailTimeToJson() << std::endl;
           continue;
         }
 

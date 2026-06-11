@@ -142,6 +142,13 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("getLatency", { instanceId, transportLatencySamples });
   }
 
+  getTailTime(instanceId: string): Promise<{
+    tailSamples: number;
+    infiniteTail: boolean;
+  }> {
+    return this.request("getTailTime", { instanceId });
+  }
+
   heartbeat(): Promise<{ now: number }> {
     return this.request("heartbeat", { now: Date.now() });
   }

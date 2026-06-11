@@ -57,14 +57,14 @@ The reference implementation does not claim that sandboxing is complete today. I
 
 ## Full Host Feature Security Roadmap
 
-Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, parameter metadata, automation, opaque state, latency reporting, bus negotiation, native editor windows, presets, samples, and licensing flows all increase the attack surface. This applies to browser hosts and local desktop hosts: once the system loads third-party plugin code, the plugin boundary must be treated as untrusted.
+Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, parameter metadata, automation, opaque state, latency/tail reporting, bus negotiation, native editor windows, presets, samples, and licensing flows all increase the attack surface. This applies to browser hosts and local desktop hosts: once the system loads third-party plugin code, the plugin boundary must be treated as untrusted.
 
 | Feature | Added risk | Required control |
 | --- | --- | --- |
 | MIDI event lists | Oversized or malformed event batches can stress workers or confuse adapters. | Bound event count, byte size, timing offsets, channel/note ranges, and reject malformed events. |
 | Parameter enumeration and automation | Plugin-controlled names/units/ids can break JSON, UI, or automation paths. | Cap counts and string lengths, escape text, normalize values, and enforce per-instance ownership. |
 | State save/restore | Opaque blobs can be huge or maliciously malformed. | VST3/AU now enforce blob-size limits, keep state opaque, bind it to the producing instance/session, and never interpret it as a path or command; keep the same rule for LV2. |
-| Latency reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges and treat negative, NaN, or extreme values as invalid. |
+| Latency and tail reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges, preserve explicit infinite-tail signals, and treat negative, NaN, or extreme values as invalid. |
 | Bus negotiation | Bad channel/block/sample-rate combinations can trigger large allocations or crashes. | Keep hard resource limits at the daemon boundary and inside each worker before allocation. |
 | Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Run editor code outside the daemon, broker UI actions explicitly, and keep web/local host ownership checks in place. |
 | Presets, samples, caches, licensing | Plugins may expect broad filesystem or network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
@@ -92,6 +92,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Parameter id/name/unit text | 64 / 160 / 64 bytes | `getParameters`, `setParameter.parameterId` |
 | Native plugin state bytes / state envelope | 384 KiB / 1 MiB | `getState`, `setState` |
 | Plugin/transport latency samples | 0–1048576 | `getLatency`, `processAudioBlock.latencySamples` |
+| Plugin tail samples | 0–1048576 | `getTailTime`, `processAudioBlock.tailSamples` |
 | Sessions per origin | 8 | `pair` |
 | Total sessions | 64 | `pair` |
 | Instances per session / total | 8 / 32 | `createInstance` |

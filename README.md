@@ -121,8 +121,8 @@ Open <http://127.0.0.1:5173>. The demo can select installed VST3/AU plugins, cre
 
 ## What Works Now
 
-- VST3: installed audio effects through the Steinberg VST3 SDK host worker, including parameter metadata, parameter writes, MIDI note events, rendering, bounded latency reporting, and opaque state save/restore.
-- AU: installed macOS Audio Units through the CoreAudio host worker, including parameter metadata, parameter writes, rendering, MIDI note events where supported, bounded latency reporting, and opaque state save/restore.
+- VST3: installed audio effects through the Steinberg VST3 SDK host worker, including parameter metadata, parameter writes, MIDI note events, rendering, bounded latency/tail reporting, and opaque state save/restore.
+- AU: installed macOS Audio Units through the CoreAudio host worker, including parameter metadata, parameter writes, rendering, MIDI note events where supported, bounded latency/tail reporting, and opaque state save/restore.
 - LV2: scanning and example bundles only; installed LV2 hosting is not wired yet.
 - VST2: not supported.
 

@@ -138,6 +138,12 @@ async function run() {
   );
   check(latencyTooLarge.code === "invalid_argument", "getLatency rejects out-of-range transport latency");
 
+  const tail = await request(main, "getTailTime", { instanceId: created.instanceId }, true, session);
+  check(
+    tail.tailSamples === 0 && tail.infiniteTail === false,
+    "getTailTime reports bounded plugin tail metadata"
+  );
+
   const started = Date.now();
   const oversized = await request(
     main,
@@ -202,6 +208,17 @@ async function run() {
     (error) => ({ code: error.code })
   );
   check(denied.code === "instance_access_denied", "another session cannot control this instance");
+  const tailDenied = await request(
+    other,
+    "getTailTime",
+    { instanceId: created.instanceId },
+    true,
+    otherPair.sessionToken
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(tailDenied.code === "instance_access_denied", "another session cannot read this instance's tail metadata");
   other.socket?.destroy();
   main.socket?.destroy();
 }

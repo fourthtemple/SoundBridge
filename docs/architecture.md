@@ -1,6 +1,6 @@
 # Architecture
 
-SoundBridge splits browser audio hosting from native plugin hosting. The browser never loads VST3, Audio Unit, or LV2 code. It captures or generates Web Audio blocks, moves them to an `AudioWorklet`, and exchanges audio/control messages with a local daemon that owns native plugin discovery, instantiation, DSP, state, latency, and crash containment.
+SoundBridge splits browser audio hosting from native plugin hosting. The browser never loads VST3, Audio Unit, or LV2 code. It captures or generates Web Audio blocks, moves them to an `AudioWorklet`, and exchanges audio/control messages with a local daemon that owns native plugin discovery, instantiation, DSP, state, latency/tail reporting, and crash containment.
 
 ## Components
 
@@ -8,7 +8,7 @@ SoundBridge splits browser audio hosting from native plugin hosting. The browser
 
 The SDK is a small TypeScript package that gives Web DAWs:
 
-- a `SoundBridgeClient` for pairing, scanning, plugin instantiation, parameter changes, state, and latency
+- a `SoundBridgeClient` for pairing, scanning, plugin instantiation, parameter changes, state, latency, and tail time
 - a `SoundBridgeAudioNode` wrapper around `AudioWorkletNode`
 - generic parameter UI helpers for hosts that do not have their own plugin UI
 - protocol message types shared with daemon implementations
@@ -26,7 +26,7 @@ The daemon listens on loopback only. It provides:
 - parameter metadata and normalized values
 - audio block processing
 - opaque state save/restore
-- latency and error reporting
+- latency, tail-time, and error reporting
 
 The development daemon in this repository implements the protocol with a stereo gain effect, example bundle instruments, and native worker handoff for installed VST3/AU plugins. That lets Web DAWs integrate the browser transport while the production daemon is still taking shape.
 

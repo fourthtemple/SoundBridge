@@ -234,6 +234,8 @@ MVP response:
     [0.0, 0.08]
   ],
   "latencySamples": 0,
+  "tailSamples": 0,
+  "infiniteTail": false,
   "renderEngine": "bundle-worker"
 }
 ```
@@ -291,6 +293,20 @@ instance sample rate. Daemons must clamp plugin latency and any caller-provided
   "pluginLatencySamples": 0,
   "transportLatencySamples": 256,
   "reportedLatencySamples": 256
+}
+```
+
+### `getTailTime`
+
+Reports how long a plugin may continue producing output after input stops. Installed VST3 workers read
+`IAudioProcessor::getTailSamples()`, preserving the VST3 infinite-tail signal as `infiniteTail: true`.
+Installed Audio Unit workers read `kAudioUnitProperty_TailTime` and convert seconds to samples at the
+instance sample rate. Daemons must clamp reported tail samples to `0..1048576`.
+
+```json
+{
+  "tailSamples": 0,
+  "infiniteTail": false
 }
 ```
 

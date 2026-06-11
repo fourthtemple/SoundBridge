@@ -25,6 +25,7 @@ const MAX_PLUGIN_PARAMETER_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAM
 const MAX_PLUGIN_STATE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_BYTES", 384 * 1024);
 const MAX_PLUGIN_STATE_ENVELOPE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_ENVELOPE_BYTES", 1024 * 1024);
 const MAX_PLUGIN_LATENCY_SAMPLES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_LATENCY_SAMPLES", 1_048_576);
+const MAX_PLUGIN_TAIL_SAMPLES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_TAIL_SAMPLES", 1_048_576);
 const MAX_PAIR_ATTEMPTS_PER_CONNECTION = envInteger("SOUNDBRIDGE_MAX_PAIR_ATTEMPTS", 5);
 const MIN_SAMPLE_RATE = 8000;
 const MAX_SAMPLE_RATE = 384000;
@@ -262,6 +263,9 @@ async function dispatchCommand(envelope, context) {
     case "getLatency":
       return getLatency(payload, session);
 
+    case "getTailTime":
+      return getTailTime(payload, session);
+
     case "openEditor":
     case "closeEditor":
       throw protocolError("unsupported_command", `${command} is reserved for a later phase.`);
@@ -299,6 +303,7 @@ function helloResponse(paired) {
             mockPlugins: true,
             state: true,
             latency: true,
+            tail: true,
             midi: true,
             nativeExampleRenderer: Boolean(NATIVE_RENDERER),
             nativeEditor: false
@@ -439,6 +444,8 @@ async function createInstance(payload, session) {
     parameters,
     nativeParameterIds: new Set(),
     pluginLatencySamples: 0,
+    pluginTailSamples: 0,
+    pluginInfiniteTail: false,
     voices: new Map(),
     renderEngine: undefined,
     worker: undefined
@@ -455,6 +462,9 @@ async function createInstance(payload, session) {
         instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
       }
       instance.pluginLatencySamples = await instance.worker.getLatency();
+      const tail = await instance.worker.getTailTime();
+      instance.pluginTailSamples = tail.tailSamples;
+      instance.pluginInfiniteTail = tail.infiniteTail;
     } catch (error) {
       instance.worker.destroy();
       throw protocolError("plugin_host_failed", `${formatNativeHostName(plugin.nativeHost.format)} host worker failed for ${plugin.name}.`, {
@@ -472,7 +482,9 @@ async function createInstance(payload, session) {
   return {
     instanceId,
     plugin: clonePluginMetadata({ ...plugin, parameters: instance.parameters }),
-    latencySamples: instance.pluginLatencySamples
+    latencySamples: instance.pluginLatencySamples,
+    tailSamples: instance.pluginTailSamples,
+    infiniteTail: instance.pluginInfiniteTail
   };
 }
 
@@ -578,6 +590,14 @@ function getLatency(payload, session) {
   };
 }
 
+function getTailTime(payload, session) {
+  const instance = getInstance(payload.instanceId, session);
+  return {
+    tailSamples: normalizeTailSamples(instance.pluginTailSamples),
+    infiniteTail: Boolean(instance.pluginInfiniteTail)
+  };
+}
+
 async function getNativeState(instance) {
   if (!instance.worker || typeof instance.worker.getState !== "function") {
     return undefined;
@@ -661,7 +681,9 @@ async function processAudioBlock(payload, session) {
     return {
       blockId: payload.blockId,
       ...(await processInstrumentBlock(instance, frames, blockSampleRate)),
-      latencySamples: normalizeLatencySamples(instance.pluginLatencySamples)
+      latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
+      tailSamples: normalizeTailSamples(instance.pluginTailSamples),
+      infiniteTail: Boolean(instance.pluginInfiniteTail)
     };
   }
 
@@ -674,6 +696,8 @@ async function processAudioBlock(payload, session) {
         channels
       }),
       latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
+      tailSamples: normalizeTailSamples(instance.pluginTailSamples),
+      infiniteTail: Boolean(instance.pluginInfiniteTail),
       renderEngine: instance.renderEngine ?? instance.worker.renderEngine ?? "native-host"
     };
   }
@@ -699,7 +723,9 @@ async function processAudioBlock(payload, session) {
   return {
     blockId: payload.blockId,
     channels: output,
-    latencySamples: normalizeLatencySamples(instance.pluginLatencySamples)
+    latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
+    tailSamples: normalizeTailSamples(instance.pluginTailSamples),
+    infiniteTail: Boolean(instance.pluginInfiniteTail)
   };
 }
 
@@ -1095,6 +1121,14 @@ class NativeHostWorker {
     }
     const parsed = await this.request("latency");
     return normalizeLatencySamples(parsed.latencySamples);
+  }
+
+  async getTailTime() {
+    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+      return { tailSamples: 0, infiniteTail: false };
+    }
+    const parsed = await this.request("tail");
+    return normalizeTailReport(parsed);
   }
 
   request(command) {
@@ -2034,6 +2068,21 @@ function normalizeLatencySamples(value) {
     return 0;
   }
   return Math.min(number, MAX_PLUGIN_LATENCY_SAMPLES);
+}
+
+function normalizeTailSamples(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number < 0) {
+    return 0;
+  }
+  return Math.min(number, MAX_PLUGIN_TAIL_SAMPLES);
+}
+
+function normalizeTailReport(value) {
+  return {
+    tailSamples: normalizeTailSamples(value?.tailSamples),
+    infiniteTail: Boolean(value?.infiniteTail)
+  };
 }
 
 function truncateText(value, maxBytes) {

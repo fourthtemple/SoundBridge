@@ -6,6 +6,7 @@ const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47370);
 const PAIRING_TOKEN = process.env.SOUNDBRIDGE_PAIRING_TOKEN ?? "dev-token";
 const ORIGIN = "http://127.0.0.1:5173";
 const MAX_PLUGIN_LATENCY_SAMPLES = 1_048_576;
+const MAX_PLUGIN_TAIL_SAMPLES = 1_048_576;
 
 const socket = await connectWebSocket(HOST, PORT);
 let requestSeq = 0;
@@ -22,6 +23,7 @@ assert(pair.sessionToken, "pair returned sessionToken");
 
 const hello = await request(socket, "hello", {}, true, pair.sessionToken);
 assert(hello.protocolVersion, "hello returned protocolVersion");
+assert(hello.capabilities?.tail === true, "hello advertises tail-time reporting capability after pairing");
 const nativeExampleRendererAvailable = hello.capabilities?.nativeExampleRenderer === true;
 const exampleFormats = ["vst3", "au", "lv2"];
 for (const format of exampleFormats) {
@@ -219,6 +221,10 @@ const nativeAuLatency = await request(
 );
 assertLatencyReport(nativeAuLatency, 256, "installed AU reports bounded plugin and transport latency");
 assert(nativeAuBlock.latencySamples === nativeAuLatency.pluginLatencySamples, "installed AU block latency matches getLatency plugin latency");
+const nativeAuTail = await request(socket, "getTailTime", { instanceId: nativeAuInstance.instanceId }, true, pair.sessionToken);
+assertTailReport(nativeAuTail, "installed AU reports bounded tail time");
+assert(nativeAuInstance.tailSamples === nativeAuTail.tailSamples, "installed AU createInstance tail matches getTailTime");
+assert(nativeAuBlock.tailSamples === nativeAuTail.tailSamples, "installed AU block tail matches getTailTime");
 await request(socket, "destroyInstance", { instanceId: nativeAuInstance.instanceId }, true, pair.sessionToken);
 
 const nativeVst3Effect =
@@ -334,6 +340,10 @@ const nativeVst3Latency = await request(
 );
 assertLatencyReport(nativeVst3Latency, 128, "installed VST3 reports bounded plugin and transport latency");
 assert(nativeVst3Block.latencySamples === nativeVst3Latency.pluginLatencySamples, "installed VST3 block latency matches getLatency plugin latency");
+const nativeVst3Tail = await request(socket, "getTailTime", { instanceId: nativeVst3Instance.instanceId }, true, pair.sessionToken);
+assertTailReport(nativeVst3Tail, "installed VST3 reports bounded tail time");
+assert(nativeVst3Instance.tailSamples === nativeVst3Tail.tailSamples, "installed VST3 createInstance tail matches getTailTime");
+assert(nativeVst3Block.tailSamples === nativeVst3Tail.tailSamples, "installed VST3 block tail matches getTailTime");
 await request(socket, "destroyInstance", { instanceId: nativeVst3Instance.instanceId }, true, pair.sessionToken);
 
 const created = await request(
@@ -442,6 +452,10 @@ assert(restored.restored === true, "setState restored state");
 const latency = await request(socket, "getLatency", { instanceId: created.instanceId, transportLatencySamples: 64 }, true, pair.sessionToken);
 assertLatencyReport(latency, 64, "getLatency returns bounded mock plugin and transport latency");
 assert(processed.latencySamples === latency.pluginLatencySamples, "mock block latency matches getLatency plugin latency");
+const tail = await request(socket, "getTailTime", { instanceId: created.instanceId }, true, pair.sessionToken);
+assertTailReport(tail, "getTailTime returns bounded mock tail time");
+assert(created.tailSamples === tail.tailSamples, "mock createInstance tail matches getTailTime");
+assert(processed.tailSamples === tail.tailSamples, "mock block tail matches getTailTime");
 
 await request(socket, "destroyInstance", { instanceId: created.instanceId }, true, pair.sessionToken);
 
@@ -717,6 +731,16 @@ function assertLatencyReport(latency, transportLatencySamples, message) {
       Math.min(latency.pluginLatencySamples + transportLatencySamples, MAX_PLUGIN_LATENCY_SAMPLES),
     `${message}: reported latency is the clamped total`
   );
+}
+
+function assertTailReport(tail, message) {
+  assert(
+    Number.isInteger(tail.tailSamples) &&
+      tail.tailSamples >= 0 &&
+      tail.tailSamples <= MAX_PLUGIN_TAIL_SAMPLES,
+    `${message}: tail samples are bounded`
+  );
+  assert(typeof tail.infiniteTail === "boolean", `${message}: infinite tail is explicit`);
 }
 
 function blockHasSignal(channels) {

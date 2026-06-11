@@ -25,6 +25,7 @@
         "processAudioBlock",
         "sendMidiEvents",
         "getLatency",
+        "getTailTime",
         "openEditor",
         "closeEditor",
         "heartbeat"
@@ -143,6 +144,10 @@
         {
           "if": { "properties": { "command": { "const": "getLatency" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/getLatencyRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "getTailTime" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/getTailTimeRequest" } } }
         }
       ]
     },
@@ -218,6 +223,8 @@
         "hostUnavailableReason": { "type": "string" },
         "inputs": { "type": "integer", "minimum": 0 },
         "outputs": { "type": "integer", "minimum": 0 },
+        "tailSamples": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+        "infiniteTail": { "type": "boolean" },
         "parameters": {
           "type": "array",
           "maxItems": 1024,
@@ -366,6 +373,14 @@
       "properties": {
         "instanceId": { "type": "string", "minLength": 1 },
         "transportLatencySamples": { "type": "integer", "minimum": 0, "maximum": 1048576 }
+      }
+    },
+    "getTailTimeRequest": {
+      "type": "object",
+      "required": ["instanceId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 }
       }
     }
   }
