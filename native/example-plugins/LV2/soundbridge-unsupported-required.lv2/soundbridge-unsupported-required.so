@@ -1,0 +1,3 @@
+This is an intentionally non-loadable scanner fixture. The LV2 scanner should
+mark this bundle discovery-only before any host worker attempts to dlopen it,
+because the plugin declares an unsupported required LV2 worker feature.

@@ -99,7 +99,9 @@ std::string nativePluginInfoToJson(const NativePluginInfo& info) {
   output << "\"isRegistry\":" << (info.isRegistry ? "true" : "false") << ",";
   output << "\"hasContents\":" << (info.hasContents ? "true" : "false") << ",";
   output << "\"hasExecutable\":" << (info.hasExecutable ? "true" : "false") << ",";
-  output << "\"hasManifest\":" << (info.hasManifest ? "true" : "false");
+  output << "\"hasManifest\":" << (info.hasManifest ? "true" : "false") << ",";
+  output << "\"hasUnsupportedRequiredFeatures\":" << (info.hasUnsupportedRequiredFeatures ? "true" : "false") << ",";
+  output << "\"unsupportedRequiredFeatureCount\":" << info.unsupportedRequiredFeatureCount;
   if (!info.componentType.empty()) {
     output << ",\"componentType\":\"" << jsonEscape(info.componentType) << "\"";
   }

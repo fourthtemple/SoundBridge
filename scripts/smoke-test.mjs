@@ -76,6 +76,12 @@ assert(
   plugins.some((plugin) => plugin.format === "lv2" && plugin.kind === "instrument" && plugin.source === expectedExampleSource),
   "listPlugins returned LV2 example instrument metadata"
 );
+const unsupportedRequiredLv2 = plugins.find((plugin) => plugin.pluginId === "lv2:soundbridge-unsupported-required.lv2");
+assert(
+  unsupportedRequiredLv2?.hostable === false &&
+    unsupportedRequiredLv2.hostUnavailableReason?.includes("unsupported LV2 host features"),
+  "listPlugins marks LV2 plugins with unsupported required features as scan-only"
+);
 for (const format of exampleFormats) {
   const instrument = plugins.find((plugin) => plugin.format === format && plugin.kind === "instrument" && plugin.source === expectedExampleSource);
   assert(
@@ -102,6 +108,35 @@ assert(
 assert(
   lv2Scan.plugins.some((plugin) => plugin.kind === "instrument" && plugin.source === expectedExampleSource),
   "scanPlugins includes the LV2 example instrument"
+);
+assert(
+  lv2Scan.plugins.some((plugin) => plugin.pluginId === "lv2:soundbridge-unsupported-required.lv2" && plugin.hostable === false),
+  "scanPlugins preserves unsupported-required LV2 bundles as discovery-only"
+);
+
+await request(
+  socket,
+  "createInstance",
+  {
+    pluginId: "lv2:soundbridge-unsupported-required.lv2",
+    format: "lv2",
+    sampleRate: 48000,
+    maxBlockSize: 128,
+    inputChannels: 2,
+    outputChannels: 2
+  },
+  true,
+  pair.sessionToken
+).then(
+  () => {
+    throw new Error("unsupported-required LV2 plugin unexpectedly created an instance");
+  },
+  (error) => {
+    assert(
+      error.message.includes("plugin_not_hostable"),
+      "unsupported-required LV2 plugins are rejected before worker launch"
+    );
+  }
 );
 
 const firstScanOnly = plugins.find((plugin) => plugin.source === "scan" && plugin.hostable === false);

@@ -1843,7 +1843,8 @@ function decorateExamplePlugin(plugin) {
     NATIVE_HOST_STATUS.get("lv2")?.host === true &&
     typeof diagnostics.bundlePath === "string" &&
     diagnostics.bundlePath.length > 0 &&
-    diagnostics.hasExecutable === true
+    diagnostics.hasExecutable === true &&
+    diagnostics.hasUnsupportedRequiredFeatures !== true
       ? {
           format: "lv2",
           renderEngine: "native-lv2",
@@ -1896,6 +1897,9 @@ function decorateInstalledPlugin(plugin) {
 
 function hostUnavailableReasonForInstalledPlugin(plugin) {
   if (plugin.format === "lv2" && NATIVE_HOST_STATUS.get("lv2")?.host === true) {
+    if (plugin.diagnostics?.hasUnsupportedRequiredFeatures === true) {
+      return "Installed LV2 scanning is available, but this plugin requires unsupported LV2 host features.";
+    }
     return "Installed LV2 scanning is available; this plugin does not match the basic audio/control LV2 host profile yet.";
   }
   return "Installed plugin scanning is available; binary hosting adapter is not linked yet.";
@@ -1939,6 +1943,7 @@ function nativeHostForInstalledPlugin(plugin) {
       typeof diagnostics.bundlePath !== "string" ||
       diagnostics.bundlePath.length === 0 ||
       diagnostics.hasExecutable !== true ||
+      diagnostics.hasUnsupportedRequiredFeatures === true ||
       Number(plugin.outputs) <= 0 ||
       plugin.kind === "instrument"
     ) {

@@ -6,12 +6,16 @@
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <set>
 
 namespace soundbridge {
 
 namespace {
+
+constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
+constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
 
 std::filesystem::path repositoryExampleLv2Path() {
 #ifdef SOUNDBRIDGE_SOURCE_DIR
@@ -218,6 +222,109 @@ std::vector<std::string> angleValuesAfter(const std::string& text, const std::st
   return values;
 }
 
+std::map<std::string, std::string> turtlePrefixes(const std::string& text) {
+  std::map<std::string, std::string> prefixes{
+      {"lv2", "http://lv2plug.in/ns/lv2core#"},
+      {"urid", "http://lv2plug.in/ns/ext/urid#"},
+      {"state", "http://lv2plug.in/ns/ext/state#"},
+      {"worker", "http://lv2plug.in/ns/ext/worker#"},
+      {"buf-size", "http://lv2plug.in/ns/ext/buf-size#"},
+      {"atom", "http://lv2plug.in/ns/ext/atom#"},
+      {"midi", "http://lv2plug.in/ns/ext/midi#"},
+      {"time", "http://lv2plug.in/ns/ext/time#"},
+  };
+
+  std::size_t position = 0;
+  while ((position = text.find("@prefix", position)) != std::string::npos && prefixes.size() < 64) {
+    const auto nameStart = text.find_first_not_of(" \t\r\n", position + 7);
+    if (nameStart == std::string::npos) {
+      break;
+    }
+    const auto colon = text.find(':', nameStart);
+    if (colon == std::string::npos || colon <= nameStart || colon - nameStart > 32) {
+      position = nameStart + 1;
+      continue;
+    }
+    const auto angleStart = text.find('<', colon + 1);
+    const auto angleEnd = angleStart == std::string::npos ? std::string::npos : text.find('>', angleStart + 1);
+    if (angleStart == std::string::npos || angleEnd == std::string::npos || angleEnd <= angleStart + 1) {
+      position = colon + 1;
+      continue;
+    }
+    const auto name = text.substr(nameStart, colon - nameStart);
+    const auto uri = text.substr(angleStart + 1, angleEnd - angleStart - 1);
+    if (uri.size() <= 256) {
+      prefixes[name] = uri;
+    }
+    position = angleEnd + 1;
+  }
+
+  return prefixes;
+}
+
+std::optional<std::string> expandPrefixedUri(
+    const std::string& token,
+    const std::map<std::string, std::string>& prefixes) {
+  const auto colon = token.find(':');
+  if (colon == std::string::npos || colon == 0 || colon + 1 >= token.size()) {
+    return std::nullopt;
+  }
+  const auto prefix = token.substr(0, colon);
+  const auto local = token.substr(colon + 1);
+  const auto found = prefixes.find(prefix);
+  if (found == prefixes.end() || local.size() > 128) {
+    return std::nullopt;
+  }
+  return found->second + local;
+}
+
+std::set<std::string> requiredFeatureUris(const std::string& text) {
+  std::set<std::string> features;
+  const auto prefixes = turtlePrefixes(text);
+  std::size_t position = 0;
+  while ((position = text.find("lv2:requiredFeature", position)) != std::string::npos && features.size() < 64) {
+    const auto valueStart = position + 19;
+    const auto valueEnd = text.find_first_of(".;]", valueStart);
+    const auto segment = text.substr(valueStart, valueEnd == std::string::npos ? std::string::npos : valueEnd - valueStart);
+
+    std::size_t anglePosition = 0;
+    while ((anglePosition = segment.find('<', anglePosition)) != std::string::npos && features.size() < 64) {
+      const auto end = segment.find('>', anglePosition + 1);
+      if (end == std::string::npos || end <= anglePosition + 1) {
+        break;
+      }
+      const auto uri = segment.substr(anglePosition + 1, end - anglePosition - 1);
+      if (uri.size() <= 256) {
+        features.insert(uri);
+      }
+      anglePosition = end + 1;
+    }
+
+    std::size_t tokenPosition = 0;
+    while (tokenPosition < segment.size() && features.size() < 64) {
+      const auto start = segment.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-", tokenPosition);
+      if (start == std::string::npos) {
+        break;
+      }
+      const auto end = segment.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_:-", start);
+      const auto token = segment.substr(start, end == std::string::npos ? std::string::npos : end - start);
+      if (auto expanded = expandPrefixedUri(token, prefixes)) {
+        if (expanded->size() <= 256) {
+          features.insert(*expanded);
+        }
+      }
+      tokenPosition = end == std::string::npos ? segment.size() : end + 1;
+    }
+
+    position = valueEnd == std::string::npos ? text.size() : valueEnd + 1;
+  }
+  return features;
+}
+
+bool lv2RequiredFeatureSupported(const std::string& uri) {
+  return uri == kLv2UridMapUri || uri == kLv2UridUnmapUri;
+}
+
 std::filesystem::path canonicalPathOrInput(const std::filesystem::path& path) {
   std::error_code error;
   const auto canonical = std::filesystem::weakly_canonical(path, error);
@@ -392,6 +499,15 @@ void applyLv2TurtleMetadata(
     info.kind = "instrument";
     info.category = "Instrument|LV2";
   }
+
+  std::uint32_t unsupportedRequiredFeatures = 0;
+  for (const auto& uri : requiredFeatureUris(turtle)) {
+    if (!lv2RequiredFeatureSupported(uri)) {
+      ++unsupportedRequiredFeatures;
+    }
+  }
+  info.unsupportedRequiredFeatureCount = unsupportedRequiredFeatures;
+  info.hasUnsupportedRequiredFeatures = unsupportedRequiredFeatures > 0;
 
   std::uint32_t inputs = 0;
   std::uint32_t outputs = 0;

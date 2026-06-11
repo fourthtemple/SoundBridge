@@ -1,0 +1,11 @@
+@prefix doap: <http://usefulinc.com/ns/doap#> .
+@prefix lv2: <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix worker: <http://lv2plug.in/ns/ext/worker#> .
+
+<urn:soundbridge:example:unsupported-required>
+  a lv2:Plugin ;
+  doap:name "SoundBridge Unsupported Required LV2" ;
+  lv2:binary <soundbridge-unsupported-required.so> ;
+  lv2:requiredFeature worker:schedule ;
+  rdfs:seeAlso <soundbridge-unsupported-required.ttl> .
