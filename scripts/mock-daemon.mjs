@@ -2046,7 +2046,8 @@ function decorateExamplePlugin(plugin) {
 }
 
 function decorateInstalledPlugin(plugin) {
-  const nativeHost = nativeHostForInstalledPlugin(plugin);
+  const auProfileReason = unsupportedAudioUnitHostProfileReason(plugin);
+  const nativeHost = auProfileReason ? undefined : nativeHostForInstalledPlugin(plugin);
   const hostable = Boolean(nativeHost);
   return {
     pluginId: plugin.pluginId,
@@ -2059,7 +2060,7 @@ function decorateInstalledPlugin(plugin) {
     hostable,
     hostUnavailableReason: hostable
       ? undefined
-      : hostUnavailableReasonForInstalledPlugin(plugin),
+      : auProfileReason ?? hostUnavailableReasonForInstalledPlugin(plugin),
     inputs: defaultInputChannels(plugin),
     outputs: defaultOutputChannels(plugin),
     metadata: normalizePluginClassMetadata(plugin.metadata, plugin.format),
@@ -2070,6 +2071,10 @@ function decorateInstalledPlugin(plugin) {
 }
 
 function hostUnavailableReasonForInstalledPlugin(plugin) {
+  const auProfileReason = unsupportedAudioUnitHostProfileReason(plugin);
+  if (auProfileReason) {
+    return auProfileReason;
+  }
   if (plugin.format === "lv2" && NATIVE_HOST_STATUS.get("lv2")?.host === true) {
     if (plugin.diagnostics?.hasUnsupportedRequiredFeatures === true) {
       return "Installed LV2 scanning is available, but this plugin requires unsupported LV2 host features.";
@@ -2083,6 +2088,9 @@ function nativeHostForInstalledPlugin(plugin) {
   const diagnostics = plugin.diagnostics ?? {};
 
   if (plugin.format === "au" && NATIVE_HOST_STATUS.get("au")?.host === true) {
+    if (unsupportedAudioUnitHostProfileReason(plugin)) {
+      return undefined;
+    }
     if (
       typeof diagnostics.componentType !== "string" ||
       typeof diagnostics.componentSubType !== "string" ||
@@ -2129,6 +2137,30 @@ function nativeHostForInstalledPlugin(plugin) {
       renderEngine: "native-lv2",
       bundlePath: diagnostics.bundlePath
     };
+  }
+
+  return undefined;
+}
+
+function unsupportedAudioUnitHostProfileReason(plugin) {
+  if (plugin?.format !== "au" || NATIVE_HOST_STATUS.get("au")?.host !== true) {
+    return undefined;
+  }
+  const diagnostics = plugin.diagnostics ?? {};
+  const componentType = String(diagnostics.componentType ?? plugin.metadata?.componentType ?? "");
+  const componentSubType = String(diagnostics.componentSubType ?? plugin.metadata?.componentSubType ?? "");
+  const componentManufacturer = String(diagnostics.componentManufacturer ?? plugin.metadata?.componentManufacturer ?? "");
+
+  if (componentType === "auol") {
+    return "This Audio Unit is an offline effect and requires a future offline-render host profile.";
+  }
+
+  if (componentManufacturer === "appl" && componentType === "aufc" && componentSubType === "amix") {
+    return "AUAudioMix requires a multi-source format-converter host profile; the current Audio Unit bridge hosts realtime main-bus units.";
+  }
+
+  if (componentManufacturer === "appl" && componentType === "aumx" && componentSubType === "mspl") {
+    return "AUMultiSplitter requires a multi-output splitter host profile; the current Audio Unit bridge hosts realtime main-bus units.";
   }
 
   return undefined;

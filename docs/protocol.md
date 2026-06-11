@@ -176,7 +176,7 @@ Returns plugin metadata:
 
 `presets` is optional bounded host-display metadata. Preset ids are capped at 64 bytes, names at 160 bytes, and the daemon exposes at most 256 presets per plugin. These presets are parameter snapshots; arbitrary preset files, sample locations, and licensing data require a separate brokered file-access path.
 
-`hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter or compatible host profile is available. For LV2, unsupported `lv2:requiredFeature` declarations are a reason to keep a bundle discovery-only. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
+`hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter or compatible host profile is available. For LV2, unsupported `lv2:requiredFeature` declarations are a reason to keep a bundle discovery-only. For AU, offline effects and system units that require a dedicated format-converter, splitter, or offline-render profile should remain discovery-only until that profile is implemented. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
 
 Plugin instances are owned by the session that creates them. Commands that reference `instanceId` must fail with `instance_access_denied` when another session attempts to control the instance.
 
@@ -238,7 +238,7 @@ Compatible LV2 control ports marked with `lv2:toggled`, `lv2:integer`, or `lv2:e
 
 Returns the negotiated channel and bus layout for an instance. `requestedInputChannels` and `requestedOutputChannels` record the bounded host request; `inputChannels` and `outputChannels` are the effective worker layout. All channel and bus counts are clamped to `0..32` for inputs and `1..32` for outputs before they reach the host.
 
-`inputBusLayouts` and `outputBusLayouts` expose bounded per-bus metadata for routing UIs and sidechain/multi-output scheduling. Each bus has an `index`, `direction`, `mediaType`, display `name`, `type` (`main`, `aux`, or `unknown`), `channels`, and `active`. VST3 reports SDK bus info, including aux input buses that commonly represent sidechains, and attempts bounded per-bus speaker arrangement negotiation before falling back to main-bus negotiation for compatibility. AU, LV2, and mock workers currently report conservative main-bus layouts that match their render paths.
+`inputBusLayouts` and `outputBusLayouts` expose bounded per-bus metadata for routing UIs and sidechain/multi-output scheduling. Each bus has an `index`, `direction`, `mediaType`, display `name`, `type` (`main`, `aux`, or `unknown`), `channels`, and `active`. VST3 reports SDK bus info, including aux input buses that commonly represent sidechains, and attempts bounded per-bus speaker arrangement negotiation before falling back to main-bus negotiation for compatibility. AU, LV2, and mock workers currently report conservative main-bus layouts that match their render paths; AU units requiring offline, splitter, or multi-source converter profiles are marked discovery-only instead of being instantiated through this main-bus path.
 
 ```json
 {
