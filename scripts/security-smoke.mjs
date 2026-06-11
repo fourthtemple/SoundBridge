@@ -153,6 +153,15 @@ async function run() {
       pairedHello.capabilities?.security?.maxEditorsPerSession > 0,
     "paired hello advertises bounded generic editor brokering"
   );
+  const listed = await request(main, "listPlugins", {}, true, session);
+  check(publicPluginsArePathFree(listed.plugins), "listPlugins returns path-free public plugin metadata");
+  const scanned = await request(main, "scanPlugins", {}, true, session);
+  check(
+    Array.isArray(scanned.nativeSearchPaths) &&
+      scanned.nativeSearchPaths.length === 0 &&
+      publicPluginsArePathFree(scanned.plugins),
+    "scanPlugins returns path-free public plugin metadata"
+  );
   const replay = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
   const replayedSession = await request(replay, "hello", {}, true, session).then(
     () => ({ ok: true }),
@@ -188,6 +197,7 @@ async function run() {
     session
   );
   check(typeof created.instanceId === "string", "valid createInstance returns an instanceId");
+  check(publicPluginIsPathFree(created.plugin), "createInstance returns a path-free public plugin snapshot");
   check(/^inst-[0-9a-f-]{36}$/.test(created.instanceId), "instanceId is a random UUID (not a guessable counter)");
   check(
     created.layout?.inputChannels === 2 &&
@@ -1044,4 +1054,28 @@ async function pairAttempt(ctx, token) {
     if (error.code === "closed" || error.code === "timeout") return { closed: true };
     return { code: error.code };
   }
+}
+
+function publicPluginsArePathFree(plugins) {
+  return Array.isArray(plugins) && plugins.length > 0 && plugins.every(publicPluginIsPathFree);
+}
+
+function publicPluginIsPathFree(plugin) {
+  return plugin && typeof plugin === "object" && !hasPrivatePathFields(plugin);
+}
+
+function hasPrivatePathFields(value) {
+  if (!value || typeof value !== "object") return false;
+  for (const [key, child] of Object.entries(value)) {
+    if (["bundlePath", "diagnostics", "executablePath", "nativeHost", "path"].includes(key)) {
+      return true;
+    }
+    if (key === "parameters" && !Array.isArray(child)) {
+      continue;
+    }
+    if (hasPrivatePathFields(child)) {
+      return true;
+    }
+  }
+  return false;
 }
