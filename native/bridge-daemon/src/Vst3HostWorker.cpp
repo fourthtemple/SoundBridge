@@ -1300,6 +1300,66 @@ private:
     return std::min<std::uint32_t>(fallback, kMaxWorkerChannels);
   }
 
+  std::vector<Steinberg::Vst::SpeakerArrangement> desiredBusArrangements(
+      Steinberg::Vst::BusDirection direction,
+      Steinberg::int32 busCount,
+      std::uint32_t mainChannels) const {
+    const auto count = std::clamp<Steinberg::int32>(busCount, 0, static_cast<Steinberg::int32>(kMaxWorkerChannels));
+    std::vector<Steinberg::Vst::SpeakerArrangement> arrangements;
+    arrangements.reserve(static_cast<std::size_t>(count));
+    for (Steinberg::int32 index = 0; index < count; ++index) {
+      const auto channels = index == 0
+          ? mainChannels
+          : defaultBusChannels(direction, index, 0);
+      arrangements.push_back(arrangementForChannels(channels));
+    }
+    return arrangements;
+  }
+
+  std::uint32_t negotiatedBusChannels(
+      Steinberg::Vst::BusDirection direction,
+      Steinberg::int32 index,
+      Steinberg::Vst::SpeakerArrangement fallbackArrangement,
+      std::uint32_t fallbackChannels,
+      bool requireOutput) const {
+    Steinberg::Vst::SpeakerArrangement currentArrangement {};
+    const auto arrangement = processor_->getBusArrangement(direction, index, currentArrangement) == Steinberg::kResultOk
+        ? currentArrangement
+        : fallbackArrangement;
+    auto channels = std::min<std::uint32_t>(
+        channelsForArrangement(arrangement, fallbackChannels),
+        kMaxWorkerChannels);
+    if (requireOutput && channels == 0) {
+      channels = std::clamp<std::uint32_t>(fallbackChannels, 1, kMaxWorkerChannels);
+    }
+    return channels;
+  }
+
+  std::vector<std::uint32_t> negotiatedBusChannelList(
+      Steinberg::Vst::BusDirection direction,
+      Steinberg::int32 busCount,
+      const std::vector<Steinberg::Vst::SpeakerArrangement>& arrangements,
+      bool requireMainOutput) const {
+    const auto count = std::clamp<Steinberg::int32>(busCount, 0, static_cast<Steinberg::int32>(kMaxWorkerChannels));
+    std::vector<std::uint32_t> channels;
+    channels.reserve(static_cast<std::size_t>(count));
+    for (Steinberg::int32 index = 0; index < count; ++index) {
+      const auto fallbackArrangement = static_cast<std::size_t>(index) < arrangements.size()
+          ? arrangements[static_cast<std::size_t>(index)]
+          : Steinberg::Vst::SpeakerArr::kEmpty;
+      const auto fallbackChannels = channelsForArrangement(
+          fallbackArrangement,
+          defaultBusChannels(direction, index, index == 0 && requireMainOutput ? requestedOutputChannels_ : 0));
+      channels.push_back(negotiatedBusChannels(
+          direction,
+          index,
+          fallbackArrangement,
+          fallbackChannels,
+          requireMainOutput && index == 0));
+    }
+    return channels;
+  }
+
   void configure() {
     inputBusCount_ = std::clamp<Steinberg::int32>(
         component_->getBusCount(Steinberg::Vst::kAudio, Steinberg::Vst::kInput),
@@ -1317,59 +1377,92 @@ private:
     outputChannels_ = requestedOutputChannels_;
     auto inputArrangement = arrangementForChannels(inputChannels_);
     auto outputArrangement = arrangementForChannels(outputChannels_);
+    auto inputArrangements = desiredBusArrangements(Steinberg::Vst::kInput, inputBusCount_, inputChannels_);
+    auto outputArrangements = desiredBusArrangements(Steinberg::Vst::kOutput, outputBusCount_, outputChannels_);
 
-    const auto arrangementResult = processor_->setBusArrangements(
-        inputBusCount_ > 0 ? &inputArrangement : nullptr,
-        inputBusCount_ > 0 ? 1 : 0,
-        &outputArrangement,
-        1);
-    if (arrangementResult != Steinberg::kResultOk) {
-      Steinberg::Vst::SpeakerArrangement currentOutput {};
-      if (processor_->getBusArrangement(Steinberg::Vst::kOutput, 0, currentOutput) == Steinberg::kResultOk) {
-        outputChannels_ = std::clamp<std::uint32_t>(
-            channelsForArrangement(currentOutput, requestedOutputChannels_),
-            1,
-            kMaxWorkerChannels);
-        outputArrangement = currentOutput;
-      } else if (outputChannels_ != 2) {
-        outputChannels_ = 2;
-        outputArrangement = Steinberg::Vst::SpeakerArr::kStereo;
-        checkResult(
-            processor_->setBusArrangements(
-                inputBusCount_ > 0 ? &inputArrangement : nullptr,
-                inputBusCount_ > 0 ? 1 : 0,
-                &outputArrangement,
-                1),
-            "IAudioProcessor::setBusArrangements");
-      } else {
-        checkResult(arrangementResult, "IAudioProcessor::setBusArrangements");
-      }
-
-      if (inputBusCount_ > 0) {
-        Steinberg::Vst::SpeakerArrangement currentInput {};
-        if (processor_->getBusArrangement(Steinberg::Vst::kInput, 0, currentInput) == Steinberg::kResultOk) {
-          inputChannels_ = std::min<std::uint32_t>(
-              channelsForArrangement(currentInput, requestedInputChannels_),
+    const auto fullArrangementResult = processor_->setBusArrangements(
+        inputArrangements.empty() ? nullptr : inputArrangements.data(),
+        static_cast<Steinberg::int32>(inputArrangements.size()),
+        outputArrangements.empty() ? nullptr : outputArrangements.data(),
+        static_cast<Steinberg::int32>(outputArrangements.size()));
+    if (fullArrangementResult == Steinberg::kResultOk) {
+      inputBusChannels_ = negotiatedBusChannelList(
+          Steinberg::Vst::kInput,
+          inputBusCount_,
+          inputArrangements,
+          false);
+      outputBusChannels_ = negotiatedBusChannelList(
+          Steinberg::Vst::kOutput,
+          outputBusCount_,
+          outputArrangements,
+          true);
+      inputChannels_ = inputBusChannels_.empty() ? 0 : inputBusChannels_[0];
+      outputChannels_ = outputBusChannels_.empty() ? requestedOutputChannels_ : outputBusChannels_[0];
+    } else {
+      const auto arrangementResult = processor_->setBusArrangements(
+          inputBusCount_ > 0 ? &inputArrangement : nullptr,
+          inputBusCount_ > 0 ? 1 : 0,
+          &outputArrangement,
+          1);
+      if (arrangementResult != Steinberg::kResultOk) {
+        Steinberg::Vst::SpeakerArrangement currentOutput {};
+        if (processor_->getBusArrangement(Steinberg::Vst::kOutput, 0, currentOutput) == Steinberg::kResultOk) {
+          outputChannels_ = std::clamp<std::uint32_t>(
+              channelsForArrangement(currentOutput, requestedOutputChannels_),
+              1,
               kMaxWorkerChannels);
+          outputArrangement = currentOutput;
+        } else if (outputChannels_ != 2) {
+          outputChannels_ = 2;
+          outputArrangement = Steinberg::Vst::SpeakerArr::kStereo;
+          checkResult(
+              processor_->setBusArrangements(
+                  inputBusCount_ > 0 ? &inputArrangement : nullptr,
+                  inputBusCount_ > 0 ? 1 : 0,
+                  &outputArrangement,
+                  1),
+              "IAudioProcessor::setBusArrangements");
+        } else {
+          checkResult(arrangementResult, "IAudioProcessor::setBusArrangements");
         }
-      } else {
-        inputChannels_ = 0;
+
+        if (inputBusCount_ > 0) {
+          Steinberg::Vst::SpeakerArrangement currentInput {};
+          if (processor_->getBusArrangement(Steinberg::Vst::kInput, 0, currentInput) == Steinberg::kResultOk) {
+            inputChannels_ = std::min<std::uint32_t>(
+                channelsForArrangement(currentInput, requestedInputChannels_),
+                kMaxWorkerChannels);
+          }
+        } else {
+          inputChannels_ = 0;
+        }
+      }
+
+      inputBusChannels_.assign(static_cast<std::size_t>(inputBusCount_), 0);
+      outputBusChannels_.assign(static_cast<std::size_t>(outputBusCount_), 0);
+      if (!inputBusChannels_.empty()) {
+        inputBusChannels_[0] = inputChannels_;
+        for (std::size_t index = 1; index < inputBusChannels_.size(); ++index) {
+          inputBusChannels_[index] = defaultBusChannels(Steinberg::Vst::kInput, static_cast<Steinberg::int32>(index), 0);
+        }
+      }
+      if (!outputBusChannels_.empty()) {
+        outputBusChannels_[0] = outputChannels_;
+        for (std::size_t index = 1; index < outputBusChannels_.size(); ++index) {
+          outputBusChannels_[index] = defaultBusChannels(Steinberg::Vst::kOutput, static_cast<Steinberg::int32>(index), 0);
+        }
       }
     }
 
-    inputBusChannels_.assign(static_cast<std::size_t>(inputBusCount_), 0);
-    outputBusChannels_.assign(static_cast<std::size_t>(outputBusCount_), 0);
-    if (!inputBusChannels_.empty()) {
-      inputBusChannels_[0] = inputChannels_;
-      for (std::size_t index = 1; index < inputBusChannels_.size(); ++index) {
-        inputBusChannels_[index] = defaultBusChannels(Steinberg::Vst::kInput, static_cast<Steinberg::int32>(index), 0);
+    if (outputBusChannels_.empty() || outputBusChannels_[0] == 0) {
+      if (outputBusChannels_.empty()) {
+        outputBusChannels_.assign(static_cast<std::size_t>(outputBusCount_), 0);
       }
-    }
-    if (!outputBusChannels_.empty()) {
+      outputChannels_ = std::clamp<std::uint32_t>(
+          outputChannels_ == 0 ? requestedOutputChannels_ : outputChannels_,
+          1,
+          kMaxWorkerChannels);
       outputBusChannels_[0] = outputChannels_;
-      for (std::size_t index = 1; index < outputBusChannels_.size(); ++index) {
-        outputBusChannels_[index] = defaultBusChannels(Steinberg::Vst::kOutput, static_cast<Steinberg::int32>(index), 0);
-      }
     }
 
     for (std::size_t index = 0; index < inputBusChannels_.size(); ++index) {
