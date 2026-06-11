@@ -55,6 +55,11 @@ struct PendingMidiMessage {
   std::uint32_t sampleOffset = 0;
 };
 
+struct IndexedAudioBus {
+  std::uint32_t index = 0;
+  std::vector<std::vector<float>> channels;
+};
+
 struct HostTransportContext {
   bool playing = false;
   bool recording = false;
@@ -512,10 +517,11 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
   return channels;
 }
 
-bool applyMainInputBusChannels(
+bool parseAudioBuses(
     const std::string& encoded,
     std::uint32_t frames,
-    std::vector<std::vector<float>>& channels) {
+    std::vector<IndexedAudioBus>& buses) {
+  buses.clear();
   if (encoded.empty() || encoded == "-") {
     return true;
   }
@@ -541,11 +547,20 @@ bool applyMainInputBusChannels(
     if (!seenIndexes.insert(index).second) {
       return false;
     }
-    if (index == 0) {
-      channels = parseChannels(token.substr(separator + 1), frames);
-    }
+    buses.push_back(IndexedAudioBus{
+        index,
+        parseChannels(token.substr(separator + 1), frames)});
   }
   return true;
+}
+
+const std::vector<std::vector<float>>* findBusChannels(const std::vector<IndexedAudioBus>& buses, std::uint32_t index) {
+  for (const auto& bus : buses) {
+    if (bus.index == index) {
+      return &bus.channels;
+    }
+  }
+  return nullptr;
 }
 
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
@@ -812,9 +827,9 @@ public:
            << ",\"requestedOutputChannels\":" << requestedOutputChannels_
            << ",\"inputChannels\":" << inputChannels_
            << ",\"outputChannels\":" << outputChannels_
-           << ",\"inputBuses\":" << (inputChannels_ > 0 ? 1 : 0)
+           << ",\"inputBuses\":" << activeInputBusCount()
            << ",\"outputBuses\":1"
-           << ",\"inputBusLayouts\":" << mainBusLayoutToJson("input", inputChannels_, inputChannels_ > 0)
+           << ",\"inputBusLayouts\":" << inputBusLayoutsToJson()
            << ",\"outputBusLayouts\":" << mainBusLayoutToJson("output", outputChannels_, true)
            << ",\"sampleRate\":" << sampleRate_
            << ",\"maxBlockSize\":" << maxBlockSize_
@@ -826,6 +841,7 @@ public:
       std::uint32_t frames,
       double sampleRate,
       std::vector<std::vector<float>> inputChannels,
+      std::vector<IndexedAudioBus> inputBuses,
       HostTransportContext transport) {
     if (std::abs(sampleRate - sampleRate_) > 0.01) {
       throw std::runtime_error("Audio Unit worker cannot change sample rate after initialization.");
@@ -839,10 +855,15 @@ public:
          std::abs(transport.samplePosition - sampleTime_) > 0.5);
     currentTransport_ = transport;
     currentTransportInitialized_ = true;
-    currentInput_ = std::move(inputChannels);
+    if (inputBuses.empty() && !inputChannels.empty()) {
+      inputBuses.push_back(IndexedAudioBus{0, std::move(inputChannels)});
+    }
+    currentInputBuses_ = std::move(inputBuses);
     currentInputFrames_ = frames;
-    for (auto& channel : currentInput_) {
-      channel.resize(frames, 0.0F);
+    for (auto& bus : currentInputBuses_) {
+      for (auto& channel : bus.channels) {
+        channel.resize(frames, 0.0F);
+      }
     }
 
     std::vector<std::vector<float>> outputChannels;
@@ -862,6 +883,34 @@ public:
   }
 
 private:
+  std::uint32_t activeInputBusCount() const {
+    return static_cast<std::uint32_t>(std::count(inputBusActive_.begin(), inputBusActive_.end(), true));
+  }
+
+  std::string inputBusLayoutsToJson() const {
+    std::ostringstream output;
+    output << "[";
+    bool wrote = false;
+    for (std::uint32_t index = 0; index < inputBusActive_.size(); ++index) {
+      if (!inputBusActive_[index]) {
+        continue;
+      }
+      if (wrote) {
+        output << ",";
+      }
+      output << "{\"index\":" << index
+             << ",\"direction\":\"input\""
+             << ",\"mediaType\":\"audio\""
+             << ",\"name\":\"" << (index == 0 ? "Main Input" : "Aux Input " + std::to_string(index)) << "\""
+             << ",\"type\":\"" << (index == 0 ? "main" : "aux") << "\""
+             << ",\"channels\":" << std::min<std::uint32_t>(inputChannels_, kMaxWorkerChannels)
+             << ",\"active\":true}";
+      wrote = true;
+    }
+    output << "]";
+    return output.str();
+  }
+
   static std::string mainBusLayoutToJson(const char* direction, std::uint32_t channels, bool active) {
     const std::string directionText(direction);
     if (!active && directionText == "input") {
@@ -1022,10 +1071,11 @@ private:
       void* refCon,
       AudioUnitRenderActionFlags* /* actionFlags */,
       const AudioTimeStamp* /* timeStamp */,
-      UInt32 /* busNumber */,
+      UInt32 busNumber,
       UInt32 frameCount,
       AudioBufferList* ioData) {
     auto* host = static_cast<HostedAudioUnit*>(refCon);
+    const auto* sourceBus = findBusChannels(host->currentInputBuses_, busNumber);
     for (UInt32 bufferIndex = 0; bufferIndex < ioData->mNumberBuffers; ++bufferIndex) {
       auto* output = static_cast<Float32*>(ioData->mBuffers[bufferIndex].mData);
       const auto bytes = frameCount * sizeof(Float32);
@@ -1034,8 +1084,8 @@ private:
         continue;
       }
 
-      if (bufferIndex < host->currentInput_.size()) {
-        const auto& source = host->currentInput_[bufferIndex];
+      if (sourceBus != nullptr && bufferIndex < sourceBus->size()) {
+        const auto& source = (*sourceBus)[bufferIndex];
         for (UInt32 frame = 0; frame < frameCount; ++frame) {
           output[frame] = frame < source.size() ? source[frame] : 0.0F;
         }
@@ -1192,6 +1242,22 @@ private:
         sizeof(callbacks));
   }
 
+  std::uint32_t audioUnitElementCount(AudioUnitScope scope, std::uint32_t fallback) const {
+    UInt32 count = 0;
+    UInt32 countSize = sizeof(count);
+    const auto status = AudioUnitGetProperty(
+        unit_,
+        kAudioUnitProperty_ElementCount,
+        scope,
+        0,
+        &count,
+        &countSize);
+    if (status != noErr || count == 0) {
+      return fallback;
+    }
+    return std::clamp<std::uint32_t>(count, 0, kMaxWorkerChannels);
+  }
+
   void configure() {
     UInt32 maxFrames = maxBlockSize_;
     checkStatus(
@@ -1216,29 +1282,38 @@ private:
         "AudioUnitSetProperty output StreamFormat");
 
     if (inputChannels_ > 0) {
+      inputBusCount_ = audioUnitElementCount(kAudioUnitScope_Input, 1);
+      inputBusActive_.assign(inputBusCount_, false);
       const auto inputFormat = streamDescription(sampleRate_, inputChannels_);
-      checkStatus(
-          AudioUnitSetProperty(
-              unit_,
-              kAudioUnitProperty_StreamFormat,
-              kAudioUnitScope_Input,
-              0,
-              &inputFormat,
-              sizeof(inputFormat)),
-          "AudioUnitSetProperty input StreamFormat");
+      for (std::uint32_t busIndex = 0; busIndex < inputBusCount_; ++busIndex) {
+        const auto formatStatus = AudioUnitSetProperty(
+            unit_,
+            kAudioUnitProperty_StreamFormat,
+            kAudioUnitScope_Input,
+            busIndex,
+            &inputFormat,
+            sizeof(inputFormat));
 
-      AURenderCallbackStruct callback {};
-      callback.inputProc = &HostedAudioUnit::inputCallback;
-      callback.inputProcRefCon = this;
-      checkStatus(
-          AudioUnitSetProperty(
-              unit_,
-              kAudioUnitProperty_SetRenderCallback,
-              kAudioUnitScope_Input,
-              0,
-              &callback,
-              sizeof(callback)),
-          "AudioUnitSetProperty input RenderCallback");
+        AURenderCallbackStruct callback {};
+        callback.inputProc = &HostedAudioUnit::inputCallback;
+        callback.inputProcRefCon = this;
+        const auto callbackStatus = AudioUnitSetProperty(
+            unit_,
+            kAudioUnitProperty_SetRenderCallback,
+            kAudioUnitScope_Input,
+            busIndex,
+            &callback,
+            sizeof(callback));
+
+        if (busIndex == 0) {
+          checkStatus(formatStatus, "AudioUnitSetProperty input StreamFormat");
+          checkStatus(callbackStatus, "AudioUnitSetProperty input RenderCallback");
+        }
+        inputBusActive_[busIndex] = formatStatus == noErr && callbackStatus == noErr;
+      }
+    } else {
+      inputBusCount_ = 0;
+      inputBusActive_.clear();
     }
 
     installHostCallbacks();
@@ -1252,7 +1327,9 @@ private:
   std::uint32_t requestedOutputChannels_ = 2;
   std::uint32_t inputChannels_ = 2;
   std::uint32_t outputChannels_ = 2;
-  std::vector<std::vector<float>> currentInput_;
+  std::uint32_t inputBusCount_ = 0;
+  std::vector<bool> inputBusActive_;
+  std::vector<IndexedAudioBus> currentInputBuses_;
   std::uint32_t currentInputFrames_ = 0;
   HostTransportContext currentTransport_;
   double sampleTime_ = 0.0;
@@ -1419,11 +1496,17 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
             continue;
           }
           auto channels = parseChannels(encodedChannels, frames);
-          if (!applyMainInputBusChannels(encodedInputBuses, frames, channels)) {
+          std::vector<IndexedAudioBus> inputBuses;
+          if (!parseAudioBuses(encodedInputBuses, frames, inputBuses)) {
             std::cout << "{\"error\":\"invalid_render_arguments\"}" << std::endl;
             continue;
           }
-          const auto renderedChannels = host.render(frames, renderSampleRate, std::move(channels), transport);
+          const auto renderedChannels = host.render(
+              frames,
+              renderSampleRate,
+              std::move(channels),
+              std::move(inputBuses),
+              transport);
           std::cout << mainOutputBusBlockToJson(renderedChannels) << std::endl;
           continue;
         }

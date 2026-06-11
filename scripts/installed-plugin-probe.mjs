@@ -255,12 +255,25 @@ function createInstancePayload(plugin) {
 function renderPayloadForLayout(instanceId, layout) {
   const inputChannels = clampInt(layout?.inputChannels, 0, 32, 0);
   const bus0Channels = Array.from({ length: inputChannels }, () => Array(MAX_BLOCK_SIZE).fill(0.05));
+  const inputBuses = inputChannels > 0 ? [{ index: 0, channels: bus0Channels }] : [];
+  const inputBusLayouts = Array.isArray(layout?.inputBusLayouts) ? layout.inputBusLayouts : [];
+  for (const bus of inputBusLayouts) {
+    const index = clampInt(bus?.index, 0, 31, 0);
+    const channels = clampInt(bus?.channels, 0, 32, 0);
+    if (index === 0 || bus?.active !== true || channels <= 0 || inputBuses.some((candidate) => candidate.index === index)) {
+      continue;
+    }
+    inputBuses.push({
+      index,
+      channels: Array.from({ length: channels }, () => Array(MAX_BLOCK_SIZE).fill(0.025))
+    });
+  }
   return {
     instanceId,
     frames: MAX_BLOCK_SIZE,
     sampleRate: SAMPLE_RATE,
     channels: Array.from({ length: inputChannels }, () => Array(MAX_BLOCK_SIZE).fill(0)),
-    inputBuses: inputChannels > 0 ? [{ index: 0, channels: bus0Channels }] : []
+    inputBuses
   };
 }
 
@@ -299,11 +312,20 @@ function boundedLayoutSummary(layout) {
   if (!layout || typeof layout !== "object") {
     return {};
   }
+  const summarizeBusLayouts = (value) => Array.isArray(value)
+    ? value.map((bus) => ({
+        index: clampInt(bus?.index, 0, 31, 0),
+        channels: clampInt(bus?.channels, 0, 32, 0),
+        active: bus?.active === true
+      }))
+    : [];
   return {
     inputChannels: layout.inputChannels,
     outputChannels: layout.outputChannels,
     inputBuses: layout.inputBuses,
     outputBuses: layout.outputBuses,
+    inputBusLayouts: summarizeBusLayouts(layout.inputBusLayouts),
+    outputBusLayouts: summarizeBusLayouts(layout.outputBusLayouts),
     maxBlockSize: layout.maxBlockSize,
     sampleRate: layout.sampleRate
   };
