@@ -20,6 +20,7 @@
         "destroyInstance",
         "getParameters",
         "setParameter",
+        "setPreset",
         "setParameterEvents",
         "setParameterCurve",
         "getState",
@@ -143,6 +144,10 @@
         {
           "if": { "properties": { "command": { "const": "setParameter" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/setParameterRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "setPreset" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/setPresetRequest" } } }
         },
         {
           "if": { "properties": { "command": { "const": "setParameterEvents" } }, "required": ["command"] },
@@ -575,6 +580,15 @@
         "instanceId": { "type": "string", "minLength": 1 },
         "parameterId": { "type": "string", "minLength": 1, "maxLength": 64 },
         "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "setPresetRequest": {
+      "type": "object",
+      "required": ["instanceId", "presetId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 },
+        "presetId": { "type": "string", "minLength": 1, "maxLength": 64 }
       }
     },
     "setParameterEventsRequest": {

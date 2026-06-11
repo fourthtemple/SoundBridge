@@ -275,6 +275,42 @@ Returns the negotiated channel and bus layout for an instance. `requestedInputCh
 
 Sets one normalized parameter value. Values outside `0..1` are rejected. For installed VST3 plugins, the reference daemon updates the edit controller and queues a processor-side `IParameterChanges` point for the next render block. For installed Audio Units, the reference daemon maps normalized values onto the CoreAudio parameter range and calls `AudioUnitSetParameter`. For compatible LV2 audio/control plugins, the reference daemon maps normalized values onto bounded LV2 input control ports parsed from bundle TTL and rounds toggled/integer/enumeration controls to legal plain values.
 
+### `setPreset`
+
+Applies one daemon-listed preset snapshot to an existing instance.
+
+```json
+{
+  "instanceId": "inst-2",
+  "presetId": "gain-bright"
+}
+```
+
+The browser sends only `presetId`; it does not send an arbitrary parameter map or file path. The daemon looks up the preset in the bounded metadata it already exposed for that plugin, enforces instance ownership, applies only matching known live parameters, and returns the updated parameter metadata:
+
+```json
+{
+  "applied": true,
+  "presetId": "gain-bright",
+  "parameterCount": 1,
+  "parameters": [
+    {
+      "id": "gain",
+      "name": "Gain",
+      "normalizedValue": 0.75,
+      "defaultNormalizedValue": 0.5,
+      "unit": "dB",
+      "minPlain": -24,
+      "maxPlain": 24,
+      "plainValue": 12,
+      "automatable": true
+    }
+  ]
+}
+```
+
+`presetId` is capped at 64 bytes. Preset snapshots are capped to the same 1024 parameter-value ceiling used for parameter metadata, and every value is clamped to normalized `0..1` before the snapshot can be applied. If a listed snapshot contains parameters that the live worker does not expose, those entries are ignored rather than treated as new host commands. Arbitrary preset files, sample folders, caches, and licensing data still require a separate user-approved file broker.
+
 ### `setParameterEvents`
 
 Queues a bounded list of normalized parameter events for the next render block. `time` is an integer sample offset into the next block and is clamped by schema/daemon validation to the instance block size. The reference daemon rejects more than 4096 events per request, rejects parameter ids longer than 64 bytes, and enforces instance ownership before dispatching events to workers.

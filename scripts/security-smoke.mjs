@@ -155,6 +155,48 @@ async function run() {
       Math.abs(selectedProgram.parameter.normalizedValue - 2 / 3) < 0.000001,
     "setParameter selects a bounded program-list value"
   );
+  check(
+    Array.isArray(created.plugin?.presets) &&
+      created.plugin.presets.length >= 2 &&
+      created.plugin.presets.every((preset) => typeof preset.id === "string" && preset.id.length <= 64),
+    "createInstance exposes bounded preset snapshot metadata"
+  );
+  const presetApplied = await request(
+    main,
+    "setPreset",
+    { instanceId: created.instanceId, presetId: "gain-bright" },
+    true,
+    session
+  );
+  check(
+    presetApplied.applied === true &&
+      presetApplied.parameterCount === 2 &&
+      presetApplied.parameters?.some((parameter) => parameter.id === "gain" && Math.abs(parameter.normalizedValue - 0.75) < 0.000001) &&
+      presetApplied.parameters?.some((parameter) => parameter.id === "program" && Math.abs(parameter.normalizedValue - 2 / 3) < 0.000001),
+    "setPreset applies only a daemon-listed bounded preset snapshot"
+  );
+  const missingPreset = await request(
+    main,
+    "setPreset",
+    { instanceId: created.instanceId, presetId: "does-not-exist" },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(missingPreset.code === "preset_not_found", "setPreset rejects unknown preset ids");
+  const oversizedPresetId = await request(
+    main,
+    "setPreset",
+    { instanceId: created.instanceId, presetId: "x".repeat(65) },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(oversizedPresetId.code === "invalid_argument", "setPreset rejects oversized preset ids");
 
   const layout = await request(main, "getLayout", { instanceId: created.instanceId }, true, session);
   check(
@@ -525,6 +567,17 @@ async function run() {
     (error) => ({ code: error.code })
   );
   check(denied.code === "instance_access_denied", "another session cannot control this instance");
+  const presetDenied = await request(
+    other,
+    "setPreset",
+    { instanceId: created.instanceId, presetId: "gain-unity" },
+    true,
+    otherPair.sessionToken
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(presetDenied.code === "instance_access_denied", "another session cannot apply presets to this instance");
   const tailDenied = await request(
     other,
     "getTailTime",

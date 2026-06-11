@@ -9,7 +9,7 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | Area | Status | Notes |
 | --- | --- | --- |
 | Original findings #1-#9 | Fixed | Remediated in the daemon (`scripts/mock-daemon.mjs`), native C++ workers, protocol schema, and docs. |
-| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 56/56 checks passing. |
+| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 61/61 checks passing. |
 | Installed-plugin compatibility probe | Added | `npm run probe:installed` starts a temporary paired loopback daemon with an explicit origin allowlist and bounded request sizes so real VST3/AU/LV2 create/state/MIDI/render/layout checks can be repeated without weakening the production security model. |
 | Example render argument hardening | Fixed | Example render entry points reject unknown example plugin ids before numeric argument parsing. |
 | VST3/AU opaque state | Fixed | Native state is bounded, opaque, plugin-id bound, and restored through worker processes. |
@@ -29,6 +29,7 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | Bounded parameter automation curves | Fixed | `setParameterCurve` accepts bounded step/linear per-block curves, rejects oversized or ambiguous point lists, expands them under the existing worker event cap, and preserves instance ownership. |
 | Generic editor broker sessions | Fixed | `openEditor` / `closeEditor` now provide bounded generic parameter editor sessions with per-session/global caps, TTLs, instance ownership checks, path-free plugin snapshots, and cleanup on instance/session teardown. |
 | Bounded VST3 program metadata | Fixed | VST3 program-change parameters are marked, and associated program-list names are exposed only as capped parameter metadata that selects programs through `setParameter`. |
+| Bounded preset snapshot application | Fixed | `setPreset` applies only daemon-listed bounded parameter snapshots by preset id, skips unknown live parameters, enforces instance ownership, and does not accept browser-supplied preset files or arbitrary parameter maps. |
 | Bounded richer MIDI events | Fixed | The protocol and daemon reject oversized MIDI batches and validate note, CC, pitch-bend, pressure, program, channel, and timing fields before worker dispatch; native workers keep per-format MIDI behavior bounded. |
 | VST3 bus-aware audio blocks | Fixed | The protocol accepts bounded indexed input bus buffers, the VST3 worker routes them into active SDK buses, and responses include bounded indexed output bus buffers. |
 | Bounded host transport context | Fixed | `processAudioBlock.transport` accepts bounded optional play state, tempo, time-signature, musical-position, cycle, and sample-position fields; the daemon rejects malformed values, VST3 workers re-validate before mapping to SDK `ProcessContext`, AU workers re-validate before exposing CoreAudio host callbacks, and LV2 workers re-validate before emitting atom `time:Position` events. |
@@ -47,7 +48,7 @@ Full plugin hosting should be tracked as security-sensitive roadmap work, not ju
 | LV2 extension support | Worker, UI, and remaining extension features introduce untrusted binary callbacks, host-provided feature data, and filesystem access. | Keep unsupported LV2 extensions disabled until each one has explicit feature structs, bounds, ownership checks, file-broker rules where needed, and worker-process containment. Basic LV2 control-port state, portable POD extension state, file-backed state, and atom MIDI are handled separately as bounded worker-owned data. |
 | Advanced bus routing | Bad channel, block-size, sample-rate, sidechain, or multi-output negotiation can cause large allocations or crashes. | VST3 now uses explicit bounded bus buffers for active SDK buses. Keep the same daemon and worker limits while expanding AU/LV2 sidechains, multi-output routing, and deeper format-specific bus negotiation. |
 | Plugin editor/UI hosting | Native editor code exposes windowing, focus, clipboard, drag/drop, and file-dialog surfaces. | Generic parameter editor sessions are bounded today. Host future native editors in a separate UI worker or broker process, never in the daemon, and broker UI actions explicitly. |
-| Presets, samples, caches, licensing | Plugins often expect filesystem and sometimes network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
+| Preset files, samples, caches, licensing | Plugins often expect filesystem and sometimes network access. | Keep `setPreset` limited to bounded listed parameter snapshots. Broker narrow user-approved file access for real preset/sample/cache/license files, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
 
 ### OS-level Worker Sandboxing
 

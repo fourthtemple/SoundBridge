@@ -52,6 +52,8 @@ const expectedExampleSource = nativeExampleRendererAvailable ? "example-bundle" 
 const { plugins } = await request(socket, "listPlugins", {}, true, pair.sessionToken);
 assert(Array.isArray(plugins) && plugins.length >= 3, "listPlugins returned mock and example native-format plugins");
 assert(plugins.some((plugin) => plugin.format === "mock"), "listPlugins returned mock plugin format metadata");
+const mockPlugin = plugins.find((plugin) => plugin.pluginId === "mock.gain");
+assert(Array.isArray(mockPlugin?.presets) && mockPlugin.presets.length >= 2, "listPlugins returned mock preset snapshots");
 for (const scanOnlyPlugin of plugins.filter((plugin) => plugin.source === "scan" && plugin.hostable === false)) {
   assert(scanOnlyPlugin.hostable === false, `${scanOnlyPlugin.pluginId} is marked scan-only/non-hostable`);
   assert(
@@ -681,7 +683,7 @@ const created = await request(
   socket,
   "createInstance",
   {
-    pluginId: plugins.find((plugin) => plugin.pluginId === "mock.gain").pluginId,
+    pluginId: mockPlugin.pluginId,
     sampleRate: 48000,
     maxBlockSize: 128,
     inputChannels: 2,
@@ -694,6 +696,24 @@ assert(created.instanceId, "createInstance returned instanceId");
 assertLayoutReport(created.layout, 2, 2, 48000, 128, "mock createInstance returns negotiated layout");
 const mockLayout = await request(socket, "getLayout", { instanceId: created.instanceId }, true, pair.sessionToken);
 assertSameLayout(mockLayout, created.layout, "mock getLayout matches createInstance layout");
+
+const mockPreset = await request(
+  socket,
+  "setPreset",
+  {
+    instanceId: created.instanceId,
+    presetId: "gain-bright"
+  },
+  true,
+  pair.sessionToken
+);
+assert(
+  mockPreset.applied === true &&
+    mockPreset.parameterCount === 2 &&
+    Math.abs(mockPreset.parameters.find((parameter) => parameter.id === "gain")?.normalizedValue - 0.75) < 0.000001 &&
+    Math.abs(mockPreset.parameters.find((parameter) => parameter.id === "program")?.normalizedValue - 2 / 3) < 0.000001,
+  "mock setPreset applies a bounded listed preset snapshot"
+);
 
 const automated = await request(
   socket,
@@ -859,6 +879,23 @@ for (const format of exampleFormats) {
     },
     true,
     pair.sessionToken
+  );
+  const preset = instrument.presets.at(-1);
+  const appliedPreset = await request(
+    socket,
+    "setPreset",
+    {
+      instanceId: instrumentInstance.instanceId,
+      presetId: preset.id
+    },
+    true,
+    pair.sessionToken
+  );
+  assert(
+    appliedPreset.applied === true &&
+      appliedPreset.parameterCount >= 2 &&
+      appliedPreset.parameters.some((parameter) => parameter.id === "gain"),
+    `${format} instrument applies a bounded listed preset snapshot`
   );
   await request(
     socket,

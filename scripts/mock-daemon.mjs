@@ -265,6 +265,9 @@ async function dispatchCommand(envelope, context) {
     case "setParameter":
       return setParameter(payload.instanceId, payload.parameterId, payload.normalizedValue, session);
 
+    case "setPreset":
+      return setPreset(payload.instanceId, payload.presetId, session);
+
     case "setParameterEvents":
       return setParameterEvents(payload.instanceId, payload.events, session);
 
@@ -571,6 +574,39 @@ async function setParameter(instanceId, parameterId, normalizedValue, session) {
 
   return {
     parameter: { ...instance.parameters[parameterIndex] }
+  };
+}
+
+async function setPreset(instanceId, presetId, session) {
+  const instance = getInstance(instanceId, session);
+  const safePresetId = requirePresetId(presetId, "presetId");
+  const plugin = getPlugin(instance.pluginId);
+  const preset = (plugin?.presets ?? [])
+    .slice(0, MAX_PLUGIN_PRESETS)
+    .map((candidate, index) => normalizePresetSnapshot(candidate, index))
+    .filter(Boolean)
+    .find((candidate) => candidate.id === safePresetId);
+
+  if (!preset) {
+    throw protocolError("preset_not_found", `Unknown preset: ${safePresetId}`);
+  }
+
+  const updatedParameterIndexes = new Set();
+  for (const [parameterId, normalizedValue] of Object.entries(preset.parameters)) {
+    const parameterIndex = instance.parameters.findIndex((parameter) => parameter.id === parameterId);
+    if (parameterIndex < 0) {
+      continue;
+    }
+    await applyParameterValue(instance, parameterIndex, normalizedValue, 0);
+    updatedParameterIndexes.add(parameterIndex);
+  }
+
+  const parameters = [...updatedParameterIndexes].map((index) => ({ ...instance.parameters[index] }));
+  return {
+    applied: parameters.length > 0,
+    presetId: preset.id,
+    parameterCount: parameters.length,
+    parameters
   };
 }
 
@@ -1681,7 +1717,25 @@ function createPluginCatalog() {
       hostable: true,
       inputs: 2,
       outputs: 2,
-      parameters: [makeGainParameter(0.5), makeProgramParameter(0)]
+      parameters: [makeGainParameter(0.5), makeProgramParameter(0)],
+      presets: [
+        {
+          id: "gain-unity",
+          name: "Unity",
+          parameters: {
+            gain: 0.5,
+            program: 0
+          }
+        },
+        {
+          id: "gain-bright",
+          name: "Bright Gain",
+          parameters: {
+            gain: 0.75,
+            program: 2 / 3
+          }
+        }
+      ]
     },
     ...loadNativeExamplePlugins(),
     ...loadNativeInstalledPlugins()
@@ -3072,6 +3126,14 @@ function requireParameterId(value, label) {
   return text;
 }
 
+function requirePresetId(value, label) {
+  const text = String(value ?? "");
+  if (!text || Buffer.byteLength(text, "utf8") > 64) {
+    throw protocolError("invalid_argument", `${label} must be a non-empty string up to 64 bytes.`);
+  }
+  return text;
+}
+
 function clonePluginMetadata(plugin) {
   return {
     pluginId: plugin.pluginId,
@@ -3087,13 +3149,31 @@ function clonePluginMetadata(plugin) {
     outputs: plugin.outputs,
     metadata: clonePluginClassMetadata(plugin.metadata),
     parameters: plugin.parameters.map((parameter) => ({ ...parameter })),
-    presets: (plugin.presets ?? []).slice(0, MAX_PLUGIN_PRESETS).map((preset, index) => ({
-      ...preset,
-      id: truncateText(preset.id ?? `preset-${index + 1}`, 64) || `preset-${index + 1}`,
-      name: truncateText(preset.name ?? `Preset ${index + 1}`, MAX_PLUGIN_PARAMETER_TEXT_BYTES) || `Preset ${index + 1}`,
-      parameters: { ...preset.parameters }
-    }))
+    presets: (plugin.presets ?? [])
+      .slice(0, MAX_PLUGIN_PRESETS)
+      .map((preset, index) => normalizePresetSnapshot(preset, index))
+      .filter(Boolean)
   };
+}
+
+function normalizePresetSnapshot(preset, index) {
+  if (!preset || typeof preset !== "object") {
+    return undefined;
+  }
+  const fallbackId = `preset-${index + 1}`;
+  const id = truncateText(preset.id ?? fallbackId, 64) || fallbackId;
+  const name = truncateText(preset.name ?? `Preset ${index + 1}`, MAX_PLUGIN_PARAMETER_TEXT_BYTES) || id;
+  const rawParameters = preset.parameters && typeof preset.parameters === "object" ? preset.parameters : {};
+  const parameters = Object.create(null);
+  for (const [rawParameterId, rawValue] of Object.entries(rawParameters).slice(0, MAX_PLUGIN_PARAMETERS)) {
+    const parameterId = String(rawParameterId ?? "");
+    const value = Number(rawValue);
+    if (!parameterId || Buffer.byteLength(parameterId, "utf8") > 64 || !Number.isFinite(value)) {
+      continue;
+    }
+    parameters[parameterId] = clamp01(value);
+  }
+  return { id, name, parameters };
 }
 
 function clonePluginClassMetadata(metadata) {

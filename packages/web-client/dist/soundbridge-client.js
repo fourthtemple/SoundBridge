@@ -76,6 +76,10 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("setParameter", { instanceId, parameterId, normalizedValue });
   }
 
+  setPreset(instanceId, presetId) {
+    return this.request("setPreset", { instanceId, presetId });
+  }
+
   setParameterEvents(instanceId, events) {
     return this.request("setParameterEvents", { instanceId, events });
   }

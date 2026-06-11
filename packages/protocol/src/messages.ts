@@ -7,6 +7,7 @@ export type ProtocolCommand =
   | "destroyInstance"
   | "getParameters"
   | "setParameter"
+  | "setPreset"
   | "setParameterEvents"
   | "setParameterCurve"
   | "getState"
@@ -299,6 +300,18 @@ export interface SetStateRequest {
 
 export interface SetStateResponse {
   restored: boolean;
+  parameters: PluginParameter[];
+}
+
+export interface SetPresetRequest {
+  instanceId: string;
+  presetId: string;
+}
+
+export interface SetPresetResponse {
+  applied: boolean;
+  presetId: string;
+  parameterCount: number;
   parameters: PluginParameter[];
 }
 
