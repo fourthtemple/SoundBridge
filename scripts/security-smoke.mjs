@@ -67,12 +67,29 @@ async function run() {
     "unpaired hello does not disclose plugin host adapters"
   );
   check(helloUnpaired.capabilities?.security?.hostHeaderValidation === true, "hello advertises hostHeaderValidation");
-  for (const [command, payload] of [
-    ["scanPlugins", {}],
-    ["listPlugins", {}],
-    ["createInstance", { pluginId: "mock.gain" }]
+  for (const command of [
+    "scanPlugins",
+    "listPlugins",
+    "createInstance",
+    "destroyInstance",
+    "getParameters",
+    "setParameter",
+    "setPreset",
+    "setParameterEvents",
+    "setParameterCurve",
+    "setAutomationLane",
+    "clearAutomationLane",
+    "getState",
+    "setState",
+    "processAudioBlock",
+    "sendMidiEvents",
+    "getLatency",
+    "getTailTime",
+    "getLayout",
+    "openEditor",
+    "closeEditor"
   ]) {
-    const blocked = await request(main, command, payload, false).then(
+    const blocked = await request(main, command, {}, false).then(
       () => ({ ok: true }),
       (error) => ({ code: error.code })
     );
