@@ -3,8 +3,10 @@ import type {
   AudioBlockResponse,
   CreateInstanceRequest,
   CreateInstanceResponse,
+  CloseEditorResponse,
   HelloResponse,
   MidiEvent,
+  OpenEditorResponse,
   ParameterAutomationEvent,
   ParameterAutomationPoint,
   PluginMetadata,
@@ -196,6 +198,14 @@ export class SoundBridgeClient extends EventTarget {
     maxBlockSize: number;
   }> {
     return this.request("getLayout", { instanceId });
+  }
+
+  openEditor(instanceId: string, mode: "generic" | "native" = "generic"): Promise<OpenEditorResponse> {
+    return this.request("openEditor", { instanceId, mode });
+  }
+
+  closeEditor(editorId: string): Promise<CloseEditorResponse> {
+    return this.request("closeEditor", { editorId });
   }
 
   heartbeat(): Promise<{ now: number }> {

@@ -84,6 +84,12 @@ async function run() {
   const session = paired.sessionToken;
   const pairedHello = await request(main, "hello", {}, true, session);
   check(pairedHello.capabilities?.automation === true, "paired hello advertises bounded parameter automation");
+  check(
+    pairedHello.capabilities?.genericEditor === true &&
+      pairedHello.capabilities?.nativeEditor === false &&
+      pairedHello.capabilities?.security?.maxEditorsPerSession > 0,
+    "paired hello advertises bounded generic editor brokering"
+  );
 
   // F. createInstance rejects out-of-range sizing instead of allocating.
   const huge = await request(main, "createInstance", { pluginId: "mock.gain", outputChannels: 1e9 }, true, session).then(
@@ -151,6 +157,29 @@ async function run() {
       layout.maxBlockSize === 128,
     "getLayout returns session-owned negotiated layout"
   );
+
+  const editor = await request(main, "openEditor", { instanceId: created.instanceId }, true, session);
+  check(
+    /^editor-[0-9a-f-]{36}$/.test(editor.editorId) &&
+      editor.kind === "generic-parameters" &&
+      editor.native === false &&
+      editor.capabilities?.parameterEditing === true &&
+      editor.capabilities?.nativeWindow === false &&
+      Array.isArray(editor.parameters) &&
+      !("diagnostics" in (editor.plugin ?? {})),
+    "openEditor returns a bounded generic parameter editor session"
+  );
+  const nativeEditor = await request(
+    main,
+    "openEditor",
+    { instanceId: created.instanceId, mode: "native" },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(nativeEditor.code === "unsupported_command", "openEditor refuses native editors until a UI worker is available");
 
   const latency = await request(
     main,
@@ -453,6 +482,30 @@ async function run() {
     (error) => ({ code: error.code })
   );
   check(curveDenied.code === "instance_access_denied", "another session cannot curve-automate this instance's parameters");
+  const editorOpenDenied = await request(
+    other,
+    "openEditor",
+    { instanceId: created.instanceId },
+    true,
+    otherPair.sessionToken
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(editorOpenDenied.code === "instance_access_denied", "another session cannot open an editor for this instance");
+  const editorCloseDenied = await request(
+    other,
+    "closeEditor",
+    { editorId: editor.editorId },
+    true,
+    otherPair.sessionToken
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(editorCloseDenied.code === "editor_access_denied", "another session cannot close this editor session");
+  const editorClosed = await request(main, "closeEditor", { editorId: editor.editorId }, true, session);
+  check(editorClosed.closed === true, "owner session can close its generic editor session");
   other.socket?.destroy();
   main.socket?.destroy();
 }

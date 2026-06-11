@@ -98,11 +98,16 @@
                 "cleanupOnDisconnect": { "type": "boolean" },
                 "maxInstancesPerSession": { "type": "number" },
                 "maxTotalInstances": { "type": "number" },
+                "maxEditorsPerSession": { "type": "number" },
+                "maxTotalEditors": { "type": "number" },
+                "maxEditorSessionTtlMs": { "type": "number" },
                 "maxParameterEventsPerRequest": { "type": "number" },
                 "maxAutomationCurvePoints": { "type": "number" }
               }
             },
-            "automation": { "type": "boolean" }
+            "automation": { "type": "boolean" },
+            "genericEditor": { "type": "boolean" },
+            "nativeEditor": { "type": "boolean" }
           }
         }
       }
@@ -166,6 +171,14 @@
         {
           "if": { "properties": { "command": { "const": "getLayout" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/getLayoutRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "openEditor" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/openEditorRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "closeEditor" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/closeEditorRequest" } } }
         }
       ]
     },
@@ -624,6 +637,23 @@
       "additionalProperties": true,
       "properties": {
         "instanceId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "openEditorRequest": {
+      "type": "object",
+      "required": ["instanceId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 },
+        "mode": { "type": "string", "enum": ["generic", "native"] }
+      }
+    },
+    "closeEditorRequest": {
+      "type": "object",
+      "required": ["editorId"],
+      "additionalProperties": true,
+      "properties": {
+        "editorId": { "type": "string", "minLength": 1, "maxLength": 80 }
       }
     }
   }

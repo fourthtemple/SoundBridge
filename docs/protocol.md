@@ -471,7 +471,18 @@ instance sample rate. Daemons must clamp reported tail samples to `0..1048576`.
 
 ### `openEditor` / `closeEditor`
 
-Reserved. Native editor streaming is out of scope for the MVP. Generic parameter UI is the fallback.
+`openEditor` opens a bounded editor session for an existing plugin instance. The reference daemon supports `mode: "generic"` today and returns a `generic-parameters` editor that a web or desktop host can render using the bounded parameter metadata from the owning instance.
+
+```json
+{
+  "instanceId": "inst-2",
+  "mode": "generic"
+}
+```
+
+The response includes an `editorId`, the owning `instanceId`, `expiresAt`, a path-free plugin snapshot, current parameter metadata, and editor capabilities. Generic editor sessions are owned by the same paired session as the plugin instance, are capped per session and globally, expire automatically, and close when the instance or WebSocket session is destroyed.
+
+`closeEditor` takes `{ "editorId": "editor-..." }` and requires the same session that opened the editor. Native plugin editor windows remain disabled until they can run in a separate UI worker or broker process with explicit handling for windows, focus, clipboard, drag/drop, file dialogs, and ownership.
 
 ### `heartbeat`
 

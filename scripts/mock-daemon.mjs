@@ -27,6 +27,9 @@ const MAX_AUTOMATION_CURVE_POINTS = Math.min(
   256,
   MAX_PARAMETER_EVENTS_PER_REQUEST
 );
+const MAX_EDITORS_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_EDITORS_PER_SESSION", 8);
+const MAX_TOTAL_EDITORS = envInteger("SOUNDBRIDGE_MAX_TOTAL_EDITORS", 32);
+const EDITOR_SESSION_TTL_MS = envInteger("SOUNDBRIDGE_EDITOR_SESSION_TTL_MS", 10 * 60 * 1000);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
 const MAX_PLUGIN_PRESETS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PRESETS", 256), 256);
 const MAX_PLUGIN_PROGRAMS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PROGRAMS", 256), 256);
@@ -49,6 +52,7 @@ const NATIVE_HOST_STATUS = loadNativeHostStatus();
 
 const sessions = new Map();
 const instances = new Map();
+const editors = new Map();
 
 const plugins = createPluginCatalog();
 
@@ -286,8 +290,10 @@ async function dispatchCommand(envelope, context) {
       return getLayout(payload, session);
 
     case "openEditor":
+      return openEditor(payload, session);
+
     case "closeEditor":
-      throw protocolError("unsupported_command", `${command} is reserved for a later phase.`);
+      return closeEditor(payload.editorId, session);
 
     case "heartbeat":
       return {
@@ -326,6 +332,7 @@ function helloResponse(paired) {
             layout: true,
             midi: true,
             automation: true,
+            genericEditor: true,
             nativeExampleRenderer: Boolean(NATIVE_RENDERER),
             nativeEditor: false
           }
@@ -339,6 +346,9 @@ function helloResponse(paired) {
         hostHeaderValidation: true,
         maxInstancesPerSession: MAX_INSTANCES_PER_SESSION,
         maxTotalInstances: MAX_TOTAL_INSTANCES,
+        maxEditorsPerSession: MAX_EDITORS_PER_SESSION,
+        maxTotalEditors: MAX_TOTAL_EDITORS,
+        maxEditorSessionTtlMs: EDITOR_SESSION_TTL_MS,
         maxTotalSessions: MAX_TOTAL_SESSIONS,
         maxAudioChannels: MAX_AUDIO_CHANNELS,
         maxBlockSize: MAX_BLOCK_SIZE,
@@ -397,6 +407,7 @@ function pair(payload, context) {
     connectionId: context.connectionId,
     expiresAt,
     instances: new Set(),
+    editors: new Set(),
     createdAt: Date.now(),
     lastSeenAt: Date.now()
   });
@@ -689,6 +700,55 @@ function getLayout(payload, session) {
   return clonePluginLayout(instance.layout);
 }
 
+function openEditor(payload, session) {
+  cleanupExpiredEditors();
+  const instance = getInstance(payload.instanceId, session);
+  const mode = payload.mode == null ? "generic" : String(payload.mode);
+  if (mode === "native") {
+    throw protocolError("unsupported_command", "Native plugin editors require a future UI worker or broker process.");
+  }
+  if (mode !== "generic") {
+    throw protocolError("invalid_argument", "openEditor.mode must be generic or native.");
+  }
+
+  if (session.editors.size >= MAX_EDITORS_PER_SESSION) {
+    throw protocolError("quota_exceeded", "This browser session has reached its editor session limit.", {
+      maxEditorsPerSession: MAX_EDITORS_PER_SESSION
+    });
+  }
+  if (editors.size >= MAX_TOTAL_EDITORS) {
+    throw protocolError("quota_exceeded", "The local SoundBridge daemon has reached its total editor session limit.", {
+      maxTotalEditors: MAX_TOTAL_EDITORS
+    });
+  }
+
+  const editorId = `editor-${crypto.randomUUID()}`;
+  const expiresAt = Math.min(Date.now() + EDITOR_SESSION_TTL_MS, session.expiresAt);
+  const editor = {
+    editorId,
+    instanceId: instance.instanceId,
+    ownerSessionToken: session.sessionToken,
+    ownerOrigin: session.origin,
+    kind: "generic-parameters",
+    native: false,
+    createdAt: Date.now(),
+    expiresAt
+  };
+  editors.set(editorId, editor);
+  session.editors.add(editorId);
+
+  return editorResponse(editor, instance);
+}
+
+function closeEditor(editorId, session) {
+  const editor = getEditor(editorId, session);
+  destroyEditorRecord(editor);
+  return {
+    closed: true,
+    editorId: editor.editorId
+  };
+}
+
 async function getNativeState(instance) {
   if (!instance.worker || typeof instance.worker.getState !== "function") {
     return undefined;
@@ -900,6 +960,56 @@ function getInstance(instanceId, session) {
     });
   }
   return instance;
+}
+
+function getEditor(editorId, session) {
+  cleanupExpiredEditors();
+  const safeEditorId = String(editorId ?? "");
+  const editor = editors.get(safeEditorId);
+  if (!editor) {
+    throw protocolError("editor_not_found", `Unknown editor: ${safeEditorId}`);
+  }
+  if (session && editor.ownerSessionToken !== session.sessionToken) {
+    throw protocolError("editor_access_denied", "This editor session belongs to a different browser session.", {
+      editorId: safeEditorId,
+      requestOrigin: session.origin
+    });
+  }
+  return editor;
+}
+
+function editorResponse(editor, instance) {
+  const plugin = getPlugin(instance.pluginId) ?? {};
+  return {
+    editorId: editor.editorId,
+    instanceId: editor.instanceId,
+    kind: editor.kind,
+    native: editor.native,
+    transport: "web",
+    expiresAt: editor.expiresAt,
+    plugin: clonePluginMetadata({
+      ...plugin,
+      pluginId: plugin.pluginId ?? instance.pluginId,
+      format: instance.format,
+      name: plugin.name ?? instance.pluginId,
+      vendor: plugin.vendor ?? "Unknown",
+      category: plugin.category ?? formatCategory(instance.format),
+      kind: instance.kind,
+      source: instance.source ?? plugin.source,
+      inputs: instance.inputChannels,
+      outputs: instance.outputChannels,
+      parameters: instance.parameters,
+      hostable: true
+    }),
+    parameters: instance.parameters.map((parameter) => ({ ...parameter })),
+    capabilities: {
+      parameterEditing: true,
+      nativeWindow: false,
+      fileDialogs: false,
+      clipboard: false,
+      dragAndDrop: false
+    }
+  };
 }
 
 function getPlugin(pluginId) {
@@ -1989,6 +2099,12 @@ function destroySession(sessionToken) {
   if (!session) {
     return;
   }
+  for (const editorId of Array.from(session.editors)) {
+    const editor = editors.get(editorId);
+    if (editor) {
+      destroyEditorRecord(editor);
+    }
+  }
   for (const instanceId of Array.from(session.instances)) {
     const instance = instances.get(instanceId);
     if (instance) {
@@ -1999,10 +2115,34 @@ function destroySession(sessionToken) {
 }
 
 function destroyInstanceRecord(instance) {
+  destroyEditorsForInstance(instance.instanceId);
   instance.worker?.destroy();
   instances.delete(instance.instanceId);
   const owner = sessions.get(instance.ownerSessionToken);
   owner?.instances.delete(instance.instanceId);
+}
+
+function cleanupExpiredEditors() {
+  const now = Date.now();
+  for (const editor of Array.from(editors.values())) {
+    if (editor.expiresAt <= now || !instances.has(editor.instanceId)) {
+      destroyEditorRecord(editor);
+    }
+  }
+}
+
+function destroyEditorsForInstance(instanceId) {
+  for (const editor of Array.from(editors.values())) {
+    if (editor.instanceId === instanceId) {
+      destroyEditorRecord(editor);
+    }
+  }
+}
+
+function destroyEditorRecord(editor) {
+  editors.delete(editor.editorId);
+  const owner = sessions.get(editor.ownerSessionToken);
+  owner?.editors.delete(editor.editorId);
 }
 
 function sessionsForOrigin(origin) {

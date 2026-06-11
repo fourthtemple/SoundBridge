@@ -48,6 +48,7 @@ export interface HelloResponse {
     layout?: boolean;
     midi?: boolean;
     automation?: boolean;
+    genericEditor?: boolean;
     nativeExampleRenderer?: boolean;
     nativeEditor?: boolean;
     security?: {
@@ -58,6 +59,9 @@ export interface HelloResponse {
       cleanupOnDisconnect?: boolean;
       maxInstancesPerSession?: number;
       maxTotalInstances?: number;
+      maxEditorsPerSession?: number;
+      maxTotalEditors?: number;
+      maxEditorSessionTtlMs?: number;
       maxParameterEventsPerRequest?: number;
       maxAutomationCurvePoints?: number;
     };
@@ -198,6 +202,42 @@ export interface CreateInstanceResponse {
   latencySamples: number;
   tailSamples?: number;
   infiniteTail?: boolean;
+}
+
+export type PluginEditorKind = "generic-parameters";
+
+export interface PluginEditorCapabilities {
+  parameterEditing: boolean;
+  nativeWindow: boolean;
+  fileDialogs: boolean;
+  clipboard: boolean;
+  dragAndDrop: boolean;
+}
+
+export interface OpenEditorRequest {
+  instanceId: string;
+  mode?: "generic" | "native";
+}
+
+export interface OpenEditorResponse {
+  editorId: string;
+  instanceId: string;
+  kind: PluginEditorKind;
+  native: boolean;
+  transport: "web";
+  expiresAt: number;
+  plugin: PluginMetadata;
+  parameters: PluginParameter[];
+  capabilities: PluginEditorCapabilities;
+}
+
+export interface CloseEditorRequest {
+  editorId: string;
+}
+
+export interface CloseEditorResponse {
+  closed: boolean;
+  editorId: string;
 }
 
 export interface AudioBusBlock {

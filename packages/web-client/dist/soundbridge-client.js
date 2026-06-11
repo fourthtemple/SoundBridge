@@ -112,6 +112,14 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("getLayout", { instanceId });
   }
 
+  openEditor(instanceId, mode = "generic") {
+    return this.request("openEditor", { instanceId, mode });
+  }
+
+  closeEditor(editorId) {
+    return this.request("closeEditor", { editorId });
+  }
+
   heartbeat() {
     return this.request("heartbeat", { now: Date.now() });
   }

@@ -68,7 +68,7 @@ Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, param
 | Latency and tail reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges, preserve explicit infinite-tail signals, and treat negative, NaN, or extreme values as invalid. |
 | Bus and layout negotiation | Bad channel/block/sample-rate combinations can trigger large allocations or crashes. | Keep hard resource limits at the daemon boundary and inside each worker before allocation, expose only bounded negotiated per-bus layout metadata, and route sidechain or multi-output audio only through explicit bounded bus buffers. |
 | LV2 extensions | Worker, UI, and other extension features require host-provided feature data and callbacks. | Keep unsupported extensions disabled; enable each extension only with explicit feature structs, bounded data, ownership checks, file-broker rules where needed, and worker containment. |
-| Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Run editor code outside the daemon, broker UI actions explicitly, and keep web/local host ownership checks in place. |
+| Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Support bounded generic parameter editor sessions now; run future native editor code outside the daemon, broker UI actions explicitly, and keep web/local host ownership checks in place. |
 | Presets, samples, caches, licensing | Plugins may expect broad filesystem or network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
 
 ## DNS Rebinding And Host Headers
@@ -97,6 +97,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Parameter id/name/unit text | 64 / 160 / 64 bytes | `getParameters`, `setParameter.parameterId`, `setParameterEvents.events[].parameterId` |
 | Plugin presets | 256 presets, 64-byte ids, 160-byte names, 1024 bounded parameter values per preset | `listPlugins`, `scanPlugins` |
 | VST3 program metadata | 256 lists, 1024 units, 256 programs per parameter, 160-byte names | `getParameters`, `createInstance.plugin.parameters` |
+| Generic editor sessions | 8 per session / 32 total / 10-minute TTL | `openEditor`, `closeEditor` |
 | Native plugin state bytes / state envelope | 384 KiB / 1 MiB | `getState`, `setState` |
 | LV2 file-backed state | 64 files, 64 KiB per file, 192 KiB total, 256-byte relative paths | LV2 `state:mapPath` / `state:makePath` |
 | Plugin/transport latency samples | 0–1048576 | `getLatency`, `processAudioBlock.latencySamples` |

@@ -10,7 +10,7 @@ The SDK is a small TypeScript package that gives Web DAWs:
 
 - a `SoundBridgeClient` for pairing, scanning, plugin instantiation, parameter changes, state, latency, and tail time
 - a `SoundBridgeAudioNode` wrapper around `AudioWorkletNode`
-- generic parameter UI helpers for hosts that do not have their own plugin UI
+- bounded generic parameter editor sessions for hosts that do not have their own plugin UI
 - protocol message types shared with daemon implementations
 - format-aware plugin metadata for VST3, AU, LV2, and mock/test plugins
 
