@@ -9,10 +9,11 @@ This file is an audit trail, not an active bug backlog. The original security fi
 | Area | Status | Notes |
 | --- | --- | --- |
 | Original findings #1-#9 | Fixed | Remediated in the daemon (`scripts/mock-daemon.mjs`), native C++ workers, protocol schema, and docs. |
-| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 23/23 checks passing. |
+| Regression coverage | Passing | `npm run smoke:security` exercises the fixes against a live daemon. Last recorded result: 25/25 checks passing. |
 | Example render argument hardening | Fixed | Example render entry points reject unknown example plugin ids before numeric argument parsing. |
 | VST3/AU opaque state | Fixed | Native state is bounded, opaque, plugin-id bound, and restored through worker processes. |
-| Full plugin-hosting surface | Open roadmap | Broader MIDI, richer parameter automation, latency, bus negotiation, LV2 hosting, plugin UI, and file access need feature-specific controls as they are implemented. |
+| VST3/AU latency reporting | Fixed | Native workers report plugin latency through the shared protocol, and the daemon bounds transport and reported totals. |
+| Full plugin-hosting surface | Open roadmap | Broader MIDI, richer parameter automation, bus negotiation, LV2 hosting, plugin UI, and file access need feature-specific controls as they are implemented. |
 | Third-party worker sandboxing | Last-stage hardening | Worker processes isolate crashes today, but OS-level sandboxing for malicious third-party plugin code is intentionally tracked after the core host features. |
 
 ## Open Roadmap Items
@@ -25,7 +26,6 @@ Full plugin hosting should be tracked as security-sensitive roadmap work, not ju
 | --- | --- | --- |
 | MIDI event lists | Malformed or oversized event batches can stress workers or adapter code. | Validate event count, byte size, timing offsets, channel/note ranges, and reject malformed events before worker dispatch. |
 | Parameter enumeration and automation | Plugin-controlled names, units, ids, and display strings can break JSON, UI, logs, or automation paths. | Cap counts and string lengths, escape text, normalize values, rate-limit automation bursts, and verify instance ownership. |
-| Latency reporting | Invalid or extreme latency can break scheduling and monitoring. | Clamp to sane numeric ranges and reject negative, NaN, or extreme values. |
 | Bus negotiation | Bad channel, block-size, or sample-rate negotiation can cause large allocations or crashes. | Apply hard resource limits at the daemon boundary and inside every worker before allocation. |
 | Plugin editor/UI hosting | Native editor code exposes windowing, focus, clipboard, drag/drop, and file-dialog surfaces. | Host editors in a separate UI worker or broker process, never in the daemon, and broker UI actions explicitly. |
 | Presets, samples, caches, licensing | Plugins often expect filesystem and sometimes network access. | Broker narrow user-approved file access, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |

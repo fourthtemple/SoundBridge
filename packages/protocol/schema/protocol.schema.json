@@ -139,6 +139,10 @@
         {
           "if": { "properties": { "command": { "const": "sendMidiEvents" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/sendMidiEventsRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "getLatency" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/getLatencyRequest" } } }
         }
       ]
     },
@@ -353,6 +357,15 @@
           "maxItems": 4096,
           "items": { "$ref": "#/$defs/midiEvent" }
         }
+      }
+    },
+    "getLatencyRequest": {
+      "type": "object",
+      "required": ["instanceId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 },
+        "transportLatencySamples": { "type": "integer", "minimum": 0, "maximum": 1048576 }
       }
     }
   }

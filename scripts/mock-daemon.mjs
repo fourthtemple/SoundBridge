@@ -24,6 +24,7 @@ const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 10
 const MAX_PLUGIN_PARAMETER_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETER_TEXT_BYTES", 160);
 const MAX_PLUGIN_STATE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_BYTES", 384 * 1024);
 const MAX_PLUGIN_STATE_ENVELOPE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_ENVELOPE_BYTES", 1024 * 1024);
+const MAX_PLUGIN_LATENCY_SAMPLES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_LATENCY_SAMPLES", 1_048_576);
 const MAX_PAIR_ATTEMPTS_PER_CONNECTION = envInteger("SOUNDBRIDGE_MAX_PAIR_ATTEMPTS", 5);
 const MIN_SAMPLE_RATE = 8000;
 const MAX_SAMPLE_RATE = 384000;
@@ -259,12 +260,7 @@ async function dispatchCommand(envelope, context) {
       return sendMidiEvents(payload.instanceId, payload.events, session);
 
     case "getLatency":
-      getInstance(payload.instanceId, session);
-      return {
-        pluginLatencySamples: 0,
-        transportLatencySamples: Number(payload.transportLatencySamples ?? 0),
-        reportedLatencySamples: Number(payload.transportLatencySamples ?? 0)
-      };
+      return getLatency(payload, session);
 
     case "openEditor":
     case "closeEditor":
@@ -442,6 +438,7 @@ async function createInstance(payload, session) {
     outputChannels,
     parameters,
     nativeParameterIds: new Set(),
+    pluginLatencySamples: 0,
     voices: new Map(),
     renderEngine: undefined,
     worker: undefined
@@ -457,6 +454,7 @@ async function createInstance(payload, session) {
         instance.parameters = nativeParameters;
         instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
       }
+      instance.pluginLatencySamples = await instance.worker.getLatency();
     } catch (error) {
       instance.worker.destroy();
       throw protocolError("plugin_host_failed", `${formatNativeHostName(plugin.nativeHost.format)} host worker failed for ${plugin.name}.`, {
@@ -474,7 +472,7 @@ async function createInstance(payload, session) {
   return {
     instanceId,
     plugin: clonePluginMetadata({ ...plugin, parameters: instance.parameters }),
-    latencySamples: 0
+    latencySamples: instance.pluginLatencySamples
   };
 }
 
@@ -564,6 +562,22 @@ async function setState(instanceId, state, session) {
   };
 }
 
+function getLatency(payload, session) {
+  const instance = getInstance(payload.instanceId, session);
+  const transportLatencySamples = requireIntInRange(
+    payload.transportLatencySamples ?? 0,
+    0,
+    MAX_PLUGIN_LATENCY_SAMPLES,
+    "transportLatencySamples"
+  );
+  const pluginLatencySamples = normalizeLatencySamples(instance.pluginLatencySamples);
+  return {
+    pluginLatencySamples,
+    transportLatencySamples,
+    reportedLatencySamples: normalizeLatencySamples(pluginLatencySamples + transportLatencySamples)
+  };
+}
+
 async function getNativeState(instance) {
   if (!instance.worker || typeof instance.worker.getState !== "function") {
     return undefined;
@@ -647,7 +661,7 @@ async function processAudioBlock(payload, session) {
     return {
       blockId: payload.blockId,
       ...(await processInstrumentBlock(instance, frames, blockSampleRate)),
-      latencySamples: 0
+      latencySamples: normalizeLatencySamples(instance.pluginLatencySamples)
     };
   }
 
@@ -659,7 +673,7 @@ async function processAudioBlock(payload, session) {
         sampleRate: blockSampleRate,
         channels
       }),
-      latencySamples: 0,
+      latencySamples: normalizeLatencySamples(instance.pluginLatencySamples),
       renderEngine: instance.renderEngine ?? instance.worker.renderEngine ?? "native-host"
     };
   }
@@ -685,7 +699,7 @@ async function processAudioBlock(payload, session) {
   return {
     blockId: payload.blockId,
     channels: output,
-    latencySamples: 0
+    latencySamples: normalizeLatencySamples(instance.pluginLatencySamples)
   };
 }
 
@@ -1073,6 +1087,14 @@ class NativeHostWorker {
       return this.request(`setState ${state.state || "-"}`);
     }
     return this.request(`setState ${state.component || "-"} ${state.controller || "-"}`);
+  }
+
+  async getLatency() {
+    if (!["au", "vst3"].includes(this.nativeHost.format)) {
+      return 0;
+    }
+    const parsed = await this.request("latency");
+    return normalizeLatencySamples(parsed.latencySamples);
   }
 
   request(command) {
@@ -2004,6 +2026,14 @@ function decodedBase64Length(text) {
 function finiteNumber(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeLatencySamples(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number < 0) {
+    return 0;
+  }
+  return Math.min(number, MAX_PLUGIN_LATENCY_SAMPLES);
 }
 
 function truncateText(value, maxBytes) {

@@ -34,6 +34,7 @@ constexpr std::uint32_t kMaxWorkerChannels = 32;
 constexpr std::size_t kMaxWorkerParameters = 1024;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
+constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
 constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
 constexpr double kMinWorkerSampleRate = 8000.0;
 constexpr double kMaxWorkerSampleRate = 384000.0;
@@ -344,6 +345,30 @@ public:
     CFRelease(classInfo);
     checkStatus(status, "AudioUnitSetProperty ClassInfo");
     return "{\"ok\":true}";
+  }
+
+  std::string latencyToJson() const {
+    Float64 latencySeconds = 0.0;
+    UInt32 propertySize = sizeof(latencySeconds);
+    if (AudioUnitGetProperty(
+            unit_,
+            kAudioUnitProperty_Latency,
+            kAudioUnitScope_Global,
+            0,
+            &latencySeconds,
+            &propertySize) != noErr ||
+        !std::isfinite(latencySeconds) ||
+        latencySeconds < 0.0) {
+      latencySeconds = 0.0;
+    }
+
+    const auto latencySamples = static_cast<std::uint32_t>(std::clamp<double>(
+        std::round(latencySeconds * sampleRate_),
+        0.0,
+        static_cast<double>(kMaxWorkerLatencySamples)));
+    std::ostringstream output;
+    output << "{\"latencySamples\":" << latencySamples << "}";
+    return output.str();
   }
 
   std::vector<std::vector<float>> render(
@@ -679,6 +704,11 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
             continue;
           }
           std::cout << host.setState(stateText) << std::endl;
+          continue;
+        }
+
+        if (command == "latency") {
+          std::cout << host.latencyToJson() << std::endl;
           continue;
         }
 

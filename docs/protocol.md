@@ -281,7 +281,10 @@ Response:
 
 ### `getLatency`
 
-Reports plugin latency and bridge buffering:
+Reports plugin latency and bridge buffering. Installed VST3 workers read `IAudioProcessor::getLatencySamples()`;
+installed Audio Unit workers read `kAudioUnitProperty_Latency` and convert seconds to samples at the
+instance sample rate. Daemons must clamp plugin latency and any caller-provided
+`transportLatencySamples` to `0..1048576` before hosts use the value for scheduling.
 
 ```json
 {

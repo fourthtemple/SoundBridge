@@ -91,6 +91,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Plugin parameters per instance | 1024 | `getParameters`, `listPlugins`, `createInstance.plugin.parameters` |
 | Parameter id/name/unit text | 64 / 160 / 64 bytes | `getParameters`, `setParameter.parameterId` |
 | Native plugin state bytes / state envelope | 384 KiB / 1 MiB | `getState`, `setState` |
+| Plugin/transport latency samples | 0–1048576 | `getLatency`, `processAudioBlock.latencySamples` |
 | Sessions per origin | 8 | `pair` |
 | Total sessions | 64 | `pair` |
 | Instances per session / total | 8 / 32 | `createInstance` |

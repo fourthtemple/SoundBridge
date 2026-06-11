@@ -112,6 +112,32 @@ async function run() {
   check(typeof created.instanceId === "string", "valid createInstance returns an instanceId");
   check(/^inst-[0-9a-f-]{36}$/.test(created.instanceId), "instanceId is a random UUID (not a guessable counter)");
 
+  const latency = await request(
+    main,
+    "getLatency",
+    { instanceId: created.instanceId, transportLatencySamples: 32 },
+    true,
+    session
+  );
+  check(
+    latency.pluginLatencySamples === 0 &&
+      latency.transportLatencySamples === 32 &&
+      latency.reportedLatencySamples === 32,
+    "getLatency reports bounded plugin plus transport latency"
+  );
+
+  const latencyTooLarge = await request(
+    main,
+    "getLatency",
+    { instanceId: created.instanceId, transportLatencySamples: 1e9 },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(latencyTooLarge.code === "invalid_argument", "getLatency rejects out-of-range transport latency");
+
   const started = Date.now();
   const oversized = await request(
     main,

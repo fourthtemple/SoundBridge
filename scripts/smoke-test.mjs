@@ -5,6 +5,7 @@ const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47370);
 const PAIRING_TOKEN = process.env.SOUNDBRIDGE_PAIRING_TOKEN ?? "dev-token";
 const ORIGIN = "http://127.0.0.1:5173";
+const MAX_PLUGIN_LATENCY_SAMPLES = 1_048_576;
 
 const socket = await connectWebSocket(HOST, PORT);
 let requestSeq = 0;
@@ -209,6 +210,15 @@ const nativeAuBlock = await request(
 );
 assert(nativeAuBlock.renderEngine === "native-au", "installed AU effect rendered through the native AU host worker");
 assert(blockHasSignal(nativeAuBlock.channels), "installed AU effect produced processed audio");
+const nativeAuLatency = await request(
+  socket,
+  "getLatency",
+  { instanceId: nativeAuInstance.instanceId, transportLatencySamples: 256 },
+  true,
+  pair.sessionToken
+);
+assertLatencyReport(nativeAuLatency, 256, "installed AU reports bounded plugin and transport latency");
+assert(nativeAuBlock.latencySamples === nativeAuLatency.pluginLatencySamples, "installed AU block latency matches getLatency plugin latency");
 await request(socket, "destroyInstance", { instanceId: nativeAuInstance.instanceId }, true, pair.sessionToken);
 
 const nativeVst3Effect =
@@ -315,6 +325,15 @@ const nativeVst3Block = await request(
 );
 assert(nativeVst3Block.renderEngine === "native-vst3", "installed VST3 effect rendered through the native VST3 host worker");
 assert(blockHasSignal(nativeVst3Block.channels), "installed VST3 effect produced processed audio");
+const nativeVst3Latency = await request(
+  socket,
+  "getLatency",
+  { instanceId: nativeVst3Instance.instanceId, transportLatencySamples: 128 },
+  true,
+  pair.sessionToken
+);
+assertLatencyReport(nativeVst3Latency, 128, "installed VST3 reports bounded plugin and transport latency");
+assert(nativeVst3Block.latencySamples === nativeVst3Latency.pluginLatencySamples, "installed VST3 block latency matches getLatency plugin latency");
 await request(socket, "destroyInstance", { instanceId: nativeVst3Instance.instanceId }, true, pair.sessionToken);
 
 const created = await request(
@@ -420,8 +439,9 @@ const restored = await request(
 );
 assert(restored.restored === true, "setState restored state");
 
-const latency = await request(socket, "getLatency", { instanceId: created.instanceId }, true, pair.sessionToken);
-assert(latency.reportedLatencySamples === 0, "getLatency returned mock latency");
+const latency = await request(socket, "getLatency", { instanceId: created.instanceId, transportLatencySamples: 64 }, true, pair.sessionToken);
+assertLatencyReport(latency, 64, "getLatency returns bounded mock plugin and transport latency");
+assert(processed.latencySamples === latency.pluginLatencySamples, "mock block latency matches getLatency plugin latency");
 
 await request(socket, "destroyInstance", { instanceId: created.instanceId }, true, pair.sessionToken);
 
@@ -682,6 +702,21 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertLatencyReport(latency, transportLatencySamples, message) {
+  assert(
+    Number.isInteger(latency.pluginLatencySamples) &&
+      latency.pluginLatencySamples >= 0 &&
+      latency.pluginLatencySamples <= MAX_PLUGIN_LATENCY_SAMPLES,
+    `${message}: plugin latency is bounded`
+  );
+  assert(latency.transportLatencySamples === transportLatencySamples, `${message}: transport latency round-trips`);
+  assert(
+    latency.reportedLatencySamples ===
+      Math.min(latency.pluginLatencySamples + transportLatencySamples, MAX_PLUGIN_LATENCY_SAMPLES),
+    `${message}: reported latency is the clamped total`
+  );
 }
 
 function blockHasSignal(channels) {

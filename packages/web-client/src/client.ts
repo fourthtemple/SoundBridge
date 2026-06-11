@@ -134,12 +134,12 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("sendMidiEvents", { instanceId, events });
   }
 
-  getLatency(instanceId: string): Promise<{
+  getLatency(instanceId: string, transportLatencySamples = 0): Promise<{
     pluginLatencySamples: number;
     transportLatencySamples: number;
     reportedLatencySamples: number;
   }> {
-    return this.request("getLatency", { instanceId });
+    return this.request("getLatency", { instanceId, transportLatencySamples });
   }
 
   heartbeat(): Promise<{ now: number }> {

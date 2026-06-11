@@ -198,3 +198,14 @@ export interface SendMidiEventsResponse {
   accepted: boolean;
   eventCount: number;
 }
+
+export interface GetLatencyRequest {
+  instanceId: string;
+  transportLatencySamples?: number;
+}
+
+export interface GetLatencyResponse {
+  pluginLatencySamples: number;
+  transportLatencySamples: number;
+  reportedLatencySamples: number;
+}

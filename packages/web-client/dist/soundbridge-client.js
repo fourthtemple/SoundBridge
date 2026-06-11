@@ -92,8 +92,8 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("sendMidiEvents", { instanceId, events });
   }
 
-  getLatency(instanceId) {
-    return this.request("getLatency", { instanceId });
+  getLatency(instanceId, transportLatencySamples = 0) {
+    return this.request("getLatency", { instanceId, transportLatencySamples });
   }
 
   heartbeat() {
