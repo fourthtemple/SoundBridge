@@ -295,7 +295,26 @@ Queues a bounded list of normalized parameter events for the next render block. 
 }
 ```
 
-VST3 workers deliver queued values as `IParameterChanges` with sample offsets. Audio Unit workers pass the bounded offset to `AudioUnitSetParameter`. Basic LV2 audio/control workers apply control-port changes by splitting the render block at requested offsets. This is event-list automation; continuous curves, interpolation policies, and higher-density host automation lanes are still future work.
+VST3 workers deliver queued values as `IParameterChanges` with sample offsets. Audio Unit workers pass the bounded offset to `AudioUnitSetParameter`. Basic LV2 audio/control workers apply control-port changes by splitting the render block at requested offsets.
+
+### `setParameterCurve`
+
+Expands a bounded step or linear automation curve for one parameter into a bounded list of per-block parameter events. `points` must contain strictly increasing sample offsets within the instance block size. The default curve cap is 256 points, and the daemon advertises the active cap as `hello.capabilities.security.maxAutomationCurvePoints`. Expanded curves are capped by the same 4096-event worker limit used by `setParameterEvents`.
+
+```json
+{
+  "instanceId": "inst-2",
+  "parameterId": "gain",
+  "interpolation": "linear",
+  "points": [
+    { "time": 0, "normalizedValue": 0.1 },
+    { "time": 64, "normalizedValue": 0.9 },
+    { "time": 127, "normalizedValue": 0.25 }
+  ]
+}
+```
+
+This is per-render-block curve interpolation. Offline DAW automation lanes, host timeline curves, and plugin-specific smoothing policies remain host-level concerns and must still obey the same parameter count, point count, event count, timing, and instance-ownership limits before dispatch.
 
 ### `getState` / `setState`
 

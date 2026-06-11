@@ -12,7 +12,7 @@ SoundBridge should feel like an AudioNode plus a plugin-management API.
 6. Create `SoundBridgeAudioNode`.
 7. Connect source nodes into the bridge node and connect the bridge node to the destination.
 8. For instruments, send notes or MIDI clips through `sendMidiEvents()`.
-9. Render generic parameter controls or bind host automation to `setParameter()` / `setParameterEvents()`.
+9. Render generic parameter controls or bind host automation to `setParameter()`, `setParameterEvents()`, or `setParameterCurve()`.
 10. Store `getState()` output in the DAW project.
 11. Restore using `setState()` when reopening the project.
 
@@ -43,8 +43,8 @@ Hosts should:
 ## Current Prototype Limitations
 
 - JSON audio blocks are for correctness testing, not final latency.
-- Parameter automation supports bounded event lists with sample offsets; continuous curve interpolation and high-density automation lanes are still future work.
+- Parameter automation supports bounded event lists and bounded per-block step/linear curves with sample offsets; high-density DAW timeline automation lanes are still future work.
 - The mock plugin is a gain effect.
 - The demo uses a `MessagePort` queue between main thread and AudioWorklet for compatibility.
 - Installed VST3 audio effects can instantiate, render, expose path-free scanner metadata, expose parameters, expose bounded program-list metadata where the SDK ties program lists to program-change parameters, set parameters, accept bounded MIDI note/poly-pressure events and mapped MIDI controllers, report bounded per-bus layout metadata, process explicit bus-indexed input buffers, return bus-indexed output buffers, report bounded plugin latency and tail time, and save/restore opaque state when the Steinberg SDK worker is linked. Installed Audio Units can do the same through the CoreAudio worker, including path-free AudioComponent identifiers and bounded short MIDI messages where the unit supports them, while currently routing the main audio bus. Compatible installed LV2 audio/control effects can instantiate, render, expose path-free LV2 URI metadata, expose TTL-derived control ports as parameters, set parameters, save/restore bounded control-port state, portable POD extension state, and brokered file-backed state, deliver bounded atom MIDI to compatible input ports, report conservative per-bus layout metadata, and report conservative latency/tail metadata through the basic LV2 worker.
-- The website-playable VST3/AU/LV2 instruments are repo-local example bundles rendered by the native example renderer; automation curve interpolation, LV2 worker/UI extensions, advanced bus negotiation, plugin UI, and broader brokered filesystem access are still security-sensitive native milestones.
+- The website-playable VST3/AU/LV2 instruments are repo-local example bundles rendered by the native example renderer; high-density automation lanes, LV2 worker/UI extensions, advanced bus negotiation, plugin UI, and broader brokered filesystem access are still security-sensitive native milestones.

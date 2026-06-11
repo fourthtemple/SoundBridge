@@ -8,6 +8,7 @@ export type ProtocolCommand =
   | "getParameters"
   | "setParameter"
   | "setParameterEvents"
+  | "setParameterCurve"
   | "getState"
   | "setState"
   | "processAudioBlock"
@@ -58,6 +59,7 @@ export interface HelloResponse {
       maxInstancesPerSession?: number;
       maxTotalInstances?: number;
       maxParameterEventsPerRequest?: number;
+      maxAutomationCurvePoints?: number;
     };
     [key: string]: unknown;
   };
@@ -246,6 +248,11 @@ export interface ParameterAutomationEvent {
   time?: number;
 }
 
+export interface ParameterAutomationPoint {
+  time: number;
+  normalizedValue: number;
+}
+
 export interface SetParameterEventsRequest {
   instanceId: string;
   events: ParameterAutomationEvent[];
@@ -255,6 +262,19 @@ export interface SetParameterEventsResponse {
   accepted: boolean;
   eventCount: number;
   parameters: PluginParameter[];
+}
+
+export interface SetParameterCurveRequest {
+  instanceId: string;
+  parameterId: string;
+  interpolation?: "linear" | "step";
+  points: ParameterAutomationPoint[];
+}
+
+export interface SetParameterCurveResponse {
+  accepted: boolean;
+  eventCount: number;
+  parameter: PluginParameter;
 }
 
 export type MidiEvent =

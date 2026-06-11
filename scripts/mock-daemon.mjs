@@ -22,6 +22,11 @@ const MAX_PLUGIN_BUSES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_BUSES", 32);
 const MAX_BLOCK_SIZE = envInteger("SOUNDBRIDGE_MAX_BLOCK_SIZE", 8192);
 const MAX_MIDI_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_MIDI_EVENTS_PER_REQUEST", 4096);
 const MAX_PARAMETER_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_PARAMETER_EVENTS_PER_REQUEST", 4096);
+const MAX_AUTOMATION_CURVE_POINTS = Math.min(
+  envInteger("SOUNDBRIDGE_MAX_AUTOMATION_CURVE_POINTS", 256),
+  256,
+  MAX_PARAMETER_EVENTS_PER_REQUEST
+);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
 const MAX_PLUGIN_PRESETS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PRESETS", 256), 256);
 const MAX_PLUGIN_PROGRAMS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PROGRAMS", 256), 256);
@@ -256,6 +261,9 @@ async function dispatchCommand(envelope, context) {
     case "setParameterEvents":
       return setParameterEvents(payload.instanceId, payload.events, session);
 
+    case "setParameterCurve":
+      return setParameterCurve(payload.instanceId, payload.parameterId, payload.points, payload.interpolation, session);
+
     case "getState":
       return getState(payload.instanceId, session);
 
@@ -334,7 +342,8 @@ function helloResponse(paired) {
         maxTotalSessions: MAX_TOTAL_SESSIONS,
         maxAudioChannels: MAX_AUDIO_CHANNELS,
         maxBlockSize: MAX_BLOCK_SIZE,
-        maxParameterEventsPerRequest: MAX_PARAMETER_EVENTS_PER_REQUEST
+        maxParameterEventsPerRequest: MAX_PARAMETER_EVENTS_PER_REQUEST,
+        maxAutomationCurvePoints: MAX_AUTOMATION_CURVE_POINTS
       }
     }
   };
@@ -565,6 +574,26 @@ async function setParameterEvents(instanceId, events, session) {
     accepted: true,
     eventCount: acceptedEvents.length,
     parameters: [...updatedParameterIndexes].map((index) => ({ ...instance.parameters[index] }))
+  };
+}
+
+async function setParameterCurve(instanceId, parameterId, points, interpolation, session) {
+  const instance = getInstance(instanceId, session);
+  const safeParameterId = requireParameterId(parameterId, "parameterId");
+  const parameterIndex = instance.parameters.findIndex((parameter) => parameter.id === safeParameterId);
+  if (parameterIndex < 0) {
+    throw protocolError("parameter_not_found", `Unknown parameter: ${safeParameterId}`);
+  }
+
+  const events = normalizeParameterCurve(safeParameterId, points, interpolation, instance.maxBlockSize);
+  for (const event of events) {
+    await applyParameterValue(instance, parameterIndex, event.normalizedValue, event.time);
+  }
+
+  return {
+    accepted: true,
+    eventCount: events.length,
+    parameter: { ...instance.parameters[parameterIndex] }
   };
 }
 
@@ -2639,6 +2668,86 @@ function normalizeParameterEvents(events, maxBlockSize) {
       };
     })
     .sort((left, right) => left.time - right.time || left.order - right.order);
+}
+
+function normalizeParameterCurve(parameterId, points, interpolation, maxBlockSize) {
+  if (!Array.isArray(points)) {
+    throw protocolError("invalid_argument", "points must be an array.");
+  }
+  if (points.length < 1 || points.length > MAX_AUTOMATION_CURVE_POINTS) {
+    throw protocolError("invalid_argument", `points must contain 1..${MAX_AUTOMATION_CURVE_POINTS} automation points.`, {
+      maxAutomationCurvePoints: MAX_AUTOMATION_CURVE_POINTS
+    });
+  }
+  const mode = interpolation == null ? "linear" : String(interpolation);
+  if (mode !== "linear" && mode !== "step") {
+    throw protocolError("invalid_argument", "interpolation must be linear or step.");
+  }
+
+  const maxOffset = Math.max(0, Math.min(MAX_BLOCK_SIZE, Number(maxBlockSize) || MAX_BLOCK_SIZE) - 1);
+  const normalizedPoints = points.map((point, index) => {
+    if (!point || typeof point !== "object") {
+      throw protocolError("invalid_argument", `points[${index}] must be an object.`);
+    }
+    return {
+      time: requireIntInRange(point.time, 0, maxOffset, `points[${index}].time`),
+      normalizedValue: requireNumberInRange(point.normalizedValue, 0, 1, `points[${index}].normalizedValue`)
+    };
+  });
+
+  for (let index = 1; index < normalizedPoints.length; ++index) {
+    if (normalizedPoints[index].time <= normalizedPoints[index - 1].time) {
+      throw protocolError("invalid_argument", "curve point times must be strictly increasing.");
+    }
+  }
+
+  if (mode === "step" || normalizedPoints.length === 1) {
+    return normalizedPoints.map((point) => ({
+      parameterId,
+      normalizedValue: point.normalizedValue,
+      time: point.time
+    }));
+  }
+
+  const first = normalizedPoints[0];
+  const last = normalizedPoints[normalizedPoints.length - 1];
+  const span = Math.max(0, last.time - first.time);
+  const explicitTimes = new Set(normalizedPoints.map((point) => point.time));
+  const availableInterpolatedPoints = Math.max(1, MAX_PARAMETER_EVENTS_PER_REQUEST - normalizedPoints.length);
+  const stride = Math.max(1, Math.ceil((span + 1) / availableInterpolatedPoints));
+  const times = new Set(explicitTimes);
+  for (let time = first.time; time <= last.time; time += stride) {
+    times.add(time);
+  }
+  times.add(last.time);
+
+  let sortedTimes = [...times].sort((left, right) => left - right);
+  if (sortedTimes.length > MAX_PARAMETER_EVENTS_PER_REQUEST) {
+    sortedTimes = sortedTimes.filter((time) => explicitTimes.has(time));
+    if (sortedTimes.length > MAX_PARAMETER_EVENTS_PER_REQUEST) {
+      throw protocolError("invalid_argument", `expanded curve must contain at most ${MAX_PARAMETER_EVENTS_PER_REQUEST} parameter events.`, {
+        maxParameterEventsPerRequest: MAX_PARAMETER_EVENTS_PER_REQUEST
+      });
+    }
+  }
+
+  let segmentIndex = 0;
+  return sortedTimes.map((time) => {
+    while (
+      segmentIndex + 1 < normalizedPoints.length - 1 &&
+      normalizedPoints[segmentIndex + 1].time < time
+    ) {
+      segmentIndex += 1;
+    }
+    const left = normalizedPoints[segmentIndex];
+    const right = normalizedPoints[Math.min(segmentIndex + 1, normalizedPoints.length - 1)];
+    const ratio = right.time === left.time ? 0 : (time - left.time) / (right.time - left.time);
+    return {
+      parameterId,
+      normalizedValue: clamp01(left.normalizedValue + (right.normalizedValue - left.normalizedValue) * ratio),
+      time
+    };
+  });
 }
 
 function requireParameterId(value, label) {

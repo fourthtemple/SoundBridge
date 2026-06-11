@@ -279,6 +279,30 @@ async function run() {
     "setParameterEvents accepts bounded automation and reports final state"
   );
 
+  const curve = await request(
+    main,
+    "setParameterCurve",
+    {
+      instanceId: created.instanceId,
+      parameterId: "gain",
+      interpolation: "linear",
+      points: [
+        { time: 0, normalizedValue: 0.1 },
+        { time: 8, normalizedValue: 0.9 },
+        { time: 16, normalizedValue: 0.25 }
+      ]
+    },
+    true,
+    session
+  );
+  check(
+    curve.accepted === true &&
+      curve.eventCount > 3 &&
+      curve.eventCount <= 4096 &&
+      Math.abs(curve.parameter?.normalizedValue - 0.25) < 0.000001,
+    "setParameterCurve expands bounded linear automation and reports final state"
+  );
+
   const tooManyParameterEvents = Array.from(
     { length: 4097 },
     () => ({ parameterId: "gain", normalizedValue: 0.5, time: 0 })
@@ -306,6 +330,60 @@ async function run() {
     (error) => ({ code: error.code })
   );
   check(automationBadTime.code === "invalid_argument", "setParameterEvents rejects out-of-range event timing");
+
+  const tooManyCurvePoints = Array.from(
+    { length: 257 },
+    (_, index) => ({ time: index, normalizedValue: 0.5 })
+  );
+  const curveTooLarge = await request(
+    main,
+    "setParameterCurve",
+    { instanceId: created.instanceId, parameterId: "gain", points: tooManyCurvePoints },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(curveTooLarge.code === "invalid_argument", "setParameterCurve rejects oversized point lists");
+
+  const curveDuplicateTime = await request(
+    main,
+    "setParameterCurve",
+    {
+      instanceId: created.instanceId,
+      parameterId: "gain",
+      points: [
+        { time: 4, normalizedValue: 0.2 },
+        { time: 4, normalizedValue: 0.8 }
+      ]
+    },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(curveDuplicateTime.code === "invalid_argument", "setParameterCurve rejects ambiguous duplicate point times");
+
+  const curveUnordered = await request(
+    main,
+    "setParameterCurve",
+    {
+      instanceId: created.instanceId,
+      parameterId: "gain",
+      points: [
+        { time: 12, normalizedValue: 0.2 },
+        { time: 4, normalizedValue: 0.8 }
+      ]
+    },
+    true,
+    session
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(curveUnordered.code === "invalid_argument", "setParameterCurve rejects out-of-order point times");
 
   // K. Cross-session instance access is still denied.
   const other = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
@@ -357,6 +435,24 @@ async function run() {
     (error) => ({ code: error.code })
   );
   check(automationDenied.code === "instance_access_denied", "another session cannot automate this instance's parameters");
+  const curveDenied = await request(
+    other,
+    "setParameterCurve",
+    {
+      instanceId: created.instanceId,
+      parameterId: "gain",
+      points: [
+        { time: 0, normalizedValue: 0.1 },
+        { time: 8, normalizedValue: 0.9 }
+      ]
+    },
+    true,
+    otherPair.sessionToken
+  ).then(
+    () => ({ ok: true }),
+    (error) => ({ code: error.code })
+  );
+  check(curveDenied.code === "instance_access_denied", "another session cannot curve-automate this instance's parameters");
   other.socket?.destroy();
   main.socket?.destroy();
 }

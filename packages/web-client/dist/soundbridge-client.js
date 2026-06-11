@@ -80,6 +80,10 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("setParameterEvents", { instanceId, events });
   }
 
+  setParameterCurve(instanceId, parameterId, points, interpolation = "linear") {
+    return this.request("setParameterCurve", { instanceId, parameterId, points, interpolation });
+  }
+
   getState(instanceId) {
     return this.request("getState", { instanceId });
   }

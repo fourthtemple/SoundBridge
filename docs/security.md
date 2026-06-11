@@ -62,7 +62,7 @@ Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI event lists, param
 | Feature | Added risk | Required control |
 | --- | --- | --- |
 | MIDI event lists | Oversized or malformed event batches can stress workers or confuse adapters. | Bound event count, byte size, timing offsets, channel/note/controller/program/value ranges, and reject malformed events before worker dispatch; LV2 atom MIDI must use worker-owned bounded sequence buffers. |
-| Parameter enumeration, program metadata, and automation | Plugin-controlled names/units/ids/program labels and oversized automation bursts can break JSON, UI, logs, or automation paths. | Cap counts and string lengths, escape text, normalize values, bound VST3 program-list metadata, bound automation event lists, and enforce per-instance ownership. |
+| Parameter enumeration, program metadata, and automation | Plugin-controlled names/units/ids/program labels and oversized automation bursts or curves can break JSON, UI, logs, or automation paths. | Cap counts and string lengths, escape text, normalize values, bound VST3 program-list metadata, bound automation event lists and curve expansion, and enforce per-instance ownership. |
 | Public plugin metadata | Scanner-controlled identifiers can leak local paths or become oversized UI/cache data. | Expose only bounded path-free public metadata such as bundle ids, AudioComponent tuples, versions, and LV2 URIs; keep launch paths in internal diagnostics. |
 | State save/restore | Opaque blobs can be huge or maliciously malformed. | VST3/AU now enforce blob-size limits, keep state opaque, bind it to the producing instance/session, and never interpret it as a path or command; LV2 control-port state and portable POD extension properties are bounded and keyed only to known ports or URIs; LV2 file-backed state is allowed only through brokered relative paths, symlink/traversal rejection, and capped embedded file bytes. |
 | Latency and tail reporting | Bogus values can break host scheduling. | Clamp to sane numeric ranges, preserve explicit infinite-tail signals, and treat negative, NaN, or extreme values as invalid. |
@@ -91,7 +91,8 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Audio channels | 0–32 in, 1–32 out | `createInstance.inputChannels` / `outputChannels` |
 | Plugin buses | 0–32 in, 1–32 out | `getLayout`, `createInstance.layout` |
 | MIDI events per request | 4096 | `sendMidiEvents.events` |
-| Parameter automation events per request | 4096 | `setParameterEvents.events` |
+| Parameter automation events per request | 4096 | `setParameterEvents.events`, expanded `setParameterCurve` events |
+| Parameter automation curve points | 256, never above the parameter-event cap | `setParameterCurve.points` |
 | Plugin parameters per instance | 1024 | `getParameters`, `listPlugins`, `createInstance.plugin.parameters` |
 | Parameter id/name/unit text | 64 / 160 / 64 bytes | `getParameters`, `setParameter.parameterId`, `setParameterEvents.events[].parameterId` |
 | Plugin presets | 256 presets, 64-byte ids, 160-byte names, 1024 bounded parameter values per preset | `listPlugins`, `scanPlugins` |

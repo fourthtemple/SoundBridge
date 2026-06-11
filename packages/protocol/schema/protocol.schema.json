@@ -21,6 +21,7 @@
         "getParameters",
         "setParameter",
         "setParameterEvents",
+        "setParameterCurve",
         "getState",
         "setState",
         "processAudioBlock",
@@ -97,7 +98,8 @@
                 "cleanupOnDisconnect": { "type": "boolean" },
                 "maxInstancesPerSession": { "type": "number" },
                 "maxTotalInstances": { "type": "number" },
-                "maxParameterEventsPerRequest": { "type": "number" }
+                "maxParameterEventsPerRequest": { "type": "number" },
+                "maxAutomationCurvePoints": { "type": "number" }
               }
             },
             "automation": { "type": "boolean" }
@@ -136,6 +138,10 @@
         {
           "if": { "properties": { "command": { "const": "setParameterEvents" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/setParameterEventsRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "setParameterCurve" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/setParameterCurveRequest" } } }
         },
         {
           "if": { "properties": { "command": { "const": "getState" } }, "required": ["command"] },
@@ -453,6 +459,15 @@
         "time": { "type": "integer", "minimum": 0, "maximum": 8191 }
       }
     },
+    "parameterAutomationPoint": {
+      "type": "object",
+      "required": ["time", "normalizedValue"],
+      "additionalProperties": true,
+      "properties": {
+        "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
     "pairRequest": {
       "type": "object",
       "additionalProperties": true,
@@ -537,6 +552,22 @@
           "type": "array",
           "maxItems": 4096,
           "items": { "$ref": "#/$defs/parameterAutomationEvent" }
+        }
+      }
+    },
+    "setParameterCurveRequest": {
+      "type": "object",
+      "required": ["instanceId", "parameterId", "points"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1 },
+        "parameterId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "interpolation": { "type": "string", "enum": ["linear", "step"] },
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/parameterAutomationPoint" }
         }
       }
     },
