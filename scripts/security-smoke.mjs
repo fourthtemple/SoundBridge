@@ -124,6 +124,25 @@ async function run() {
       created.layout.outputBusLayouts.length === created.layout.outputBuses,
     "createInstance reports bounded negotiated layout"
   );
+  const mockProgram = created.plugin?.parameters?.find((parameter) => parameter.id === "program");
+  check(
+    mockProgram?.programChange === true &&
+      mockProgram.programList?.programs?.length === 4 &&
+      mockProgram.programList.programs.every((program) => typeof program.name === "string" && program.name.length <= 160),
+    "createInstance exposes bounded program-list parameter metadata"
+  );
+  const selectedProgram = await request(
+    main,
+    "setParameter",
+    { instanceId: created.instanceId, parameterId: "program", normalizedValue: 2 / 3 },
+    true,
+    session
+  );
+  check(
+    selectedProgram.parameter?.programChange === true &&
+      Math.abs(selectedProgram.parameter.normalizedValue - 2 / 3) < 0.000001,
+    "setParameter selects a bounded program-list value"
+  );
 
   const layout = await request(main, "getLayout", { instanceId: created.instanceId }, true, session);
   check(

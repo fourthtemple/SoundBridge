@@ -39,7 +39,7 @@ Format support is intentionally split:
 
 | Format | Scanner | Hosting Path | Notes |
 | --- | --- | --- | --- |
-| VST3 | Active macOS bundle scanner with plist metadata | Steinberg VST3 SDK adapter | First real DSP target. Public scanner metadata is path-free; keep SDK optional and review licensing before vendoring. |
+| VST3 | Active macOS bundle scanner with plist metadata | Steinberg VST3 SDK adapter | First real DSP target. Public scanner metadata is path-free. Program-change parameters can expose bounded program-list metadata. Keep SDK optional and review licensing before vendoring. |
 | AU | Active macOS `.component` scanner plus AudioComponent registry metadata | Active CoreAudio AudioComponent worker | macOS-only. Runs installed AU binaries in a separate worker process and exposes path-free AudioComponent identifiers. |
 | LV2 | Active `.lv2` bundle scanner with bounded TTL parsing | Basic LV2 C-ABI audio/control worker with atom MIDI, portable POD state, and brokered file-backed state | Important for open-source plugin ecosystems. Public LV2 URI metadata is path-free. Worker, UI, and fuller extension support remain future work; keep GPL components out of the core. |
 

@@ -170,6 +170,8 @@ Returns plugin metadata:
 
 `metadata` is optional bounded public class metadata for host caching and plugin browsers. It must not contain local filesystem paths. Current fields include `stableId`, `bundleIdentifier`, `version`, AudioComponent `componentType` / `componentSubType` / `componentManufacturer`, and `lv2Uri`.
 
+`presets` is optional bounded host-display metadata. Preset ids are capped at 64 bytes, names at 160 bytes, and the daemon exposes at most 256 presets per plugin. These presets are parameter snapshots; arbitrary preset files, sample locations, and licensing data require a separate brokered file-access path.
+
 `hostable` defaults to `true` when omitted. A scanned installed plugin with `hostable: false` should be shown as discovery-only by browser hosts; `createInstance` must reject it until the matching native binary host adapter or compatible host profile is available. `hostUnavailableReason` is display text for that state and must not include private filesystem paths.
 
 Plugin instances are owned by the session that creates them. Commands that reference `instanceId` must fail with `instance_access_denied` when another session attempts to control the instance.
@@ -223,6 +225,8 @@ Releases an instance.
 Returns parameter metadata and current normalized values. All automatable parameter values are normalized to `0..1`; display mapping is metadata.
 
 Parameter metadata is plugin-controlled and must be bounded before it reaches a host UI. The reference daemon caps native parameters to 1024 items per instance, parameter ids to 64 bytes, parameter names to 160 bytes, and units to 64 bytes. Native VST3 parameters are enumerated from the plugin edit controller after instance creation; native AU parameters are enumerated from CoreAudio parameter metadata.
+
+VST3 parameters flagged by the SDK as program-change parameters include `programChange: true`. When the parameter's unit can be associated with a VST3 program list, the worker may include a bounded `programList` with at most 256 named programs and normalized values suitable for `setParameter`. Hosts should treat this as plugin-provided metadata, not as permission to read or load arbitrary preset files.
 
 ### `getLayout`
 

@@ -12,6 +12,7 @@
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstmidicontrollers.h"
+#include "pluginterfaces/vst/ivstunits.h"
 #include "public.sdk/source/common/memorystream.h"
 #include "public.sdk/source/vst/hosting/eventlist.h"
 #include "public.sdk/source/vst/hosting/hostclasses.h"
@@ -47,6 +48,9 @@ constexpr std::size_t kMaxWorkerMidiEvents = 4096;
 constexpr std::size_t kMaxWorkerParameters = 1024;
 constexpr std::size_t kMaxWorkerParameterChanges = 4096;
 constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
+constexpr Steinberg::int32 kMaxWorkerProgramLists = 256;
+constexpr Steinberg::int32 kMaxWorkerProgramsPerParameter = 256;
+constexpr Steinberg::int32 kMaxWorkerUnits = 1024;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
 constexpr std::uint32_t kMaxWorkerTailSamples = 1'048'576;
@@ -881,6 +885,7 @@ private:
     controller_ = Steinberg::FUnknownPtr<Steinberg::Vst::IEditController>(component_);
     if (controller_) {
       midiMapping_ = Steinberg::FUnknownPtr<Steinberg::Vst::IMidiMapping>(controller_);
+      unitInfo_ = Steinberg::FUnknownPtr<Steinberg::Vst::IUnitInfo>(controller_);
       return;
     }
 
@@ -894,6 +899,7 @@ private:
       checkResult(controller_->initialize(&hostApplication_), "IEditController::initialize");
       controllerInitialized_ = true;
       midiMapping_ = Steinberg::FUnknownPtr<Steinberg::Vst::IMidiMapping>(controller_);
+      unitInfo_ = Steinberg::FUnknownPtr<Steinberg::Vst::IUnitInfo>(controller_);
     }
   }
 
@@ -970,6 +976,7 @@ private:
     const auto plainValue = controller_->normalizedParamToPlain(info.id, normalizedValue);
     const auto minPlain = controller_->normalizedParamToPlain(info.id, 0.0);
     const auto maxPlain = controller_->normalizedParamToPlain(info.id, 1.0);
+    const bool programChange = (info.flags & Steinberg::Vst::ParameterInfo::kIsProgramChange) != 0;
 
     std::ostringstream output;
     output << "{\"id\":\"" << info.id << "\""
@@ -984,8 +991,93 @@ private:
       output << ",\"unit\":\"" << jsonEscape(unit) << "\"";
     }
     output << ",\"stepCount\":" << std::max<Steinberg::int32>(0, info.stepCount)
-           << ",\"readOnly\":" << ((info.flags & Steinberg::Vst::ParameterInfo::kIsReadOnly) ? "true" : "false")
-           << "}";
+           << ",\"readOnly\":" << ((info.flags & Steinberg::Vst::ParameterInfo::kIsReadOnly) ? "true" : "false");
+    if (programChange) {
+      output << ",\"programChange\":true";
+      const auto programList = programListToJson(info);
+      if (!programList.empty()) {
+        output << ",\"programList\":" << programList;
+      }
+    }
+    output << "}";
+    return output.str();
+  }
+
+  bool programListForParameter(
+      const Steinberg::Vst::ParameterInfo& parameter,
+      Steinberg::Vst::ProgramListInfo& programList) const {
+    if (!unitInfo_) {
+      return false;
+    }
+    const auto unitCount = std::clamp<Steinberg::int32>(
+        unitInfo_->getUnitCount(),
+        0,
+        kMaxWorkerUnits);
+    Steinberg::Vst::ProgramListID programListId = Steinberg::Vst::kNoProgramListId;
+    for (Steinberg::int32 unitIndex = 0; unitIndex < unitCount; ++unitIndex) {
+      Steinberg::Vst::UnitInfo unit {};
+      if (unitInfo_->getUnitInfo(unitIndex, unit) == Steinberg::kResultOk && unit.id == parameter.unitId) {
+        programListId = unit.programListId;
+        break;
+      }
+    }
+    if (programListId == Steinberg::Vst::kNoProgramListId) {
+      return false;
+    }
+
+    const auto listCount = std::clamp<Steinberg::int32>(
+        unitInfo_->getProgramListCount(),
+        0,
+        kMaxWorkerProgramLists);
+    for (Steinberg::int32 listIndex = 0; listIndex < listCount; ++listIndex) {
+      Steinberg::Vst::ProgramListInfo info {};
+      if (unitInfo_->getProgramListInfo(listIndex, info) == Steinberg::kResultOk && info.id == programListId) {
+        programList = info;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  std::string programListToJson(const Steinberg::Vst::ParameterInfo& parameter) const {
+    Steinberg::Vst::ProgramListInfo programList {};
+    if (!programListForParameter(parameter, programList)) {
+      return "";
+    }
+    const auto programCount = std::clamp<Steinberg::int32>(
+        programList.programCount,
+        0,
+        kMaxWorkerProgramsPerParameter);
+    if (programCount <= 0) {
+      return "";
+    }
+
+    const auto listName = cappedString(VST3::StringConvert::convert(programList.name));
+    std::ostringstream output;
+    output << "{\"id\":" << programList.id
+           << ",\"name\":\"" << jsonEscape(listName.empty() ? "Programs" : listName) << "\""
+           << ",\"programs\":[";
+    for (Steinberg::int32 programIndex = 0; programIndex < programCount; ++programIndex) {
+      if (programIndex > 0) {
+        output << ",";
+      }
+      Steinberg::Vst::String128 programName {};
+      std::string name;
+      if (unitInfo_->getProgramName(programList.id, programIndex, programName) == Steinberg::kResultOk) {
+        name = cappedString(VST3::StringConvert::convert(programName));
+      }
+      if (name.empty()) {
+        name = "Program " + std::to_string(programIndex + 1);
+      }
+      const double normalizedValue = programCount <= 1
+          ? 0.0
+          : static_cast<double>(programIndex) / static_cast<double>(programCount - 1);
+      output << "{\"index\":" << programIndex
+             << ",\"name\":\"" << jsonEscape(name) << "\""
+             << ",\"normalizedValue\":" << std::clamp(normalizedValue, 0.0, 1.0)
+             << "}";
+    }
+    output << "]}";
     return output.str();
   }
 
@@ -1122,6 +1214,7 @@ private:
   Steinberg::IPtr<Steinberg::Vst::IConnectionPoint> controllerConnection_;
   Steinberg::IPtr<Steinberg::Vst::IAudioProcessor> processor_;
   Steinberg::IPtr<Steinberg::Vst::IMidiMapping> midiMapping_;
+  Steinberg::IPtr<Steinberg::Vst::IUnitInfo> unitInfo_;
   double sampleRate_ = 48000.0;
   std::uint32_t maxBlockSize_ = 128;
   std::uint32_t requestedInputChannels_ = 2;

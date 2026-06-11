@@ -103,6 +103,20 @@ export interface PluginParameter {
   automatable: boolean;
   stepCount?: number;
   readOnly?: boolean;
+  programChange?: boolean;
+  programList?: PluginProgramList;
+}
+
+export interface PluginProgram {
+  index: number;
+  name: string;
+  normalizedValue: number;
+}
+
+export interface PluginProgramList {
+  id: number;
+  name: string;
+  programs: PluginProgram[];
 }
 
 export interface PluginPreset {

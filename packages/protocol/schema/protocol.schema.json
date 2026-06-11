@@ -210,7 +210,33 @@
         "plainValue": { "type": "number" },
         "automatable": { "type": "boolean" },
         "stepCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
-        "readOnly": { "type": "boolean" }
+        "readOnly": { "type": "boolean" },
+        "programChange": { "type": "boolean" },
+        "programList": { "$ref": "#/$defs/pluginProgramList" }
+      }
+    },
+    "pluginProgram": {
+      "type": "object",
+      "required": ["index", "name", "normalizedValue"],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "name": { "type": "string", "maxLength": 160 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "pluginProgramList": {
+      "type": "object",
+      "required": ["id", "name", "programs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "name": { "type": "string", "maxLength": 160 },
+        "programs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginProgram" }
+        }
       }
     },
     "pluginMetadata": {
@@ -245,6 +271,7 @@
         },
         "presets": {
           "type": "array",
+          "maxItems": 256,
           "items": { "$ref": "#/$defs/pluginPreset" }
         }
       }
@@ -317,10 +344,12 @@
       "required": ["id", "name", "parameters"],
       "additionalProperties": true,
       "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 160 },
         "parameters": {
           "type": "object",
+          "maxProperties": 1024,
+          "propertyNames": { "type": "string", "minLength": 1, "maxLength": 64 },
           "additionalProperties": {
             "type": "number",
             "minimum": 0,

@@ -23,6 +23,8 @@ const MAX_BLOCK_SIZE = envInteger("SOUNDBRIDGE_MAX_BLOCK_SIZE", 8192);
 const MAX_MIDI_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_MIDI_EVENTS_PER_REQUEST", 4096);
 const MAX_PARAMETER_EVENTS_PER_REQUEST = envInteger("SOUNDBRIDGE_MAX_PARAMETER_EVENTS_PER_REQUEST", 4096);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
+const MAX_PLUGIN_PRESETS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PRESETS", 256), 256);
+const MAX_PLUGIN_PROGRAMS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PROGRAMS", 256), 256);
 const MAX_PLUGIN_PARAMETER_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETER_TEXT_BYTES", 160);
 const MAX_PLUGIN_METADATA_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_METADATA_TEXT_BYTES", 256);
 const MAX_PLUGIN_STATE_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_STATE_BYTES", 384 * 1024);
@@ -1436,7 +1438,7 @@ function createPluginCatalog() {
       hostable: true,
       inputs: 2,
       outputs: 2,
-      parameters: [makeGainParameter(0.5)]
+      parameters: [makeGainParameter(0.5), makeProgramParameter(0)]
     },
     ...loadNativeExamplePlugins(),
     ...loadNativeInstalledPlugins()
@@ -1728,14 +1730,17 @@ function normalizeExampleDefaults(pluginId, manifest) {
 function normalizeExamplePresets(pluginId, manifest, defaults) {
   const rawPresets = Array.isArray(manifest?.presets) ? manifest.presets : examplePresetsFor(pluginId, defaults);
   const presets = rawPresets
+    .slice(0, MAX_PLUGIN_PRESETS)
     .map((preset, index) => {
       if (!preset || typeof preset !== "object") {
         return undefined;
       }
       const parameters = preset.parameters && typeof preset.parameters === "object" ? preset.parameters : {};
+      const id = truncateText(preset.id ?? `preset-${index + 1}`, 64) || `preset-${index + 1}`;
+      const name = truncateText(preset.name ?? `Preset ${index + 1}`, MAX_PLUGIN_PARAMETER_TEXT_BYTES) || id;
       return {
-        id: String(preset.id ?? `preset-${index + 1}`),
-        name: String(preset.name ?? `Preset ${index + 1}`),
+        id,
+        name,
         parameters: {
           gain: clamp01(Number(parameters.gain ?? defaults.gain)),
           tone: clamp01(Number(parameters.tone ?? defaults.tone)),
@@ -2020,6 +2025,23 @@ function makeUpdatedParameter(parameter, normalizedValue) {
       plainValue: normalizedDetuneToCents(value)
     };
   }
+  if (parameter.programChange) {
+    const value = clamp01(normalizedValue);
+    const programs = parameter.programList?.programs ?? [];
+    const selected = programs.reduce((closest, program) => {
+      if (!closest) {
+        return program;
+      }
+      return Math.abs(program.normalizedValue - value) < Math.abs(closest.normalizedValue - value)
+        ? program
+        : closest;
+    }, undefined);
+    return {
+      ...parameter,
+      normalizedValue: selected?.normalizedValue ?? value,
+      plainValue: selected?.index ?? value
+    };
+  }
   return {
     ...parameter,
     normalizedValue: clamp01(normalizedValue)
@@ -2049,6 +2071,41 @@ function makeGainParameter(normalizedValue) {
     maxPlain: 24,
     plainValue: normalizedGainToDb(clamped),
     automatable: true
+  };
+}
+
+function makeProgramParameter(normalizedValue) {
+  const programs = [
+    { index: 0, name: "Clean", normalizedValue: 0 },
+    { index: 1, name: "Warm", normalizedValue: 1 / 3 },
+    { index: 2, name: "Bright", normalizedValue: 2 / 3 },
+    { index: 3, name: "Wide", normalizedValue: 1 }
+  ];
+  const value = clamp01(normalizedValue);
+  const selected = programs.reduce((closest, program) => {
+    if (!closest) {
+      return program;
+    }
+    return Math.abs(program.normalizedValue - value) < Math.abs(closest.normalizedValue - value)
+      ? program
+      : closest;
+  }, undefined);
+  return {
+    id: "program",
+    name: "Program",
+    normalizedValue: selected?.normalizedValue ?? 0,
+    defaultNormalizedValue: 0,
+    minPlain: 0,
+    maxPlain: programs.length - 1,
+    plainValue: selected?.index ?? 0,
+    automatable: true,
+    stepCount: programs.length - 1,
+    programChange: true,
+    programList: {
+      id: 0,
+      name: "Programs",
+      programs
+    }
   };
 }
 
@@ -2214,7 +2271,7 @@ function normalizeWorkerParameter(parameter) {
   const maxPlain = finiteNumber(parameter.maxPlain, 1);
   const plainValue = finiteNumber(parameter.plainValue, minPlain + (maxPlain - minPlain) * normalizedValue);
 
-  return {
+  const normalized = {
     id,
     name: truncateText(parameter.name, MAX_PLUGIN_PARAMETER_TEXT_BYTES) || id,
     normalizedValue,
@@ -2226,6 +2283,43 @@ function normalizeWorkerParameter(parameter) {
     automatable: parameter.automatable !== false,
     stepCount: Math.max(0, Math.min(1_000_000, Math.floor(Number(parameter.stepCount ?? 0)))),
     readOnly: Boolean(parameter.readOnly)
+  };
+  if (parameter.programChange === true) {
+    normalized.programChange = true;
+    const programList = normalizeProgramList(parameter.programList);
+    if (programList) {
+      normalized.programList = programList;
+    }
+  }
+  return normalized;
+}
+
+function normalizeProgramList(programList) {
+  if (!programList || typeof programList !== "object" || !Array.isArray(programList.programs)) {
+    return undefined;
+  }
+  const programs = programList.programs
+    .slice(0, MAX_PLUGIN_PROGRAMS)
+    .map((program, fallbackIndex) => {
+      if (!program || typeof program !== "object") {
+        return undefined;
+      }
+      const index = normalizeInt(program.index, 0, MAX_PLUGIN_PROGRAMS - 1, fallbackIndex);
+      const name = truncateText(program.name ?? `Program ${index + 1}`, MAX_PLUGIN_PARAMETER_TEXT_BYTES) || `Program ${index + 1}`;
+      return {
+        index,
+        name,
+        normalizedValue: clamp01(Number(program.normalizedValue))
+      };
+    })
+    .filter(Boolean);
+  if (programs.length === 0) {
+    return undefined;
+  }
+  return {
+    id: normalizeInt(programList.id, -2147483648, 2147483647, 0),
+    name: truncateText(programList.name ?? "Programs", MAX_PLUGIN_PARAMETER_TEXT_BYTES) || "Programs",
+    programs
   };
 }
 
@@ -2570,8 +2664,10 @@ function clonePluginMetadata(plugin) {
     outputs: plugin.outputs,
     metadata: clonePluginClassMetadata(plugin.metadata),
     parameters: plugin.parameters.map((parameter) => ({ ...parameter })),
-    presets: (plugin.presets ?? []).map((preset) => ({
+    presets: (plugin.presets ?? []).slice(0, MAX_PLUGIN_PRESETS).map((preset, index) => ({
       ...preset,
+      id: truncateText(preset.id ?? `preset-${index + 1}`, 64) || `preset-${index + 1}`,
+      name: truncateText(preset.name ?? `Preset ${index + 1}`, MAX_PLUGIN_PARAMETER_TEXT_BYTES) || `Preset ${index + 1}`,
       parameters: { ...preset.parameters }
     }))
   };
