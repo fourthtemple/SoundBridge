@@ -1,6 +1,12 @@
 import { spawn } from "node:child_process";
 
-export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
+export const DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES = 16 * 1024 * 1024;
+
+export function createNativeWorkerProcesses({
+  nativeRenderer,
+  normalizers,
+  maxWorkerStdoutLineBytes = DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES
+}) {
   const {
     clonePluginLayout,
     encodeMidiEvents,
@@ -14,6 +20,7 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
     normalizeWorkerParameters,
     normalizeWorkerState
   } = normalizers;
+  const workerStdoutLineLimit = normalizeWorkerStdoutLineLimit(maxWorkerStdoutLineBytes);
 
   class ExampleInstrumentWorker {
     constructor(executablePath) {
@@ -21,6 +28,7 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
       this.renderEngine = "bundle-worker";
       this.pending = [];
       this.stdoutBuffer = "";
+      this.maxStdoutLineBytes = workerStdoutLineLimit;
       this.process = spawn(executablePath, ["--worker"], {
         stdio: ["pipe", "pipe", "pipe"]
       });
@@ -99,11 +107,19 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
       while (true) {
         const newline = this.stdoutBuffer.indexOf("\n");
         if (newline < 0) {
+          if (workerStdoutLineTooLarge(this.stdoutBuffer, this.maxStdoutLineBytes)) {
+            this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
+          }
           return;
         }
 
-        const line = this.stdoutBuffer.slice(0, newline).trim();
+        const rawLine = this.stdoutBuffer.slice(0, newline);
         this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1);
+        if (workerStdoutLineTooLarge(rawLine, this.maxStdoutLineBytes)) {
+          this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
+          return;
+        }
+        const line = rawLine.trim();
         const pending = this.pending.shift();
         if (!pending) {
           continue;
@@ -121,6 +137,12 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
           pending.reject(error);
         }
       }
+    }
+
+    abortWorker(error) {
+      this.stdoutBuffer = "";
+      this.rejectAll(error);
+      killWorkerProcess(this.process);
     }
 
     rejectAll(error) {
@@ -153,6 +175,7 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
       this.renderEngine = nativeHost.renderEngine;
       this.pending = [];
       this.stdoutBuffer = "";
+      this.maxStdoutLineBytes = workerStdoutLineLimit;
       this.readySettled = false;
       this.ready = new Promise((resolve, reject) => {
         this.resolveReady = resolve;
@@ -314,11 +337,19 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
       while (true) {
         const newline = this.stdoutBuffer.indexOf("\n");
         if (newline < 0) {
+          if (workerStdoutLineTooLarge(this.stdoutBuffer, this.maxStdoutLineBytes)) {
+            this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
+          }
           return;
         }
 
-        const line = this.stdoutBuffer.slice(0, newline).trim();
+        const rawLine = this.stdoutBuffer.slice(0, newline);
         this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1);
+        if (workerStdoutLineTooLarge(rawLine, this.maxStdoutLineBytes)) {
+          this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
+          return;
+        }
+        const line = rawLine.trim();
         let parsed;
         try {
           parsed = JSON.parse(line);
@@ -354,6 +385,12 @@ export function createNativeWorkerProcesses({ nativeRenderer, normalizers }) {
           pending.resolve(parsed);
         }
       }
+    }
+
+    abortWorker(error) {
+      this.stdoutBuffer = "";
+      this.rejectAll(error);
+      killWorkerProcess(this.process);
     }
 
     setReadyError(error) {
@@ -420,6 +457,28 @@ function encodeAudioChannels(channels, frames) {
       return samples.join(",");
     })
     .join("|");
+}
+
+function normalizeWorkerStdoutLineLimit(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number <= 0) {
+    return DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES;
+  }
+  return number;
+}
+
+function workerStdoutLineTooLarge(line, maxBytes) {
+  return Buffer.byteLength(line, "utf8") > maxBytes;
+}
+
+function workerStdoutLineError(maxBytes) {
+  return new Error(`worker_stdout_too_large: worker stdout line exceeded ${maxBytes} bytes`);
+}
+
+function killWorkerProcess(process) {
+  if (process && !process.killed) {
+    process.kill();
+  }
 }
 
 function encodeTransportState(transport) {

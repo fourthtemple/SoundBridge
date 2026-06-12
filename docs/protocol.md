@@ -95,7 +95,8 @@ Example paired capability payload:
       "maxParameterEventsPerRequest": 4096,
       "maxAutomationCurvePoints": 256,
       "maxAutomationLanesPerInstance": 128,
-      "maxAutomationLanePoints": 4096
+      "maxAutomationLanePoints": 4096,
+      "maxWorkerStdoutLineBytes": 16777216
     },
     "nativeExampleRenderer": true,
     "automation": true
@@ -483,7 +484,7 @@ Response:
 
 `renderEngine` is optional diagnostics. Current values include `bundle-worker`, `bundle-executable`, `native-example`, `native-au`, `native-vst3`, `native-lv2`, and `js-fallback`. JSON arrays are intentionally only for the mock daemon and early validation. Production transports should use binary Float32 frames or shared memory/shared ring buffers for bus-indexed audio.
 
-Block size is bounded: the daemon clamps the frame count to the instance's `maxBlockSize`, accepts at most 32 channels, and clamps `sampleRate` to 8000–384000 Hz. Native host workers re-clamp these values before allocating.
+Block size is bounded: the daemon clamps the frame count to the instance's `maxBlockSize`, accepts at most 32 channels, and clamps `sampleRate` to 8000–384000 Hz. Native host workers re-clamp these values before allocating. Worker response lines are also bounded before JSON parsing so a crashed or malicious worker cannot force the daemon to buffer unlimited stdout.
 
 ### `sendMidiEvents`
 

@@ -30,6 +30,7 @@ const MAX_SESSIONS_PER_ORIGIN = envInteger("SOUNDBRIDGE_MAX_SESSIONS_PER_ORIGIN"
 const MAX_INSTANCES_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_INSTANCES_PER_SESSION", 8);
 const MAX_TOTAL_INSTANCES = envInteger("SOUNDBRIDGE_MAX_TOTAL_INSTANCES", 32);
 const MAX_WEBSOCKET_MESSAGE_BYTES = envInteger("SOUNDBRIDGE_MAX_WEBSOCKET_MESSAGE_BYTES", 1024 * 1024);
+const MAX_WORKER_STDOUT_LINE_BYTES = envInteger("SOUNDBRIDGE_MAX_WORKER_STDOUT_LINE_BYTES", 16 * 1024 * 1024);
 const MAX_TOTAL_SESSIONS = envInteger("SOUNDBRIDGE_MAX_TOTAL_SESSIONS", 64);
 const MAX_AUDIO_CHANNELS = envInteger("SOUNDBRIDGE_MAX_AUDIO_CHANNELS", 32);
 const MAX_PLUGIN_BUSES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_BUSES", 32);
@@ -189,7 +190,8 @@ const {
   formatNativeHostName
 } = createNativeWorkerProcesses({
   nativeRenderer: NATIVE_RENDERER,
-  normalizers
+  normalizers,
+  maxWorkerStdoutLineBytes: MAX_WORKER_STDOUT_LINE_BYTES
 });
 
 const sessions = new Map();
@@ -425,7 +427,8 @@ function helloResponse(paired) {
         maxAutomationLanePoints: MAX_AUTOMATION_LANE_POINTS,
         maxTransportTempoBpm: MAX_TRANSPORT_TEMPO_BPM,
         maxTransportPositionMusic: MAX_TRANSPORT_POSITION_MUSIC,
-        maxTransportSamplePosition: MAX_TRANSPORT_SAMPLE_POSITION
+        maxTransportSamplePosition: MAX_TRANSPORT_SAMPLE_POSITION,
+        maxWorkerStdoutLineBytes: MAX_WORKER_STDOUT_LINE_BYTES
       }
     }
   };
