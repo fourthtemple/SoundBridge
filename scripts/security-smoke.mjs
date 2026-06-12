@@ -8,6 +8,7 @@ import {
   rawHttpRequest
 } from "./security-smoke-client.mjs";
 import { createSecurityDaemonCases, waitForListen } from "./security-smoke-daemon-cases.mjs";
+import { createSecurityEditorCases } from "./security-smoke-editor-cases.mjs";
 import { createSecurityMidiCases } from "./security-smoke-midi-cases.mjs";
 
 const HOST = "127.0.0.1";
@@ -38,6 +39,7 @@ const daemonCases = createSecurityDaemonCases({
   request,
   token: TOKEN
 });
+const editorCases = createSecurityEditorCases({ check, request });
 const midiCases = createSecurityMidiCases({ check, request });
 
 const daemon = spawn("node", ["scripts/mock-daemon.mjs"], {
@@ -425,28 +427,7 @@ async function run() {
     "getLayout returns session-owned negotiated layout"
   );
 
-  const editor = await request(main, "openEditor", { instanceId: created.instanceId }, true, session);
-  check(
-    /^editor-[0-9a-f-]{36}$/.test(editor.editorId) &&
-      editor.kind === "generic-parameters" &&
-      editor.native === false &&
-      editor.capabilities?.parameterEditing === true &&
-      editor.capabilities?.nativeWindow === false &&
-      Array.isArray(editor.parameters) &&
-      !("diagnostics" in (editor.plugin ?? {})),
-    "openEditor returns a bounded generic parameter editor session"
-  );
-  const nativeEditor = await request(
-    main,
-    "openEditor",
-    { instanceId: created.instanceId, mode: "native" },
-    true,
-    session
-  ).then(
-    () => ({ ok: true }),
-    (error) => ({ code: error.code })
-  );
-  check(nativeEditor.code === "unsupported_command", "openEditor refuses native editors until a UI worker is available");
+  const editor = await editorCases.checkOpenEditor({ main, session, created });
 
   const latency = await request(
     main,
@@ -1028,30 +1009,14 @@ async function run() {
     (error) => ({ code: error.code })
   );
   check(laneClearDenied.code === "instance_access_denied", "another session cannot clear this instance's automation lanes");
-  const editorOpenDenied = await request(
+  await editorCases.checkEditorOwnership({
+    main,
     other,
-    "openEditor",
-    { instanceId: created.instanceId },
-    true,
-    otherPair.sessionToken
-  ).then(
-    () => ({ ok: true }),
-    (error) => ({ code: error.code })
-  );
-  check(editorOpenDenied.code === "instance_access_denied", "another session cannot open an editor for this instance");
-  const editorCloseDenied = await request(
-    other,
-    "closeEditor",
-    { editorId: editor.editorId },
-    true,
-    otherPair.sessionToken
-  ).then(
-    () => ({ ok: true }),
-    (error) => ({ code: error.code })
-  );
-  check(editorCloseDenied.code === "editor_access_denied", "another session cannot close this editor session");
-  const editorClosed = await request(main, "closeEditor", { editorId: editor.editorId }, true, session);
-  check(editorClosed.closed === true, "owner session can close its generic editor session");
+    session,
+    otherSessionToken: otherPair.sessionToken,
+    created,
+    editor
+  });
   other.socket?.destroy();
   main.socket?.destroy();
 }
