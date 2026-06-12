@@ -155,7 +155,10 @@ export function createNativeWorkerProcesses({
             pending.resolve(parsed);
           }
         } catch (error) {
-          pending.reject(error);
+          const protocolError = workerStdoutParseError(error);
+          pending.reject(protocolError);
+          this.abortWorker(protocolError);
+          return;
         }
       }
     }
@@ -381,20 +384,22 @@ export function createNativeWorkerProcesses({
         try {
           parsed = JSON.parse(line);
         } catch (error) {
-          if (!this.readySettled) {
-            this.setReadyError(error);
-            continue;
-          }
+          const protocolError = workerStdoutParseError(error);
           const pending = this.pending.shift();
-          pending?.reject(error);
-          continue;
+          if (pending) {
+            clearTimeout(pending.timeout);
+            pending.reject(protocolError);
+          }
+          this.abortWorker(protocolError);
+          return;
         }
 
         if (!this.readySettled) {
           if (parsed.ok === true && parsed.ready === true) {
             this.setReadyOk(parsed);
           } else {
-            this.setReadyError(new Error(parsed.error ?? "worker did not report ready"));
+            this.abortWorker(workerReadyHandshakeError(parsed.error ?? "worker did not report ready"));
+            return;
           }
           continue;
         }
@@ -585,6 +590,10 @@ function workerStdoutLineError(maxBytes) {
   return new Error(`worker_stdout_too_large: worker stdout line exceeded ${maxBytes} bytes`);
 }
 
+function workerStdoutParseError(error) {
+  return new Error(`worker_stdout_malformed: worker stdout was not valid JSON (${String(error?.message ?? error)})`);
+}
+
 function workerStderrLineError(maxBytes) {
   return new Error(`worker_stderr_too_large: worker stderr line exceeded ${maxBytes} bytes`);
 }
@@ -595,6 +604,10 @@ function workerStderrBudgetError(maxBytes) {
 
 function workerReadyTimeoutError(timeoutMs) {
   return new Error(`worker_ready_timeout: worker did not report ready within ${timeoutMs}ms`);
+}
+
+function workerReadyHandshakeError(message) {
+  return new Error(`worker_ready_invalid: ${message}`);
 }
 
 function workerCommandTimeoutError(timeoutMs) {
