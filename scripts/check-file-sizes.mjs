@@ -3,8 +3,18 @@ import path from "node:path";
 
 const ROOT = process.cwd();
 const MAX_SOURCE_LINES = 1200;
+const NEAR_LIMIT_LINES = 1000;
 
-const OVERSIZED_BASELINE = new Map();
+const NEAR_LIMIT_BUDGETS = new Map([
+  ["native/bridge-daemon/src/AudioUnitHostWorker.cpp", 1043],
+  ["native/bridge-daemon/src/Lv2HostWorker.cpp", 1095],
+  ["native/bridge-daemon/src/Lv2HostWorkerSupport.cpp", 1056],
+  ["native/bridge-daemon/src/Vst3HostWorker.cpp", 1059],
+  ["native/bridge-daemon/src/Vst3HostWorkerSupport.cpp", 1086],
+  ["scripts/mock-daemon.mjs", 1121],
+  ["scripts/security-smoke.mjs", 1002],
+  ["scripts/smoke-test.mjs", 1056]
+]);
 
 const SOURCE_EXTENSIONS = new Set([
   ".c",
@@ -64,21 +74,29 @@ const failures = [];
 for (const file of sourceFiles(ROOT)) {
   const relative = repoRelative(file);
   const lines = lineCount(file);
-  const baseline = OVERSIZED_BASELINE.get(relative);
-  if (baseline != null) {
-    if (lines > baseline) {
-      failures.push(`${relative}: ${lines} lines exceeds oversized baseline ${baseline}; split it or reduce it.`);
+  const nearLimitBudget = NEAR_LIMIT_BUDGETS.get(relative);
+  if (nearLimitBudget != null) {
+    if (nearLimitBudget >= MAX_SOURCE_LINES) {
+      failures.push(`${relative}: near-limit budget ${nearLimitBudget} must stay below hard cap ${MAX_SOURCE_LINES}.`);
+    }
+    if (lines > nearLimitBudget) {
+      failures.push(`${relative}: ${lines} lines exceeds reviewed near-limit budget ${nearLimitBudget}; split it or reduce it.`);
+    }
+    if (lines < NEAR_LIMIT_LINES) {
+      failures.push(`${relative}: ${lines} lines is below near-limit threshold ${NEAR_LIMIT_LINES}; remove its reviewed budget.`);
     }
     continue;
   }
   if (lines > MAX_SOURCE_LINES) {
     failures.push(`${relative}: ${lines} lines exceeds ${MAX_SOURCE_LINES}; split the file before adding more behavior.`);
+  } else if (lines >= NEAR_LIMIT_LINES) {
+    failures.push(`${relative}: ${lines} lines exceeds near-limit threshold ${NEAR_LIMIT_LINES}; extract a focused module or add a reviewed budget.`);
   }
 }
 
-for (const relative of OVERSIZED_BASELINE.keys()) {
+for (const relative of NEAR_LIMIT_BUDGETS.keys()) {
   if (!fs.existsSync(path.join(ROOT, relative))) {
-    failures.push(`${relative}: oversized baseline points to a missing file; remove the baseline entry.`);
+    failures.push(`${relative}: reviewed near-limit budget points to a missing file; remove the budget entry.`);
   }
 }
 
@@ -90,4 +108,6 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log(`File-size fitness check passed (${MAX_SOURCE_LINES} line cap, ${OVERSIZED_BASELINE.size} legacy baselines).`);
+console.log(
+  `File-size fitness check passed (${MAX_SOURCE_LINES} line hard cap, ${NEAR_LIMIT_LINES} line near-limit threshold, ${NEAR_LIMIT_BUDGETS.size} reviewed near-limit budgets).`
+);
