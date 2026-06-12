@@ -179,6 +179,13 @@ bool unitInfoForParameter(
     const Steinberg::Vst::ParameterInfo& parameter,
     Steinberg::Vst::IUnitInfo* unitInfo,
     Steinberg::Vst::UnitInfo& unit);
+bool unitIdForProgramList(
+    Steinberg::Vst::IUnitInfo* unitInfo,
+    Steinberg::Vst::ProgramListID programListId,
+    Steinberg::Vst::UnitID& unitId);
+std::string programListInfoToJson(
+    const Steinberg::Vst::ProgramListInfo& programList,
+    Steinberg::Vst::IUnitInfo* unitInfo);
 
 bool programListForParameter(
     const Steinberg::Vst::ParameterInfo& parameter,
@@ -231,6 +238,27 @@ bool unitInfoForParameter(
   return false;
 }
 
+bool unitIdForProgramList(
+    Steinberg::Vst::IUnitInfo* unitInfo,
+    Steinberg::Vst::ProgramListID programListId,
+    Steinberg::Vst::UnitID& unitId) {
+  if (unitInfo == nullptr || programListId == Steinberg::Vst::kNoProgramListId) {
+    return false;
+  }
+  const auto unitCount = std::clamp<Steinberg::int32>(
+      unitInfo->getUnitCount(),
+      0,
+      kMaxWorkerUnits);
+  for (Steinberg::int32 unitIndex = 0; unitIndex < unitCount; ++unitIndex) {
+    Steinberg::Vst::UnitInfo unit {};
+    if (unitInfo->getUnitInfo(unitIndex, unit) == Steinberg::kResultOk && unit.programListId == programListId) {
+      unitId = unit.id;
+      return true;
+    }
+  }
+  return false;
+}
+
 std::string unitInfoToJson(
     const Steinberg::Vst::ParameterInfo& parameter,
     Steinberg::Vst::IUnitInfo* unitInfo) {
@@ -260,6 +288,12 @@ std::string programListToJson(
   if (!programListForParameter(parameter, unitInfo, programList)) {
     return "";
   }
+  return programListInfoToJson(programList, unitInfo);
+}
+
+std::string programListInfoToJson(
+    const Steinberg::Vst::ProgramListInfo& programList,
+    Steinberg::Vst::IUnitInfo* unitInfo) {
   const auto programCount = std::clamp<Steinberg::int32>(
       programList.programCount,
       0,
@@ -269,10 +303,14 @@ std::string programListToJson(
   }
 
   const auto listName = cappedString(VST3::StringConvert::convert(programList.name));
+  Steinberg::Vst::UnitID unitId = Steinberg::Vst::kNoParentUnitId;
   std::ostringstream output;
   output << "{\"id\":" << programList.id
-         << ",\"name\":\"" << jsonEscape(listName.empty() ? "Programs" : listName) << "\""
-         << ",\"programs\":[";
+         << ",\"name\":\"" << jsonEscape(listName.empty() ? "Programs" : listName) << "\"";
+  if (unitIdForProgramList(unitInfo, programList.id, unitId)) {
+    output << ",\"unitId\":" << unitId;
+  }
+  output << ",\"programs\":[";
   for (Steinberg::int32 programIndex = 0; programIndex < programCount; ++programIndex) {
     if (programIndex > 0) {
       output << ",";
@@ -653,6 +691,35 @@ bool makeVst3Event(const PendingMidiEvent& pending, std::uint32_t frames, Steinb
     return true;
   }
   return false;
+}
+
+std::string programListsToJson(Steinberg::Vst::IUnitInfo* unitInfo) {
+  std::ostringstream output;
+  output << "{\"vst3ProgramLists\":[";
+  if (unitInfo != nullptr) {
+    const auto listCount = std::clamp<Steinberg::int32>(
+        unitInfo->getProgramListCount(),
+        0,
+        kMaxWorkerProgramLists);
+    bool first = true;
+    for (Steinberg::int32 listIndex = 0; listIndex < listCount; ++listIndex) {
+      Steinberg::Vst::ProgramListInfo info {};
+      if (unitInfo->getProgramListInfo(listIndex, info) != Steinberg::kResultOk) {
+        continue;
+      }
+      const auto listJson = programListInfoToJson(info, unitInfo);
+      if (listJson.empty()) {
+        continue;
+      }
+      if (!first) {
+        output << ",";
+      }
+      output << listJson;
+      first = false;
+    }
+  }
+  output << "]}";
+  return output.str();
 }
 
 std::string noteExpressionsToJson(Steinberg::Vst::INoteExpressionController* noteExpressionController) {

@@ -42,6 +42,16 @@ try {
       unitParameter.vst3Unit.name === "12345678",
     "daemon normalizers bound VST3 unit metadata"
   );
+  const [unitProgramList] = unitNormalizers.normalizeVst3ProgramLists([
+    { id: 7, name: "1234567890", unitId: 2, programs: [{ index: 0, name: "1234567890", normalizedValue: 0.5 }] }
+  ]);
+  check(
+    unitProgramList?.id === 7 &&
+      unitProgramList.unitId === 2 &&
+      unitProgramList.name === "12345678" &&
+      unitProgramList.programs?.[0]?.name === "12345678",
+    "daemon normalizers bound VST3 program-list metadata"
+  );
   const [unitExpression] = unitNormalizers.normalizeVst3NoteExpressions([
     {
       typeId: 0,

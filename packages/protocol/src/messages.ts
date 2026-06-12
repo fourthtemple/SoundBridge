@@ -80,6 +80,8 @@ export interface HelloResponse {
       maxWorkerStderrBytes?: number;
       maxWorkerDiagnosticLogChars?: number;
       maxPluginNoteExpressions?: number;
+      maxPluginProgramLists?: number;
+      maxPluginPrograms?: number;
       maxWorkerPendingCommands?: number;
       workerReadyTimeoutMs?: number;
       workerTerminationGraceMs?: number;
@@ -151,6 +153,7 @@ export interface PluginProgram {
 export interface PluginProgramList {
   id: number;
   name: string;
+  unitId?: number;
   programs: PluginProgram[];
 }
 
@@ -207,6 +210,7 @@ export interface PluginMetadata {
   outputs: number;
   metadata?: PluginClassMetadata;
   parameters: PluginParameter[];
+  vst3ProgramLists?: PluginProgramList[];
   vst3NoteExpressions?: PluginVst3NoteExpression[];
   presets?: PluginPreset[];
 }

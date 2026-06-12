@@ -60,7 +60,7 @@ export function createPluginCatalogSupport({
   mockInstruments,
   limits
 }) {
-  const { clamp01, normalizeVst3NoteExpressions, truncateText } = normalizers;
+  const { clamp01, normalizeVst3NoteExpressions, normalizeVst3ProgramLists, truncateText } = normalizers;
   const {
     makeGainParameter,
     makeInstrumentParameters,
@@ -77,39 +77,43 @@ export function createPluginCatalogSupport({
 
   function createPluginCatalog() {
     return [
-      {
-        pluginId: "mock.gain",
-        format: "mock",
-        name: "Mock Gain",
-        vendor: "SoundBridge",
-        category: "Fx|Gain",
-        kind: "effect",
-        source: "mock",
-        hostable: true,
-        inputs: 2,
-        outputs: 2,
-        parameters: [makeGainParameter(0.5), makeProgramParameter(0), makeOutputLevelParameter(0)],
-        presets: [
-          {
-            id: "gain-unity",
-            name: "Unity",
-            parameters: {
-              gain: 0.5,
-              program: 0,
-              "output-level": 1
+      (() => {
+        const programParameter = makeProgramParameter(0);
+        return {
+          pluginId: "mock.gain",
+          format: "mock",
+          name: "Mock Gain",
+          vendor: "SoundBridge",
+          category: "Fx|Gain",
+          kind: "effect",
+          source: "mock",
+          hostable: true,
+          inputs: 2,
+          outputs: 2,
+          parameters: [makeGainParameter(0.5), programParameter, makeOutputLevelParameter(0)],
+          vst3ProgramLists: [programParameter.programList],
+          presets: [
+            {
+              id: "gain-unity",
+              name: "Unity",
+              parameters: {
+                gain: 0.5,
+                program: 0,
+                "output-level": 1
+              }
+            },
+            {
+              id: "gain-bright",
+              name: "Bright Gain",
+              parameters: {
+                gain: 0.75,
+                program: 2 / 3,
+                "output-level": 1
+              }
             }
-          },
-          {
-            id: "gain-bright",
-            name: "Bright Gain",
-            parameters: {
-              gain: 0.75,
-              program: 2 / 3,
-              "output-level": 1
-            }
-          }
-        ]
-      },
+          ]
+        };
+      })(),
       ...loadNativeExamplePlugins(),
       ...loadNativeInstalledPlugins()
     ];
@@ -620,6 +624,10 @@ export function createPluginCatalogSupport({
       .slice(0, maxPluginNoteExpressions);
     if (noteExpressions.length > 0) {
       cloned.vst3NoteExpressions = noteExpressions;
+    }
+    const programLists = normalizeVst3ProgramLists(plugin.vst3ProgramLists);
+    if (programLists.length > 0) {
+      cloned.vst3ProgramLists = programLists;
     }
     return cloned;
   }

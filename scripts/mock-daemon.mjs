@@ -54,6 +54,7 @@ const MAX_TOTAL_EDITORS = envInteger("SOUNDBRIDGE_MAX_TOTAL_EDITORS", 32);
 const EDITOR_SESSION_TTL_MS = envInteger("SOUNDBRIDGE_EDITOR_SESSION_TTL_MS", 10 * 60 * 1000);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
 const MAX_PLUGIN_PRESETS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PRESETS", 256), 256);
+const MAX_PLUGIN_PROGRAM_LISTS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PROGRAM_LISTS", 256), 256);
 const MAX_PLUGIN_PROGRAMS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PROGRAMS", 256), 256);
 const MAX_PLUGIN_NOTE_EXPRESSIONS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_NOTE_EXPRESSIONS", 256), 256);
 const MAX_PLUGIN_PARAMETER_TEXT_BYTES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETER_TEXT_BYTES", 160);
@@ -87,6 +88,7 @@ const normalizers = createDaemonNormalizers({
   maxPluginLatencySamples: MAX_PLUGIN_LATENCY_SAMPLES,
   maxPluginParameters: MAX_PLUGIN_PARAMETERS,
   maxPluginNoteExpressions: MAX_PLUGIN_NOTE_EXPRESSIONS,
+  maxPluginProgramLists: MAX_PLUGIN_PROGRAM_LISTS,
   maxPluginParameterTextBytes: MAX_PLUGIN_PARAMETER_TEXT_BYTES,
   maxPluginPrograms: MAX_PLUGIN_PROGRAMS,
   maxPluginStateBytes: MAX_PLUGIN_STATE_BYTES,
@@ -424,6 +426,8 @@ function helloResponse(paired) {
         maxAudioChannels: MAX_AUDIO_CHANNELS,
         maxBlockSize: MAX_BLOCK_SIZE,
         maxPluginNoteExpressions: MAX_PLUGIN_NOTE_EXPRESSIONS,
+        maxPluginProgramLists: MAX_PLUGIN_PROGRAM_LISTS,
+        maxPluginPrograms: MAX_PLUGIN_PROGRAMS,
         maxParameterEventsPerRequest: MAX_PARAMETER_EVENTS_PER_REQUEST,
         maxAutomationCurvePoints: MAX_AUTOMATION_CURVE_POINTS,
         maxAutomationLanesPerInstance: MAX_AUTOMATION_LANES_PER_INSTANCE,
@@ -565,7 +569,8 @@ async function createInstance(payload, session) {
     outputChannels,
     layout: requestedLayout,
     parameters,
-    vst3NoteExpressions: [],
+    vst3ProgramLists: plugin.vst3ProgramLists ?? [],
+    vst3NoteExpressions: plugin.vst3NoteExpressions ?? [],
     nativeParameterIds: new Set(),
     pluginLatencySamples: 0,
     pluginTailSamples: 0,
@@ -587,6 +592,7 @@ async function createInstance(payload, session) {
         instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
       }
       if (plugin.nativeHost.format === "vst3") {
+        instance.vst3ProgramLists = await instance.worker.getVst3ProgramLists();
         instance.vst3NoteExpressions = await instance.worker.getVst3NoteExpressions();
       }
       const nativeLayout = await instance.worker.getLayout();
@@ -618,6 +624,7 @@ async function createInstance(payload, session) {
       inputs: instance.inputChannels,
       outputs: instance.outputChannels,
       parameters: instance.parameters,
+      vst3ProgramLists: instance.vst3ProgramLists,
       vst3NoteExpressions: instance.vst3NoteExpressions
     }),
     layout: clonePluginLayout(instance.layout),

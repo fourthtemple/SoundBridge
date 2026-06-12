@@ -323,6 +323,10 @@ public:
     return vst3_worker::noteExpressionsToJson(noteExpressionController_);
   }
 
+  std::string programListsToJson() const {
+    return vst3_worker::programListsToJson(unitInfo_);
+  }
+
   std::string setParameter(Steinberg::Vst::ParamID id, double value, std::uint32_t sampleOffset) {
     if (!controller_) {
       throw std::runtime_error("VST3 plugin does not expose an edit controller.");
@@ -913,6 +917,11 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
 
         if (command == "noteExpressions") {
           std::cout << host.noteExpressionsToJson() << std::endl;
+          continue;
+        }
+
+        if (command == "programLists") {
+          std::cout << host.programListsToJson() << std::endl;
           continue;
         }
 

@@ -112,6 +112,8 @@
                 "maxTransportPositionMusic": { "type": "number" },
                 "maxTransportSamplePosition": { "type": "number" },
                 "maxPluginNoteExpressions": { "type": "number" },
+                "maxPluginProgramLists": { "type": "number" },
+                "maxPluginPrograms": { "type": "number" },
                 "maxWorkerStdoutLineBytes": { "type": "number" },
                 "maxWorkerCommandBytes": { "type": "number" },
                 "maxWorkerPendingCommandBytes": { "type": "number" },
@@ -296,6 +298,7 @@
       "properties": {
         "id": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "name": { "type": "string", "maxLength": 160 },
+        "unitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "programs": {
           "type": "array",
           "maxItems": 256,
@@ -354,6 +357,11 @@
           "type": "array",
           "maxItems": 1024,
           "items": { "$ref": "#/$defs/pluginParameter" }
+        },
+        "vst3ProgramLists": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginProgramList" }
         },
         "vst3NoteExpressions": {
           "type": "array",

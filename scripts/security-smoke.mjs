@@ -196,6 +196,11 @@ async function run() {
     "paired hello advertises bounded worker diagnostic logs"
   );
   check(
+    pairedHello.capabilities?.security?.maxPluginProgramLists > 0 &&
+      pairedHello.capabilities?.security?.maxPluginPrograms > 0,
+    "paired hello advertises bounded program-list metadata"
+  );
+  check(
     pairedHello.capabilities?.security?.maxWorkerPendingCommands > 0,
     "paired hello advertises bounded worker pending commands"
   );
@@ -282,9 +287,11 @@ async function run() {
       mockProgram.programList.programs.every((program) => typeof program.name === "string" && program.name.length <= 160) &&
       mockProgram.vst3Unit?.id === 1 &&
       mockProgram.vst3Unit?.programListId === mockProgram.programList.id &&
+      created.plugin?.vst3ProgramLists?.[0]?.id === mockProgram.programList.id &&
+      created.plugin.vst3ProgramLists[0].unitId === mockProgram.vst3Unit.id &&
       typeof mockProgram.vst3Unit?.name === "string" &&
       mockProgram.vst3Unit.name.length <= 160,
-    "createInstance exposes bounded VST3 unit and program-list parameter metadata"
+    "createInstance exposes bounded VST3 unit and program-list metadata"
   );
   const selectedProgram = await request(
     main,

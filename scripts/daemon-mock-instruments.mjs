@@ -132,6 +132,7 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
       programList: {
         id: 0,
         name: "Programs",
+        unitId: 1,
         programs
       }
     };

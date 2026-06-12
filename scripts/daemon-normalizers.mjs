@@ -7,6 +7,7 @@ export function createDaemonNormalizers(options = {}) {
     maxPluginParameters: positiveInteger(options.maxPluginParameters, 1024),
     maxPluginParameterTextBytes: positiveInteger(options.maxPluginParameterTextBytes, 160),
     maxPluginNoteExpressions: positiveInteger(options.maxPluginNoteExpressions, 256),
+    maxPluginProgramLists: positiveInteger(options.maxPluginProgramLists, 256),
     maxPluginPrograms: positiveInteger(options.maxPluginPrograms, 256),
     maxPluginStateBytes: positiveInteger(options.maxPluginStateBytes, 384 * 1024),
     maxPluginTailSamples: positiveInteger(options.maxPluginTailSamples, 1_048_576),
@@ -153,11 +154,25 @@ export function createDaemonNormalizers(options = {}) {
     if (programs.length === 0) {
       return undefined;
     }
-    return {
+    const normalized = {
       id: normalizeInt(programList.id, -2147483648, 2147483647, 0),
       name: truncateText(programList.name ?? "Programs", limits.maxPluginParameterTextBytes) || "Programs",
       programs
     };
+    if (programList.unitId !== undefined) {
+      normalized.unitId = normalizeInt(programList.unitId, -2147483648, 2147483647, -1);
+    }
+    return normalized;
+  }
+
+  function normalizeVst3ProgramLists(programLists) {
+    if (!Array.isArray(programLists)) {
+      return [];
+    }
+    return programLists
+      .slice(0, limits.maxPluginProgramLists)
+      .map((programList) => normalizeProgramList(programList))
+      .filter(Boolean);
   }
 
   function normalizeVst3NoteExpressions(expressions) {
@@ -455,6 +470,7 @@ export function createDaemonNormalizers(options = {}) {
     normalizeTailReport,
     normalizeTailSamples,
     normalizeVst3NoteExpressions,
+    normalizeVst3ProgramLists,
     normalizeWorkerParameter,
     normalizeWorkerParameters,
     normalizeWorkerState,

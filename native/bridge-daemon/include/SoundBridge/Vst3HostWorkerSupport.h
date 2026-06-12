@@ -107,6 +107,7 @@ bool parseAudioBuses(const std::string& encoded, std::uint32_t frames, std::vect
 const std::vector<std::vector<float>>* findBusChannels(const std::vector<IndexedAudioBus>& buses, std::uint32_t index);
 bool parseMidiEvents(const std::string& encoded, std::vector<PendingMidiEvent>& events);
 bool makeVst3Event(const PendingMidiEvent& pending, std::uint32_t frames, Steinberg::Vst::Event& event);
+std::string programListsToJson(Steinberg::Vst::IUnitInfo* unitInfo);
 std::string noteExpressionsToJson(Steinberg::Vst::INoteExpressionController* noteExpressionController);
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels);
 std::string renderedAudioToJson(const RenderedAudio& rendered);

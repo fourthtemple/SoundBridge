@@ -37,6 +37,7 @@ export function createNativeWorkerProcesses({
     normalizePluginLayout,
     normalizeTailReport,
     normalizeVst3NoteExpressions,
+    normalizeVst3ProgramLists,
     normalizeWorkerParameter,
     normalizeWorkerParameters,
     normalizeWorkerState
@@ -341,6 +342,14 @@ export function createNativeWorkerProcesses({
       }
       const parsed = await this.request("noteExpressions");
       return normalizeVst3NoteExpressions(parsed.vst3NoteExpressions);
+    }
+
+    async getVst3ProgramLists() {
+      if (this.nativeHost.format !== "vst3") {
+        return [];
+      }
+      const parsed = await this.request("programLists");
+      return normalizeVst3ProgramLists(parsed.vst3ProgramLists);
     }
 
     async setParameter(parameterId, normalizedValue, sampleOffset = 0) {
