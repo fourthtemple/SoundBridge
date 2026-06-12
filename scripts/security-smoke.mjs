@@ -176,6 +176,10 @@ async function run() {
     "paired hello advertises bounded native worker stdout lines"
   );
   check(
+    pairedHello.capabilities?.security?.maxWorkerCommandBytes > 0,
+    "paired hello advertises bounded worker command lines"
+  );
+  check(
     pairedHello.capabilities?.security?.maxWorkerStderrLineBytes > 0,
     "paired hello advertises bounded native worker stderr lines"
   );

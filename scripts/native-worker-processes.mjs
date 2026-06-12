@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 export const DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_MAX_WORKER_COMMAND_BYTES = 16 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_STDERR_LINE_BYTES = 1024 * 1024;
 export const DEFAULT_MAX_WORKER_STDERR_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_PENDING_COMMANDS = 64;
@@ -13,6 +14,7 @@ export function createNativeWorkerProcesses({
   nativeRenderer,
   normalizers,
   maxWorkerStdoutLineBytes = DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES,
+  maxWorkerCommandBytes = DEFAULT_MAX_WORKER_COMMAND_BYTES,
   maxWorkerStderrLineBytes = DEFAULT_MAX_WORKER_STDERR_LINE_BYTES,
   maxWorkerStderrBytes = DEFAULT_MAX_WORKER_STDERR_BYTES,
   maxWorkerPendingCommands = DEFAULT_MAX_WORKER_PENDING_COMMANDS,
@@ -35,6 +37,7 @@ export function createNativeWorkerProcesses({
     normalizeWorkerState
   } = normalizers;
   const workerStdoutLineLimit = normalizeWorkerStdoutLineLimit(maxWorkerStdoutLineBytes);
+  const workerCommandLimit = normalizeWorkerCommandLimit(maxWorkerCommandBytes);
   const workerStderrLineLimit = normalizeWorkerStderrLineLimit(maxWorkerStderrLineBytes);
   const workerStderrBudget = normalizeWorkerStderrBudget(maxWorkerStderrBytes);
   const workerPendingCommandLimit = normalizeWorkerPendingCommandLimit(maxWorkerPendingCommands);
@@ -58,6 +61,7 @@ export function createNativeWorkerProcesses({
       this.stderrBuffer = "";
       this.stderrBytes = 0;
       this.maxStdoutLineBytes = workerStdoutLineLimit;
+      this.maxCommandBytes = workerCommandLimit;
       this.maxStderrLineBytes = workerStderrLineLimit;
       this.maxStderrBytes = workerStderrBudget;
       this.maxPendingCommands = workerPendingCommandLimit;
@@ -117,6 +121,9 @@ export function createNativeWorkerProcesses({
       }
       if (this.pending.length >= this.maxPendingCommands) {
         return Promise.reject(workerPendingCommandsError(this.maxPendingCommands));
+      }
+      if (workerLineTooLarge(command, this.maxCommandBytes)) {
+        return Promise.reject(workerCommandTooLargeError(this.maxCommandBytes));
       }
 
       return new Promise((resolve, reject) => {
@@ -214,6 +221,7 @@ export function createNativeWorkerProcesses({
       this.stderrBuffer = "";
       this.stderrBytes = 0;
       this.maxStdoutLineBytes = workerStdoutLineLimit;
+      this.maxCommandBytes = workerCommandLimit;
       this.maxStderrLineBytes = workerStderrLineLimit;
       this.maxStderrBytes = workerStderrBudget;
       this.maxPendingCommands = workerPendingCommandLimit;
@@ -360,6 +368,9 @@ export function createNativeWorkerProcesses({
       }
       if (this.pending.length >= this.maxPendingCommands) {
         return Promise.reject(workerPendingCommandsError(this.maxPendingCommands));
+      }
+      if (workerLineTooLarge(command, this.maxCommandBytes)) {
+        return Promise.reject(workerCommandTooLargeError(this.maxCommandBytes));
       }
 
       return new Promise((resolve, reject) => {
@@ -524,6 +535,14 @@ function normalizeWorkerStdoutLineLimit(value) {
   return number;
 }
 
+function normalizeWorkerCommandLimit(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number <= 0) {
+    return DEFAULT_MAX_WORKER_COMMAND_BYTES;
+  }
+  return number;
+}
+
 function normalizeWorkerStderrLineLimit(value) {
   const number = Math.floor(Number(value));
   if (!Number.isFinite(number) || number <= 0) {
@@ -618,6 +637,10 @@ function accountWorkerStderr(worker, rawText) {
 
 function workerStdoutLineError(maxBytes) {
   return new Error(`worker_stdout_too_large: worker stdout line exceeded ${maxBytes} bytes`);
+}
+
+function workerCommandTooLargeError(maxBytes) {
+  return new Error(`worker_command_too_large: worker command exceeded ${maxBytes} bytes`);
 }
 
 function workerStdoutParseError(error) {

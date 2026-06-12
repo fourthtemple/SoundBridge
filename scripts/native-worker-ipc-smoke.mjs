@@ -5,6 +5,7 @@ import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
+const MAX_TEST_COMMAND_BYTES = 128;
 const MAX_TEST_STDERR_LINE_BYTES = 128;
 const MAX_TEST_STDERR_BYTES = 64;
 const MAX_TEST_PENDING_COMMANDS = 8;
@@ -314,6 +315,29 @@ setTimeout(() => {}, 30000);
   );
   unsolicitedNativeWorker.destroy();
 
+  const commandLimitWorkers = createTestWorkers(nativeWorkerPath, { maxWorkerCommandBytes: 16 });
+  const commandLimitExampleWorker = new commandLimitWorkers.ExampleInstrumentWorker(hangingExampleCommandWorkerPath);
+  await expectRejected(
+    () => commandLimitExampleWorker.request("x".repeat(64)),
+    "worker_command_too_large",
+    "example instrument workers reject oversized commands before stdin write"
+  );
+  check(commandLimitExampleWorker.pending.length === 0, "oversized example worker commands are not queued");
+  commandLimitExampleWorker.destroy();
+
+  const commandLimitNativeWorker = new commandLimitWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await commandLimitNativeWorker.ready;
+  await expectRejected(
+    () => commandLimitNativeWorker.request("x".repeat(64)),
+    "worker_command_too_large",
+    "native host workers reject oversized commands before stdin write"
+  );
+  check(commandLimitNativeWorker.pending.length === 0, "oversized native worker commands are not queued");
+  commandLimitNativeWorker.destroy();
+
   const cappedExampleWorkers = createTestWorkers(hangingNativeCommandWorkerPath, { maxWorkerPendingCommands: 1 });
   const cappedExampleWorker = new cappedExampleWorkers.ExampleInstrumentWorker(hangingExampleCommandWorkerPath);
   const pendingExampleCommand = cappedExampleWorker
@@ -412,6 +436,7 @@ function createTestWorkers(nativeRenderer, options = {}) {
     nativeRenderer,
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
+    maxWorkerCommandBytes: options.maxWorkerCommandBytes ?? MAX_TEST_COMMAND_BYTES,
     maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
     maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     maxWorkerPendingCommands: options.maxWorkerPendingCommands ?? MAX_TEST_PENDING_COMMANDS,
