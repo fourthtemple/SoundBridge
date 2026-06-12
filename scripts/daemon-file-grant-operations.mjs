@@ -27,6 +27,9 @@ export function createDaemonFileGrantOperations({
     const request = payload && typeof payload === "object" ? payload : {};
     const instance = getInstance(request.instanceId, session);
     const operation = requireOperation(request.operation ?? "other");
+    if (!instanceAdvertisesOperation(instance, operation)) {
+      throw makeProtocolError("unsupported_file_grant_operation", "This plugin did not advertise support for this file grant operation.");
+    }
     if (!instance.worker || typeof instance.worker.useFileGrant !== "function") {
       throw makeProtocolError("unsupported_file_grant_operation", "This plugin worker cannot consume file grants.");
     }
@@ -90,6 +93,11 @@ export function createDaemonFileGrantOperations({
   return {
     useFileGrant
   };
+}
+
+function instanceAdvertisesOperation(instance, operation) {
+  return Array.isArray(instance?.fileGrantOperations) &&
+    instance.fileGrantOperations.some((candidate) => candidate === operation && isKnownFileGrantOperation(candidate));
 }
 
 function publicGrant(grant) {

@@ -866,6 +866,7 @@ async function exerciseDaemonFileGrantOperation(absolutePath) {
     instanceId: "inst-test",
     ownerSessionToken: session.sessionToken,
     fileGrantAttachments: new Map(),
+    fileGrantOperations: ["loadSample", "loadLicense"],
     worker: {
       async useFileGrant({ operation, grant: workerGrant }) {
         observedAbsolutePath = workerGrant.absolutePath;
@@ -936,6 +937,33 @@ async function exerciseDaemonFileGrantOperation(absolutePath) {
     invalidOperationCode = error.code;
   }
   check(invalidOperationCode === "invalid_argument", "daemon file grant operations reject unknown operations");
+
+  const unadvertisedInstance = {
+    ...instance,
+    instanceId: "inst-unadvertised",
+    fileGrantOperations: ["loadPreset"]
+  };
+  const unadvertisedOperations = createDaemonFileGrantOperations({
+    getInstance(instanceId) {
+      if (instanceId !== unadvertisedInstance.instanceId) {
+        throw protocolError("instance_not_found", "missing instance");
+      }
+      return unadvertisedInstance;
+    },
+    instanceFileGrantSupport,
+    makeProtocolError: protocolError
+  });
+  let unadvertisedCode;
+  try {
+    await unadvertisedOperations.useFileGrant({
+      instanceId: unadvertisedInstance.instanceId,
+      grantId: "filegrant-missing",
+      operation: "loadSample"
+    }, session);
+  } catch (error) {
+    unadvertisedCode = error.code;
+  }
+  check(unadvertisedCode === "unsupported_file_grant_operation", "daemon file grant operations reject unadvertised worker operations before path use");
 
   return { response, observedAbsolutePath };
 }

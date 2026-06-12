@@ -611,6 +611,7 @@ async function createInstance(payload, session) {
     outputChannels,
     layout: requestedLayout,
     parameters,
+    fileGrantOperations: Array.isArray(plugin.fileGrantOperations) ? [...plugin.fileGrantOperations] : [],
     vst3ProgramLists: plugin.vst3ProgramLists ?? [],
     vst3NoteExpressions: plugin.vst3NoteExpressions ?? [],
     nativeParameterIds: new Set(),
