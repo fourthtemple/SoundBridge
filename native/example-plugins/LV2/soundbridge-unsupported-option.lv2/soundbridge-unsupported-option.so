@@ -1,0 +1,2 @@
+This is an intentionally non-loadable scanner fixture. The LV2 scanner should
+mark this bundle discovery-only because it requires an unsupported LV2 option.

@@ -122,6 +122,8 @@ std::string nativePluginInfoToJson(const NativePluginInfo& info) {
   output << "\"hasManifest\":" << (info.hasManifest ? "true" : "false") << ",";
   output << "\"hasUnsupportedRequiredFeatures\":" << (info.hasUnsupportedRequiredFeatures ? "true" : "false") << ",";
   output << "\"unsupportedRequiredFeatureCount\":" << info.unsupportedRequiredFeatureCount << ",";
+  output << "\"hasUnsupportedRequiredOptions\":" << (info.hasUnsupportedRequiredOptions ? "true" : "false") << ",";
+  output << "\"unsupportedRequiredOptionCount\":" << info.unsupportedRequiredOptionCount << ",";
   output << "\"hasLv2Ui\":" << (info.lv2UiCount > 0 ? "true" : "false") << ",";
   output << "\"lv2UiCount\":" << info.lv2UiCount << ",";
   output << "\"lv2UiBinaryCount\":" << info.lv2UiBinaryCount;

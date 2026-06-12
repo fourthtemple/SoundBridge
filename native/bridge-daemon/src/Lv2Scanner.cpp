@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -18,7 +19,12 @@ constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
 constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
 constexpr const char* kLv2WorkerScheduleUri = "http://lv2plug.in/ns/ext/worker#schedule";
 constexpr const char* kLv2OptionsOptionsUri = "http://lv2plug.in/ns/ext/options#options";
+constexpr const char* kLv2OptionsRequiredOptionUri = "http://lv2plug.in/ns/ext/options#requiredOption";
 constexpr const char* kLv2BufSizeBoundedBlockLengthUri = "http://lv2plug.in/ns/ext/buf-size#boundedBlockLength";
+constexpr const char* kLv2BufSizeMaxBlockLengthUri = "http://lv2plug.in/ns/ext/buf-size#maxBlockLength";
+constexpr const char* kLv2BufSizeMinBlockLengthUri = "http://lv2plug.in/ns/ext/buf-size#minBlockLength";
+constexpr const char* kLv2BufSizeNominalBlockLengthUri = "http://lv2plug.in/ns/ext/buf-size#nominalBlockLength";
+constexpr const char* kLv2BufSizeSequenceSizeUri = "http://lv2plug.in/ns/ext/buf-size#sequenceSize";
 constexpr std::uint32_t kMaxLv2UiDeclarations = 32;
 
 struct Lv2UiType {
@@ -265,6 +271,7 @@ std::map<std::string, std::string> turtlePrefixes(const std::string& text) {
       {"state", "http://lv2plug.in/ns/ext/state#"},
       {"worker", "http://lv2plug.in/ns/ext/worker#"},
       {"buf-size", "http://lv2plug.in/ns/ext/buf-size#"},
+      {"options", "http://lv2plug.in/ns/ext/options#"},
       {"opts", "http://lv2plug.in/ns/ext/options#"},
       {"atom", "http://lv2plug.in/ns/ext/atom#"},
       {"midi", "http://lv2plug.in/ns/ext/midi#"},
@@ -316,30 +323,72 @@ std::optional<std::string> expandPrefixedUri(
   return found->second + local;
 }
 
-std::set<std::string> requiredFeatureUris(const std::string& text) {
-  std::set<std::string> features;
+std::size_t turtleObjectListEnd(const std::string& text, std::size_t start) {
+  bool inUri = false;
+  bool inString = false;
+  bool escapingString = false;
+  char stringQuote = '\0';
+  for (std::size_t index = start; index < text.size(); ++index) {
+    const char current = text[index];
+    if (inString) {
+      if (escapingString) {
+        escapingString = false;
+      } else if (current == '\\') {
+        escapingString = true;
+      } else if (current == stringQuote) {
+        inString = false;
+      }
+      continue;
+    }
+    if (inUri) {
+      if (current == '>') {
+        inUri = false;
+      }
+      continue;
+    }
+    if (current == '<') {
+      inUri = true;
+      continue;
+    }
+    if (current == '"' || current == '\'') {
+      inString = true;
+      stringQuote = current;
+      continue;
+    }
+    if (current == ';' || current == ']') {
+      return index;
+    }
+    if (current == '.' && (index + 1 == text.size() || std::isspace(static_cast<unsigned char>(text[index + 1])))) {
+      return index;
+    }
+  }
+  return std::string::npos;
+}
+
+std::set<std::string> predicateUris(const std::string& text, const std::string& predicate) {
+  std::set<std::string> values;
   const auto prefixes = turtlePrefixes(text);
   std::size_t position = 0;
-  while ((position = text.find("lv2:requiredFeature", position)) != std::string::npos && features.size() < 64) {
-    const auto valueStart = position + 19;
-    const auto valueEnd = text.find_first_of(".;]", valueStart);
+  while ((position = text.find(predicate, position)) != std::string::npos && values.size() < 64) {
+    const auto valueStart = position + predicate.size();
+    const auto valueEnd = turtleObjectListEnd(text, valueStart);
     const auto segment = text.substr(valueStart, valueEnd == std::string::npos ? std::string::npos : valueEnd - valueStart);
 
     std::size_t anglePosition = 0;
-    while ((anglePosition = segment.find('<', anglePosition)) != std::string::npos && features.size() < 64) {
+    while ((anglePosition = segment.find('<', anglePosition)) != std::string::npos && values.size() < 64) {
       const auto end = segment.find('>', anglePosition + 1);
       if (end == std::string::npos || end <= anglePosition + 1) {
         break;
       }
       const auto uri = segment.substr(anglePosition + 1, end - anglePosition - 1);
       if (uri.size() <= 256) {
-        features.insert(uri);
+        values.insert(uri);
       }
       anglePosition = end + 1;
     }
 
     std::size_t tokenPosition = 0;
-    while (tokenPosition < segment.size() && features.size() < 64) {
+    while (tokenPosition < segment.size() && values.size() < 64) {
       const auto start = segment.find_first_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-", tokenPosition);
       if (start == std::string::npos) {
         break;
@@ -348,7 +397,7 @@ std::set<std::string> requiredFeatureUris(const std::string& text) {
       const auto token = segment.substr(start, end == std::string::npos ? std::string::npos : end - start);
       if (auto expanded = expandPrefixedUri(token, prefixes)) {
         if (expanded->size() <= 256) {
-          features.insert(*expanded);
+          values.insert(*expanded);
         }
       }
       tokenPosition = end == std::string::npos ? segment.size() : end + 1;
@@ -356,7 +405,22 @@ std::set<std::string> requiredFeatureUris(const std::string& text) {
 
     position = valueEnd == std::string::npos ? text.size() : valueEnd + 1;
   }
-  return features;
+  return values;
+}
+
+std::set<std::string> requiredFeatureUris(const std::string& text) {
+  return predicateUris(text, "lv2:requiredFeature");
+}
+
+std::set<std::string> requiredOptionUris(const std::string& text) {
+  auto options = predicateUris(text, "opts:requiredOption");
+  for (const auto& uri : predicateUris(text, "options:requiredOption")) {
+    options.insert(uri);
+  }
+  for (const auto& uri : predicateUris(text, std::string("<") + kLv2OptionsRequiredOptionUri + ">")) {
+    options.insert(uri);
+  }
+  return options;
 }
 
 bool lv2RequiredFeatureSupported(const std::string& uri) {
@@ -365,6 +429,13 @@ bool lv2RequiredFeatureSupported(const std::string& uri) {
       uri == kLv2WorkerScheduleUri ||
       uri == kLv2OptionsOptionsUri ||
       uri == kLv2BufSizeBoundedBlockLengthUri;
+}
+
+bool lv2RequiredOptionSupported(const std::string& uri) {
+  return uri == kLv2BufSizeMaxBlockLengthUri ||
+      uri == kLv2BufSizeMinBlockLengthUri ||
+      uri == kLv2BufSizeNominalBlockLengthUri ||
+      uri == kLv2BufSizeSequenceSizeUri;
 }
 
 std::filesystem::path canonicalPathOrInput(const std::filesystem::path& path) {
@@ -605,6 +676,14 @@ void applyLv2TurtleMetadata(
   }
   info.unsupportedRequiredFeatureCount = unsupportedRequiredFeatures;
   info.hasUnsupportedRequiredFeatures = unsupportedRequiredFeatures > 0;
+  std::uint32_t unsupportedRequiredOptions = 0;
+  for (const auto& uri : requiredOptionUris(turtle)) {
+    if (!lv2RequiredOptionSupported(uri)) {
+      ++unsupportedRequiredOptions;
+    }
+  }
+  info.unsupportedRequiredOptionCount = unsupportedRequiredOptions;
+  info.hasUnsupportedRequiredOptions = unsupportedRequiredOptions > 0;
   info.lv2UiTypes = lv2UiTypes(turtle);
   info.lv2UiCount = std::max<std::uint32_t>(
       static_cast<std::uint32_t>(info.lv2UiTypes.size()),

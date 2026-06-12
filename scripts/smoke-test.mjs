@@ -124,6 +124,10 @@ assert(
   "scanPlugins preserves unsupported-required LV2 bundles as discovery-only"
 );
 assert(
+  lv2Scan.plugins.some((plugin) => plugin.pluginId === "lv2:soundbridge-unsupported-option.lv2" && plugin.hostable === false),
+  "scanPlugins preserves unsupported-required-option LV2 bundles as discovery-only"
+);
+assert(
   lv2Scan.plugins.some((plugin) => plugin.pluginId === "lv2:soundbridge-example-gain.lv2" && plugin.hostable === true),
   "scanPlugins treats LV2 bounded-block-length plus options requirements as hostable"
 );

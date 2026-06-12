@@ -15,6 +15,7 @@
   doap:name "SoundBridge Example LV2 Gain" ;
   lv2:extensionData state:interface, work:interface ;
   lv2:requiredFeature buf-size:boundedBlockLength, opts:options, work:schedule ;
+  opts:requiredOption buf-size:maxBlockLength, buf-size:sequenceSize ;
   pg:mainInput <urn:soundbridge:example:lv2-gain#input> ;
   pg:mainOutput <urn:soundbridge:example:lv2-gain#output> ;
   lv2:port [

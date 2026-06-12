@@ -306,8 +306,11 @@ export function createPluginCatalogSupport({
       return auProfileReason;
     }
     if (plugin.format === "lv2" && nativeHostStatus.get("lv2")?.host === true) {
-      if (plugin.diagnostics?.hasUnsupportedRequiredFeatures === true) {
-        return "Installed LV2 scanning is available, but this plugin requires unsupported LV2 host features.";
+      if (
+        plugin.diagnostics?.hasUnsupportedRequiredFeatures === true ||
+        plugin.diagnostics?.hasUnsupportedRequiredOptions === true
+      ) {
+        return "Installed LV2 scanning is available, but this plugin requires unsupported LV2 host features or options.";
       }
       return "Installed LV2 scanning is available; this plugin does not match the basic audio/control LV2 host profile yet.";
     }
@@ -356,6 +359,7 @@ export function createPluginCatalogSupport({
         diagnostics.bundlePath.length === 0 ||
         diagnostics.hasExecutable !== true ||
         diagnostics.hasUnsupportedRequiredFeatures === true ||
+        diagnostics.hasUnsupportedRequiredOptions === true ||
         Number(plugin.outputs) <= 0 ||
         plugin.kind === "instrument"
       ) {

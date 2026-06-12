@@ -1,0 +1,20 @@
+@prefix buf-size: <http://lv2plug.in/ns/ext/buf-size#> .
+@prefix doap: <http://usefulinc.com/ns/doap#> .
+@prefix lv2: <http://lv2plug.in/ns/lv2core#> .
+@prefix opts: <http://lv2plug.in/ns/ext/options#> .
+
+<urn:soundbridge:example:unsupported-option>
+  a lv2:Plugin ;
+  doap:name "SoundBridge Unsupported Required Option LV2" ;
+  opts:requiredOption <http://lv2plug.in/ns/ext/buf-size#fixedBlockLength> ;
+  lv2:port [
+    a lv2:InputPort, lv2:AudioPort ;
+    lv2:index 0 ;
+    lv2:symbol "in_l" ;
+    lv2:name "Input L"
+  ], [
+    a lv2:OutputPort, lv2:AudioPort ;
+    lv2:index 1 ;
+    lv2:symbol "out_l" ;
+    lv2:name "Output L"
+  ] .

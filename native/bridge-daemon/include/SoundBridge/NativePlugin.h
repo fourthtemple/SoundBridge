@@ -43,6 +43,8 @@ struct NativePluginInfo {
   bool hasManifest = false;
   bool hasUnsupportedRequiredFeatures = false;
   std::uint32_t unsupportedRequiredFeatureCount = 0;
+  bool hasUnsupportedRequiredOptions = false;
+  std::uint32_t unsupportedRequiredOptionCount = 0;
 };
 
 std::string pluginFormatToString(PluginFormat format);
