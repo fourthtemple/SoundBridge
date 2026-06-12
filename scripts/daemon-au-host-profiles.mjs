@@ -1,5 +1,8 @@
 export const AUDIO_UNIT_HOST_PROFILES = Object.freeze({
   REALTIME_MAIN_BUS: "realtime-main-bus",
+  REALTIME_FORMAT_CONVERTER: "realtime-format-converter",
+  REALTIME_MULTI_SOURCE_MERGER: "realtime-multi-source-merger",
+  REALTIME_MULTI_OUTPUT_SPLITTER: "realtime-multi-output-splitter",
   OFFLINE_RENDER: "offline-render",
   MULTI_SOURCE_FORMAT_CONVERTER: "multi-source-format-converter",
   MULTI_OUTPUT_SPLITTER: "multi-output-splitter"
@@ -30,7 +33,25 @@ export function classifyAudioUnitHostProfile(plugin) {
     return {
       profile: AUDIO_UNIT_HOST_PROFILES.MULTI_SOURCE_FORMAT_CONVERTER,
       hostUnavailableReason:
-        "AUAudioMix requires a multi-source format-converter host profile; the current Audio Unit bridge hosts realtime main-bus units."
+        "AUAudioMix requires a dedicated multi-source format-converter profile beyond the current bounded realtime Audio Unit worker."
+    };
+  }
+
+  if (componentManufacturer === "appl" && componentType === "aufc" && componentSubType === "merg") {
+    return {
+      profile: AUDIO_UNIT_HOST_PROFILES.REALTIME_MULTI_SOURCE_MERGER
+    };
+  }
+
+  if (componentManufacturer === "appl" && componentType === "aufc" && componentSubType === "splt") {
+    return {
+      profile: AUDIO_UNIT_HOST_PROFILES.REALTIME_MULTI_OUTPUT_SPLITTER
+    };
+  }
+
+  if (componentManufacturer === "appl" && componentType === "aufc") {
+    return {
+      profile: AUDIO_UNIT_HOST_PROFILES.REALTIME_FORMAT_CONVERTER
     };
   }
 
@@ -38,7 +59,7 @@ export function classifyAudioUnitHostProfile(plugin) {
     return {
       profile: AUDIO_UNIT_HOST_PROFILES.MULTI_OUTPUT_SPLITTER,
       hostUnavailableReason:
-        "AUMultiSplitter requires a multi-output splitter host profile; the current Audio Unit bridge hosts realtime main-bus units."
+        "AUMultiSplitter requires a dedicated multi-output mixer/splitter profile beyond the current bounded realtime Audio Unit worker."
     };
   }
 

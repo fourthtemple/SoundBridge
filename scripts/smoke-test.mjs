@@ -1,5 +1,6 @@
 import { runNativeLv2WorkerSmoke } from "./native-lv2-worker-smoke.mjs";
 import { connectWebSocket, createRequestClient } from "./smoke-protocol-client.mjs";
+import { assertAudioUnitHostProfiles } from "./smoke-test-au-profiles.mjs";
 import { runPluginDiscoverySmoke } from "./smoke-test-plugin-discovery.mjs";
 import {
   assert,
@@ -371,17 +372,7 @@ if (nativeLv2BlockProfile) {
   await request(socket, "destroyInstance", { instanceId: blockProfileInstance.instanceId }, true, pair.sessionToken);
 }
 
-const nativeAuEffect = plugins.find((plugin) => plugin.pluginId === "au-reg:appl:aufx:lpas");
-assert(nativeAuEffect?.hostable === true, "listPlugins exposes an installed Apple AU effect as hostable");
-assert(!("diagnostics" in nativeAuEffect), "hostable AU metadata does not expose scanner diagnostics");
-assert(
-  nativeAuEffect.metadata?.componentManufacturer === "appl" &&
-    nativeAuEffect.metadata?.componentType === "aufx" &&
-    nativeAuEffect.metadata?.componentSubType === "lpas" &&
-    nativeAuEffect.metadata?.audioUnitHostProfile === "realtime-main-bus" &&
-    nativeAuEffect.metadata?.stableId === "appl:aufx:lpas",
-  "hostable AU metadata exposes bounded AudioComponent class identifiers"
-);
+const nativeAuEffect = assertAudioUnitHostProfiles({ assert, plugins });
 const nativeAuInstance = await request(
   socket,
   "createInstance",
