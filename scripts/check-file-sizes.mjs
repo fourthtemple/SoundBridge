@@ -10,8 +10,7 @@ const NEAR_LIMIT_BUDGETS = new Map([
   ["native/bridge-daemon/src/Lv2HostWorker.cpp", 1095],
   ["native/bridge-daemon/src/Lv2HostWorkerSupport.cpp", 1056],
   ["native/bridge-daemon/src/Vst3HostWorker.cpp", 1059],
-  ["native/bridge-daemon/src/Vst3HostWorkerSupport.cpp", 1086],
-  ["scripts/security-smoke.mjs", 1002]
+  ["native/bridge-daemon/src/Vst3HostWorkerSupport.cpp", 1086]
 ]);
 
 const SOURCE_EXTENSIONS = new Set([

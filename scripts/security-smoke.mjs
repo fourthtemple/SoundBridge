@@ -11,6 +11,7 @@ import { createSecurityDaemonCases, waitForListen } from "./security-smoke-daemo
 import { createSecurityEditorCases } from "./security-smoke-editor-cases.mjs";
 import { createSecurityFileGrantCases } from "./security-smoke-file-grant-cases.mjs";
 import { createSecurityMidiCases } from "./security-smoke-midi-cases.mjs";
+import { createSecurityPairingCases } from "./security-smoke-pairing-cases.mjs";
 import {
   createSecuritySessionCases,
   publicPluginIsPathFree
@@ -54,6 +55,16 @@ const fileGrantCases = createSecurityFileGrantCases({
   token: TOKEN
 });
 const midiCases = createSecurityMidiCases({ check, request });
+const pairingCases = createSecurityPairingCases({
+  check,
+  connect,
+  disallowedOrigin: DISALLOWED_ORIGIN,
+  host: HOST,
+  origin: ORIGIN,
+  port: PORT,
+  request,
+  token: TOKEN
+});
 const sessionCases = createSecuritySessionCases({
   check,
   connect,
@@ -112,38 +123,7 @@ async function run() {
   await sessionCases.checkUnpairedSurface(main);
 
   // D. Wrong pairing token is rejected, and the connection locks out after the limit.
-  const noOriginSocket = await connect(HOST, PORT, `${HOST}:${PORT}`);
-  const noOriginPair = await request(noOriginSocket, "pair", { pairingToken: TOKEN }, false).then(
-    () => ({ ok: true }),
-    (error) => ({ code: error.code })
-  );
-  check(noOriginPair.code === "origin_required", "pairing without a WebSocket Origin header is rejected");
-  noOriginSocket.socket?.destroy();
-
-  const lockSocket = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
-  const r1 = await pairAttempt(lockSocket, "wrong-1");
-  const r2 = await pairAttempt(lockSocket, "wrong-2");
-  const r3 = await pairAttempt(lockSocket, "wrong-3");
-  check(r1.code === "pairing_denied", "1st wrong token -> pairing_denied");
-  check(r2.code === "pairing_denied", "2nd wrong token -> pairing_denied");
-  check(r3.code === "pairing_denied" || r3.closed === true, "3rd wrong token -> denied then connection closed");
-  // After the limit the connection is closed; a follow-up attempt cannot pair.
-  const r4 = await pairAttempt(lockSocket, TOKEN);
-  check(r4.closed === true || r4.code === "pairing_locked", "after lockout the correct token cannot pair on that connection");
-  lockSocket.socket?.destroy();
-
-  const mismatchSocket = await connect(HOST, PORT, `${HOST}:${PORT}`, ORIGIN);
-  const originMismatch = await request(
-    mismatchSocket,
-    "pair",
-    { origin: DISALLOWED_ORIGIN, pairingToken: TOKEN },
-    false
-  ).then(
-    () => ({ ok: true }),
-    (error) => ({ code: error.code })
-  );
-  check(originMismatch.code === "origin_mismatch", "pair rejects origins that do not match the WebSocket Origin header");
-  mismatchSocket.socket?.destroy();
+  await pairingCases.checkPairingBoundaries();
 
   // E. Correct token pairs.
   const paired = await request(main, "pair", { origin: ORIGIN, pairingToken: TOKEN }, false);
@@ -988,15 +968,4 @@ async function run() {
   });
   other.socket?.destroy();
   main.socket?.destroy();
-}
-
-async function pairAttempt(ctx, token) {
-  if (ctx.closed) return { closed: true };
-  try {
-    await request(ctx, "pair", { origin: ORIGIN, pairingToken: token }, false);
-    return { ok: true };
-  } catch (error) {
-    if (error.code === "closed" || error.code === "timeout") return { closed: true };
-    return { code: error.code };
-  }
 }
