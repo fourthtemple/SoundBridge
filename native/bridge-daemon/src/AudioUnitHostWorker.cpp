@@ -494,6 +494,26 @@ private:
     return std::clamp((static_cast<double>(value) - minValue) / (maxValue - minValue), 0.0, 1.0);
   }
 
+  std::string displayValueForParameter(AudioUnitParameterID parameterId, AudioUnitParameterValue plainValue) const {
+    AudioUnitParameterStringFromValue request {};
+    request.inParamID = parameterId;
+    request.inValue = &plainValue;
+    UInt32 size = sizeof(request);
+    const auto status = AudioUnitGetProperty(
+        unit_,
+        kAudioUnitProperty_ParameterStringFromValue,
+        kAudioUnitScope_Global,
+        0,
+        &request,
+        &size);
+    if (status != noErr || request.outString == nullptr) {
+      return {};
+    }
+    const auto text = cappedString(cfStringToUtf8(request.outString));
+    CFRelease(request.outString);
+    return text;
+  }
+
   std::string parameterInfoToJson(AudioUnitParameterID parameterId, const AudioUnitParameterInfo& info) const {
     AudioUnitParameterValue plainValue = info.defaultValue;
     if (AudioUnitGetParameter(unit_, parameterId, kAudioUnitScope_Global, 0, &plainValue) != noErr) {
@@ -510,6 +530,7 @@ private:
     const auto unit = cfStringToUtf8(info.unitName);
     const auto readOnly = (info.flags & kAudioUnitParameterFlag_MeterReadOnly) != 0 ||
         ((info.flags & kAudioUnitParameterFlag_IsWritable) == 0 && (info.flags & kAudioUnitParameterFlag_IsReadable) != 0);
+    const auto displayValue = displayValueForParameter(parameterId, plainValue);
 
     std::ostringstream output;
     output << "{\"id\":\"" << parameterId << "\""
@@ -520,6 +541,9 @@ private:
            << ",\"minPlain\":" << (std::isfinite(info.minValue) ? info.minValue : 0.0F)
            << ",\"maxPlain\":" << (std::isfinite(info.maxValue) ? info.maxValue : 1.0F)
            << ",\"automatable\":" << (readOnly ? "false" : "true");
+    if (!displayValue.empty()) {
+      output << ",\"displayValue\":\"" << jsonEscape(displayValue) << "\"";
+    }
     if (!unit.empty()) {
       output << ",\"unit\":\"" << jsonEscape(cappedString(unit, 64)) << "\"";
     }

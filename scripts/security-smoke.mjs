@@ -375,8 +375,22 @@ async function run() {
   );
   check(
     selectedProgram.parameter?.programChange === true &&
-      Math.abs(selectedProgram.parameter.normalizedValue - 2 / 3) < 0.000001,
-    "setParameter selects a bounded program-list value"
+      Math.abs(selectedProgram.parameter.normalizedValue - 2 / 3) < 0.000001 &&
+      selectedProgram.parameter.displayValue === "Bright",
+    "setParameter selects a bounded program-list value with display text"
+  );
+  const displayGain = await request(
+    main,
+    "setParameter",
+    { instanceId: created.instanceId, parameterId: "gain", normalizedValue: 0.75 },
+    true,
+    session
+  );
+  check(
+    typeof displayGain.parameter?.displayValue === "string" &&
+      Buffer.byteLength(displayGain.parameter.displayValue, "utf8") <= 160 &&
+      displayGain.parameter.displayValue.includes("dB"),
+    "setParameter returns bounded display text for generic editor values"
   );
   const readOnlyParameter = created.plugin?.parameters?.find((parameter) => parameter.id === "output-level");
   check(

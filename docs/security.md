@@ -99,7 +99,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Parameter automation curve points | 256, never above the parameter-event cap | `setParameterCurve.points` |
 | Parameter automation lanes | 128 lanes per instance; 4096 points per lane; render-block lane expansion capped by the parameter-event cap | `setAutomationLane.points`, `clearAutomationLane`, `processAudioBlock.transport.samplePosition` |
 | Plugin parameters per instance | 1024 | `getParameters`, `listPlugins`, `createInstance.plugin.parameters` |
-| Parameter id/name/unit text and flags | 64 / 160 / 64 bytes; read-only writes rejected | `getParameters`, `setParameter.parameterId`, `setParameterEvents.events[].parameterId`, `setParameterCurve.parameterId`, `setPreset` |
+| Parameter id/name/unit/display text and flags | 64 / 160 / 64 / 160 bytes; read-only writes rejected | `getParameters`, `setParameter.parameterId`, `setParameterEvents.events[].parameterId`, `setParameterCurve.parameterId`, `setPreset` |
 | Plugin presets | 256 presets, 64-byte ids, 160-byte names, 1024 bounded parameter values per preset | `listPlugins`, `scanPlugins`, `setPreset.presetId` |
 | VST3 unit/program metadata | 1024 units, 256 lists, 256 programs per parameter, 160-byte names | `getParameters`, `createInstance.plugin.parameters` |
 | Editor sessions | 8 per session / 32 total / 10-minute TTL; native broker disabled unless explicitly configured | `openEditor`, `closeEditor` |

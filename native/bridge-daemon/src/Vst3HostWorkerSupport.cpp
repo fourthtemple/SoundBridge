@@ -896,6 +896,18 @@ const VST3::Hosting::ClassInfo* findAudioClass(const VST3::Hosting::PluginFactor
   return nullptr;
 }
 
+std::string parameterDisplayValue(
+    const Steinberg::Vst::ParameterInfo& info,
+    Steinberg::Vst::IEditController* controller,
+    Steinberg::Vst::ParamValue normalizedValue) {
+  Steinberg::Vst::String128 text {};
+  if (controller == nullptr ||
+      controller->getParamStringByValue(info.id, normalizedValue, text) != Steinberg::kResultOk) {
+    return {};
+  }
+  return cappedString(VST3::StringConvert::convert(text));
+}
+
 std::string parameterInfoToJson(
     const Steinberg::Vst::ParameterInfo& info,
     Steinberg::Vst::IEditController* controller,
@@ -908,6 +920,7 @@ std::string parameterInfoToJson(
   const auto plainValue = controller->normalizedParamToPlain(info.id, normalizedValue);
   const auto minPlain = controller->normalizedParamToPlain(info.id, 0.0);
   const auto maxPlain = controller->normalizedParamToPlain(info.id, 1.0);
+  const auto displayValue = parameterDisplayValue(info, controller, normalizedValue);
   const bool programChange = (info.flags & Steinberg::Vst::ParameterInfo::kIsProgramChange) != 0;
 
   std::ostringstream output;
@@ -919,6 +932,9 @@ std::string parameterInfoToJson(
          << ",\"minPlain\":" << (std::isfinite(minPlain) ? minPlain : 0.0)
          << ",\"maxPlain\":" << (std::isfinite(maxPlain) ? maxPlain : 1.0)
          << ",\"automatable\":" << (parameterIsAutomatable(info) ? "true" : "false");
+  if (!displayValue.empty()) {
+    output << ",\"displayValue\":\"" << jsonEscape(displayValue) << "\"";
+  }
   if (!unit.empty()) {
     output << ",\"unit\":\"" << jsonEscape(unit) << "\"";
   }

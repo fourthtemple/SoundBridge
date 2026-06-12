@@ -110,6 +110,17 @@ export function assertPublicPluginMetadata(plugin, message) {
       `${message}: fileGrantOperations are bounded known operations`
     );
   }
+  const parameters = Array.isArray(plugin.parameters) ? plugin.parameters : [];
+  for (const [index, parameter] of parameters.entries()) {
+    if (parameter.displayValue != null) {
+      assert(
+        typeof parameter.displayValue === "string" &&
+          Buffer.byteLength(parameter.displayValue, "utf8") <= 160 &&
+          !parameter.displayValue.includes("\u0000"),
+        `${message}: parameter ${index} displayValue is bounded`
+      );
+    }
+  }
   const metadata = plugin.metadata;
   if (metadata == null) {
     return;

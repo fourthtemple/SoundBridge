@@ -33,18 +33,22 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
     }
     if (parameter.id === "tone") {
       const value = clamp01(normalizedValue);
+      const plainValue = value * 100;
       return {
         ...parameter,
         normalizedValue: value,
-        plainValue: value * 100
+        plainValue,
+        displayValue: `${plainValue.toFixed(1)} %`
       };
     }
     if (parameter.id === "detune") {
       const value = clamp01(normalizedValue);
+      const plainValue = normalizedDetuneToCents(value);
       return {
         ...parameter,
         normalizedValue: value,
-        plainValue: normalizedDetuneToCents(value)
+        plainValue,
+        displayValue: `${plainValue.toFixed(1)} ct`
       };
     }
     if (parameter.programChange) {
@@ -61,7 +65,8 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
       return {
         ...parameter,
         normalizedValue: selected?.normalizedValue ?? value,
-        plainValue: selected?.index ?? value
+        plainValue: selected?.index ?? value,
+        displayValue: selected?.name
       };
     }
     return {
@@ -77,12 +82,14 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
     return {
       ...parameter,
       normalizedValue: value,
-      plainValue: finiteNumber(parameter.plainValue, minPlain + (maxPlain - minPlain) * value)
+      plainValue: finiteNumber(parameter.plainValue, minPlain + (maxPlain - minPlain) * value),
+      displayValue: parameter.displayValue
     };
   }
 
   function makeGainParameter(normalizedValue) {
     const clamped = clamp01(normalizedValue);
+    const plainValue = normalizedGainToDb(clamped);
     return {
       id: "gain",
       name: "Gain",
@@ -91,7 +98,8 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
       unit: "dB",
       minPlain: -24,
       maxPlain: 24,
-      plainValue: normalizedGainToDb(clamped),
+      plainValue,
+      displayValue: `${plainValue.toFixed(1)} dB`,
       automatable: true
     };
   }
@@ -117,6 +125,7 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
       name: "Program",
       normalizedValue: selected?.normalizedValue ?? 0,
       defaultNormalizedValue: 0,
+      displayValue: selected?.name ?? "Clean",
       minPlain: 0,
       maxPlain: programs.length - 1,
       plainValue: selected?.index ?? 0,
@@ -140,6 +149,7 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
 
   function makeOutputLevelParameter(normalizedValue) {
     const clamped = clamp01(normalizedValue);
+    const plainValue = clamped * 100;
     return {
       id: "output-level",
       name: "Output Level",
@@ -148,7 +158,8 @@ export function createMockInstrumentSupport({ clamp01, finiteNumber }) {
       unit: "%",
       minPlain: 0,
       maxPlain: 100,
-      plainValue: clamped * 100,
+      plainValue,
+      displayValue: `${plainValue.toFixed(1)} %`,
       automatable: false,
       readOnly: true
     };

@@ -94,6 +94,7 @@ export function createDaemonNormalizers(options = {}) {
       name: truncateText(parameter.name, limits.maxPluginParameterTextBytes) || id,
       normalizedValue,
       defaultNormalizedValue,
+      displayValue: truncateText(parameter.displayValue, limits.maxPluginParameterTextBytes) || undefined,
       unit: truncateText(parameter.unit, 64) || undefined,
       minPlain,
       maxPlain,

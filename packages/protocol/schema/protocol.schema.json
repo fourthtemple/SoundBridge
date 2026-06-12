@@ -322,6 +322,7 @@
         "name": { "type": "string", "maxLength": 160 },
         "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 },
         "defaultNormalizedValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "displayValue": { "type": "string", "maxLength": 160 },
         "unit": { "type": "string", "maxLength": 64 },
         "minPlain": { "type": "number" },
         "maxPlain": { "type": "number" },

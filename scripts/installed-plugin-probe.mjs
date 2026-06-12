@@ -134,6 +134,7 @@ async function probePlugin(socket, session, plugin) {
       request(socket, "getParameters", { instanceId }, true, session)
     );
     result.parameterCount = Array.isArray(parameters.parameters) ? parameters.parameters.length : result.parameterCount;
+    result.displayValueCount = assertParameterDisplayMetadata(plugin, parameters.parameters);
 
     const writableParameter = parameters.parameters?.find((parameter) => parameter.automatable && !parameter.readOnly);
     const restrictedLv2BlockProfile = isRestrictedLv2BlockProfile(plugin);
@@ -274,6 +275,24 @@ function assertPluginEditorMetadata(plugin) {
     expectedKinds.every((kind) => kinds.includes(kind)) &&
     kinds.every((kind) => kind === "generic-parameters" || kind === "native-window");
   assertProbe(ok, "missing_editor_kinds", `${plugin.pluginId} did not advertise bounded native editor kinds`);
+}
+
+function assertParameterDisplayMetadata(plugin, parameters) {
+  if (!Array.isArray(parameters)) {
+    return 0;
+  }
+  let count = 0;
+  for (const [index, parameter] of parameters.entries()) {
+    if (parameter?.displayValue == null) {
+      continue;
+    }
+    ++count;
+    const ok = typeof parameter.displayValue === "string" &&
+      Buffer.byteLength(parameter.displayValue, "utf8") <= 160 &&
+      !parameter.displayValue.includes("\u0000");
+    assertProbe(ok, "bad_parameter_display_value", `${plugin.pluginId} parameter ${index} returned an unbounded displayValue`);
+  }
+  return count;
 }
 
 async function probeNativeEditorBroker(socket, session, plugin, instanceId, result) {

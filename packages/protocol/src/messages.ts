@@ -153,6 +153,7 @@ export interface PluginParameter {
   name: string;
   normalizedValue: number;
   defaultNormalizedValue: number;
+  displayValue?: string;
   unit?: string;
   minPlain?: number;
   maxPlain?: number;

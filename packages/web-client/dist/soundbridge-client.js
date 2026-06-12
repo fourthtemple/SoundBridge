@@ -394,7 +394,7 @@ export function renderParameterControls(options) {
       control.addEventListener("change", () => {
         const normalizedValue = Number(control.value);
         const selectedProgram = programs.find((program) => Math.abs(program.normalizedValue - normalizedValue) < 0.000001);
-        value.value = selectedProgram?.name ?? formatParameterValue({ ...parameter, normalizedValue });
+        value.value = selectedProgram?.name ?? formatParameterValue({ ...parameter, normalizedValue, displayValue: void 0 });
         void client.setParameter(instanceId, parameter.id, normalizedValue).then(({ parameter: updated }) => {
           value.value = formatParameterValue(updated);
         });
@@ -408,7 +408,7 @@ export function renderParameterControls(options) {
       control.disabled = disabled;
       control.addEventListener("input", () => {
         const normalizedValue = Number(control.value);
-        value.value = formatParameterValue({ ...parameter, normalizedValue });
+        value.value = formatParameterValue({ ...parameter, normalizedValue, displayValue: void 0 });
         void client.setParameter(instanceId, parameter.id, normalizedValue).then(({ parameter: updated }) => {
           value.value = formatParameterValue(updated);
         });
@@ -421,6 +421,9 @@ export function renderParameterControls(options) {
 }
 
 function formatParameterValue(parameter) {
+  if (parameter.displayValue) {
+    return parameter.displayValue;
+  }
   const programs = parameter.programList?.programs ?? [];
   const selectedProgram = programs.find((program) => Math.abs(program.normalizedValue - parameter.normalizedValue) < 0.000001);
   if (selectedProgram) {

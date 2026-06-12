@@ -874,8 +874,10 @@ assert(
     mockPreset.parameterCount === 2 &&
     Math.abs(mockPreset.parameters.find((parameter) => parameter.id === "gain")?.normalizedValue - 0.75) < 0.000001 &&
     Math.abs(mockPreset.parameters.find((parameter) => parameter.id === "program")?.normalizedValue - 2 / 3) < 0.000001 &&
+    mockPreset.parameters.find((parameter) => parameter.id === "gain")?.displayValue?.includes("dB") &&
+    mockPreset.parameters.find((parameter) => parameter.id === "program")?.displayValue === "Bright" &&
     !mockPreset.parameters.some((parameter) => parameter.id === "output-level"),
-  "mock setPreset applies writable entries from a bounded listed preset snapshot"
+  "mock setPreset applies writable entries with bounded display values from a listed preset snapshot"
 );
 
 const automated = await request(
