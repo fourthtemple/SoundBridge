@@ -352,68 +352,11 @@ private:
   }
 
   std::string inputBusLayoutsToJson() const {
-    std::ostringstream output;
-    output << "[";
-    bool wrote = false;
-    for (std::uint32_t index = 0; index < inputBusActive_.size(); ++index) {
-      if (!inputBusActive_[index]) {
-        continue;
-      }
-      if (wrote) {
-        output << ",";
-      }
-      output << "{\"index\":" << index
-             << ",\"direction\":\"input\""
-             << ",\"mediaType\":\"audio\""
-             << ",\"name\":\"" << (index == 0 ? "Main Input" : "Aux Input " + std::to_string(index)) << "\""
-             << ",\"type\":\"" << (index == 0 ? "main" : "aux") << "\""
-             << ",\"channels\":" << std::min<std::uint32_t>(inputChannels_, kMaxWorkerChannels)
-             << ",\"active\":true}";
-      wrote = true;
-    }
-    output << "]";
-    return output.str();
+    return audioUnitBusLayoutsToJson(inputBusActive_, "input", inputChannels_);
   }
 
   std::string outputBusLayoutsToJson() const {
-    std::ostringstream output;
-    output << "[";
-    bool wrote = false;
-    for (std::uint32_t index = 0; index < outputBusActive_.size(); ++index) {
-      if (!outputBusActive_[index]) {
-        continue;
-      }
-      if (wrote) {
-        output << ",";
-      }
-      output << "{\"index\":" << index
-             << ",\"direction\":\"output\""
-             << ",\"mediaType\":\"audio\""
-             << ",\"name\":\"" << (index == 0 ? "Main Output" : "Aux Output " + std::to_string(index)) << "\""
-             << ",\"type\":\"" << (index == 0 ? "main" : "aux") << "\""
-             << ",\"channels\":" << std::min<std::uint32_t>(outputChannels_, kMaxWorkerChannels)
-             << ",\"active\":true}";
-      wrote = true;
-    }
-    output << "]";
-    return output.str();
-  }
-
-  static std::string mainBusLayoutToJson(const char* direction, std::uint32_t channels, bool active) {
-    const std::string directionText(direction);
-    if (!active && directionText == "input") {
-      return "[]";
-    }
-    std::ostringstream output;
-    output << "[{\"index\":0"
-           << ",\"direction\":\"" << directionText << "\""
-           << ",\"mediaType\":\"audio\""
-           << ",\"name\":\"" << (directionText == "input" ? "Main Input" : "Main Output") << "\""
-           << ",\"type\":\"main\""
-           << ",\"channels\":" << std::min<std::uint32_t>(channels, kMaxWorkerChannels)
-           << ",\"active\":" << (active ? "true" : "false")
-           << "}]";
-    return output.str();
+    return audioUnitBusLayoutsToJson(outputBusActive_, "output", outputChannels_);
   }
 
   std::string stateBase64() const {

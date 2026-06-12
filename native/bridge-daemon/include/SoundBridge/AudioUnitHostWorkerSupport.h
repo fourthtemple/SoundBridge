@@ -85,6 +85,10 @@ std::vector<std::vector<float>> parseChannels(const std::string& encoded, std::u
 bool parseAudioBuses(const std::string& encoded, std::uint32_t frames, std::vector<IndexedAudioBus>& buses);
 const std::vector<std::vector<float>>* findBusChannels(const std::vector<IndexedAudioBus>& buses, std::uint32_t index);
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels);
+std::string audioUnitBusLayoutsToJson(
+    const std::vector<bool>& activeBuses,
+    const std::string& direction,
+    std::uint32_t channels);
 std::string renderedAudioToJson(const RenderedAudio& rendered);
 std::unique_ptr<AudioBufferList, void (*)(AudioBufferList*)> makeAudioBufferList(
     std::vector<std::vector<float>>& channels,

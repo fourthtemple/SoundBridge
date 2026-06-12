@@ -595,6 +595,44 @@ std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels)
   return output.str();
 }
 
+std::string audioUnitBusLayoutsToJson(
+    const std::vector<bool>& activeBuses,
+    const std::string& direction,
+    std::uint32_t channels) {
+  const bool hasActiveBus = std::any_of(activeBuses.begin(), activeBuses.end(), [](bool active) {
+    return active;
+  });
+  if (direction == "input" && !hasActiveBus) {
+    return "[]";
+  }
+
+  std::ostringstream output;
+  output << "[";
+  bool wrote = false;
+  for (std::uint32_t index = 0; index < activeBuses.size(); ++index) {
+    if (!activeBuses[index]) {
+      continue;
+    }
+    if (wrote) {
+      output << ",";
+    }
+    const bool input = direction == "input";
+    const auto name = index == 0
+        ? (input ? "Main Input" : "Main Output")
+        : (input ? "Aux Input " : "Aux Output ") + std::to_string(index);
+    output << "{\"index\":" << index
+           << ",\"direction\":\"" << direction << "\""
+           << ",\"mediaType\":\"audio\""
+           << ",\"name\":\"" << name << "\""
+           << ",\"type\":\"" << (index == 0 ? "main" : "aux") << "\""
+           << ",\"channels\":" << std::min<std::uint32_t>(channels, kMaxWorkerChannels)
+           << ",\"active\":true}";
+    wrote = true;
+  }
+  output << "]";
+  return output.str();
+}
+
 std::string renderedAudioToJson(const RenderedAudio& rendered) {
   const auto channelsJson = audioChannelsToJson(rendered.channels);
   std::ostringstream output;
