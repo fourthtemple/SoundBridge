@@ -180,6 +180,10 @@ async function run() {
     "paired hello advertises bounded native worker stderr lines"
   );
   check(
+    pairedHello.capabilities?.security?.maxWorkerStderrBytes > 0,
+    "paired hello advertises bounded native worker stderr budgets"
+  );
+  check(
     pairedHello.capabilities?.security?.workerReadyTimeoutMs > 0,
     "paired hello advertises bounded native worker startup"
   );

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 export const DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES = 16 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_STDERR_LINE_BYTES = 1024 * 1024;
+export const DEFAULT_MAX_WORKER_STDERR_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_WORKER_READY_TIMEOUT_MS = 5000;
 export const DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS = 1500;
 export const DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS = 5000;
@@ -11,6 +12,7 @@ export function createNativeWorkerProcesses({
   normalizers,
   maxWorkerStdoutLineBytes = DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES,
   maxWorkerStderrLineBytes = DEFAULT_MAX_WORKER_STDERR_LINE_BYTES,
+  maxWorkerStderrBytes = DEFAULT_MAX_WORKER_STDERR_BYTES,
   workerReadyTimeoutMs = DEFAULT_WORKER_READY_TIMEOUT_MS,
   exampleWorkerCommandTimeoutMs = DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS,
   nativeWorkerCommandTimeoutMs = DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS
@@ -30,6 +32,7 @@ export function createNativeWorkerProcesses({
   } = normalizers;
   const workerStdoutLineLimit = normalizeWorkerStdoutLineLimit(maxWorkerStdoutLineBytes);
   const workerStderrLineLimit = normalizeWorkerStderrLineLimit(maxWorkerStderrLineBytes);
+  const workerStderrBudget = normalizeWorkerStderrBudget(maxWorkerStderrBytes);
   const workerReadyTimeout = normalizeWorkerReadyTimeout(workerReadyTimeoutMs);
   const exampleCommandTimeout = normalizeWorkerCommandTimeout(
     exampleWorkerCommandTimeoutMs,
@@ -47,8 +50,10 @@ export function createNativeWorkerProcesses({
       this.pending = [];
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
+      this.stderrBytes = 0;
       this.maxStdoutLineBytes = workerStdoutLineLimit;
       this.maxStderrLineBytes = workerStderrLineLimit;
+      this.maxStderrBytes = workerStderrBudget;
       this.commandTimeoutMs = exampleCommandTimeout;
       this.process = spawn(executablePath, ["--worker"], {
         stdio: ["pipe", "pipe", "pipe"]
@@ -158,6 +163,7 @@ export function createNativeWorkerProcesses({
     abortWorker(error) {
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
+      this.stderrBytes = 0;
       this.rejectAll(error);
       killWorkerProcess(this.process);
     }
@@ -193,8 +199,10 @@ export function createNativeWorkerProcesses({
       this.pending = [];
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
+      this.stderrBytes = 0;
       this.maxStdoutLineBytes = workerStdoutLineLimit;
       this.maxStderrLineBytes = workerStderrLineLimit;
+      this.maxStderrBytes = workerStderrBudget;
       this.commandTimeoutMs = nativeCommandTimeout;
       this.readySettled = false;
       this.ready = new Promise((resolve, reject) => {
@@ -408,6 +416,7 @@ export function createNativeWorkerProcesses({
     abortWorker(error) {
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
+      this.stderrBytes = 0;
       this.rejectAll(error);
       killWorkerProcess(this.process);
     }
@@ -504,6 +513,14 @@ function normalizeWorkerStderrLineLimit(value) {
   return number;
 }
 
+function normalizeWorkerStderrBudget(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number <= 0) {
+    return DEFAULT_MAX_WORKER_STDERR_BYTES;
+  }
+  return number;
+}
+
 function normalizeWorkerReadyTimeout(value) {
   const number = Math.floor(Number(value));
   if (!Number.isFinite(number) || number <= 0) {
@@ -544,6 +561,9 @@ function handleWorkerStderr(worker, chunk, label) {
       worker.abortWorker(workerStderrLineError(worker.maxStderrLineBytes));
       return;
     }
+    if (!accountWorkerStderr(worker, `${rawLine}\n`)) {
+      return;
+    }
 
     const message = rawLine.trim();
     if (message) {
@@ -552,12 +572,25 @@ function handleWorkerStderr(worker, chunk, label) {
   }
 }
 
+function accountWorkerStderr(worker, rawText) {
+  worker.stderrBytes += Buffer.byteLength(rawText, "utf8");
+  if (worker.stderrBytes > worker.maxStderrBytes) {
+    worker.abortWorker(workerStderrBudgetError(worker.maxStderrBytes));
+    return false;
+  }
+  return true;
+}
+
 function workerStdoutLineError(maxBytes) {
   return new Error(`worker_stdout_too_large: worker stdout line exceeded ${maxBytes} bytes`);
 }
 
 function workerStderrLineError(maxBytes) {
   return new Error(`worker_stderr_too_large: worker stderr line exceeded ${maxBytes} bytes`);
+}
+
+function workerStderrBudgetError(maxBytes) {
+  return new Error(`worker_stderr_budget_exceeded: worker stderr exceeded ${maxBytes} bytes`);
 }
 
 function workerReadyTimeoutError(timeoutMs) {

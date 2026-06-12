@@ -98,6 +98,7 @@ Example paired capability payload:
       "maxAutomationLanePoints": 4096,
       "maxWorkerStdoutLineBytes": 16777216,
       "maxWorkerStderrLineBytes": 1048576,
+      "maxWorkerStderrBytes": 4194304,
       "workerReadyTimeoutMs": 5000,
       "exampleWorkerCommandTimeoutMs": 1500,
       "nativeWorkerCommandTimeoutMs": 5000

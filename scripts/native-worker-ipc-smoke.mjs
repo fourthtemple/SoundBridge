@@ -6,6 +6,7 @@ import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
 const MAX_TEST_STDERR_LINE_BYTES = 128;
+const MAX_TEST_STDERR_BYTES = 64;
 const TEST_READY_TIMEOUT_MS = 500;
 const TEST_COMMAND_TIMEOUT_MS = 500;
 
@@ -57,6 +58,27 @@ process.stdin.on("data", () => {
 setTimeout(() => {}, 30000);
 `
   );
+  const exampleStderrBudgetWorkerPath = writeExecutable(
+    "stderr-budget-example-worker.mjs",
+    `#!/usr/bin/env node
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", () => {
+  process.stderr.write(" ".repeat(40) + "\\n" + " ".repeat(40) + "\\n");
+});
+setTimeout(() => {}, 30000);
+`
+  );
+  const nativeStderrBudgetWorkerPath = writeExecutable(
+    "stderr-budget-native-worker.mjs",
+    `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", () => {
+  process.stderr.write(" ".repeat(40) + "\\n" + " ".repeat(40) + "\\n");
+});
+setTimeout(() => {}, 30000);
+`
+  );
   const hangingNativeWorkerPath = writeExecutable(
     "hanging-native-worker.mjs",
     `#!/usr/bin/env node
@@ -85,6 +107,7 @@ setTimeout(() => {}, 30000);
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
     maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
+    maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
     exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
     nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
@@ -115,6 +138,7 @@ setTimeout(() => {}, 30000);
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
     maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
+    maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
     exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
     nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
@@ -141,11 +165,44 @@ setTimeout(() => {}, 30000);
   check(nativeStderrWorker.process?.killed === true, "oversized-stderr native host worker process is killed");
   nativeStderrWorker.destroy();
 
+  const stderrBudgetWorkers = createNativeWorkerProcesses({
+    nativeRenderer: nativeStderrBudgetWorkerPath,
+    normalizers: createDaemonNormalizers(),
+    maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
+    maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
+    maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
+    workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
+    exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
+    nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
+  });
+  const exampleStderrBudgetWorker = new stderrBudgetWorkers.ExampleInstrumentWorker(exampleStderrBudgetWorkerPath);
+  await expectRejected(
+    () => exampleStderrBudgetWorker.render({ frames: 1, sampleRate: 48000, gain: 0.5, tone: 0.5, detune: 0.5 }),
+    "worker_stderr_budget_exceeded",
+    "example instrument workers reject cumulative stderr floods"
+  );
+  check(exampleStderrBudgetWorker.process?.killed === true, "stderr-flood example instrument worker process is killed");
+  exampleStderrBudgetWorker.destroy();
+
+  const nativeStderrBudgetWorker = new stderrBudgetWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await nativeStderrBudgetWorker.ready;
+  await expectRejected(
+    () => nativeStderrBudgetWorker.getParameters(),
+    "worker_stderr_budget_exceeded",
+    "native host workers reject cumulative stderr floods"
+  );
+  check(nativeStderrBudgetWorker.process?.killed === true, "stderr-flood native host worker process is killed");
+  nativeStderrBudgetWorker.destroy();
+
   const hangingWorkers = createNativeWorkerProcesses({
     nativeRenderer: hangingNativeWorkerPath,
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
     maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
+    maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS
   });
   const hangingWorker = new hangingWorkers.NativeHostWorker(
@@ -164,6 +221,7 @@ setTimeout(() => {}, 30000);
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
     maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
+    maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
     exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
     nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
