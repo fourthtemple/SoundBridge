@@ -744,7 +744,7 @@ Plugin instances can hold path-free references to session-owned file grants. Thi
 
 Supported operation names are `loadPreset`, `loadSample`, `openCacheDirectory`, `loadLicense`, `restoreState`, `saveStateDirectory`, and `other`. Operation names imply conservative purpose/access/kind constraints where possible; for example, `loadSample` requires a read-only sample file and `openCacheDirectory` requires a read/write cache directory. The daemon must reject mismatches before worker dispatch.
 
-The reference VST3/AU/LV2 native workers implement `restoreState` for bounded worker-native state files. AU and LV2 state files contain one base64 native-state token. VST3 state files contain a component-state token and optional controller-state token separated by whitespace; the missing controller token is represented internally as empty state. These files are daemon-to-worker interchange data, not a general browser-facing state format.
+The reference VST3/AU/LV2 native workers implement `restoreState` for bounded worker-native state files and `saveStateDirectory` for writing worker-native state into a granted state directory. AU and LV2 state files contain one base64 native-state token. VST3 state files contain a component-state token and optional controller-state token separated by whitespace; the missing controller token is represented internally as empty state. Saved state files use daemon-chosen filenames and are written through bounded native-worker file IO; browser responses do not include absolute paths. These files are daemon-to-worker interchange data, not a general browser-facing state format.
 
 The daemon resolves the absolute path only after verifying that the paired session owns the instance, owns the grant, and has attached that grant to the instance. Browser responses stay path-free:
 
@@ -767,7 +767,7 @@ The daemon resolves the absolute path only after verifying that the paired sessi
 }
 ```
 
-The reference daemon sends the absolute path only over bounded daemon-to-worker IPC, base64-encoded inside the worker line protocol. Workers that do not implement a file-grant operation return `unsupported_file_grant_operation`; plugin-specific VST3/AU/LV2 handlers beyond `restoreState` should add only the operations they can implement with explicit bounds and ownership checks.
+The reference daemon sends the absolute path only over bounded daemon-to-worker IPC, base64-encoded inside the worker line protocol. Workers that do not implement a file-grant operation return `unsupported_file_grant_operation`; plugin-specific VST3/AU/LV2 handlers beyond state save/restore should add only the operations they can implement with explicit bounds and ownership checks.
 
 ### `heartbeat`
 

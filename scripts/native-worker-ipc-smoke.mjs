@@ -366,7 +366,8 @@ setTimeout(() => {}, 30000);
   const grantAwareNativeWorkerPath = writeExecutable(
     "grant-aware-native-worker.mjs",
     `#!/usr/bin/env node
-const expectedPath = ${JSON.stringify(fixtureGrantPath)};
+const expectedFilePath = ${JSON.stringify(fixtureGrantPath)};
+const expectedDirectoryPath = ${JSON.stringify(tempDir)};
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
 let buffer = "";
@@ -386,15 +387,23 @@ process.stdin.on("data", (chunk) => {
     }
     const displayName = Buffer.from(parts[6] === "-" ? "" : parts[6], "base64").toString("utf8");
     const absolutePath = Buffer.from(parts[7] === "-" ? "" : parts[7], "base64").toString("utf8");
+    const sampleApplied = parts[1] === "loadSample" &&
+      parts[2] === "sample" &&
+      parts[3] === "read" &&
+      parts[4] === "file" &&
+      parts[5] === "filegrant-test" &&
+      displayName === "Fixture Grant.wav" &&
+      absolutePath === expectedFilePath;
+    const stateDirectoryApplied = parts[1] === "saveStateDirectory" &&
+      parts[2] === "state" &&
+      parts[3] === "readWrite" &&
+      parts[4] === "directory" &&
+      parts[5] === "filegrant-state-dir" &&
+      displayName === "Fixture Grants" &&
+      absolutePath === expectedDirectoryPath;
     process.stdout.write(JSON.stringify({
-      applied: parts[1] === "loadSample" &&
-        parts[2] === "sample" &&
-        parts[3] === "read" &&
-        parts[4] === "file" &&
-        parts[5] === "filegrant-test" &&
-        displayName === "Fixture Grant.wav" &&
-        absolutePath === expectedPath,
-      status: "grant-ok"
+      applied: sampleApplied || stateDirectoryApplied,
+      status: stateDirectoryApplied ? "state-dir-ok" : "grant-ok"
     }) + "\\n");
   }
 });
@@ -427,6 +436,21 @@ setTimeout(() => {}, 30000);
   check(
     grantWorkerResult.applied === true && grantWorkerResult.status === "grant-ok",
     "native host workers encode bounded file grant commands"
+  );
+  const stateDirectoryGrantWorkerResult = await grantWorker.useFileGrant({
+    operation: "saveStateDirectory",
+    grant: {
+      grantId: "filegrant-state-dir",
+      purpose: "state",
+      access: "readWrite",
+      kind: "directory",
+      displayName: "Fixture Grants",
+      absolutePath: tempDir
+    }
+  });
+  check(
+    stateDirectoryGrantWorkerResult.applied === true && stateDirectoryGrantWorkerResult.status === "state-dir-ok",
+    "native host workers encode bounded directory file grant commands"
   );
   grantWorker.destroy();
 

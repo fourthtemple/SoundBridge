@@ -11,6 +11,7 @@ const ORIGIN = process.env.SOUNDBRIDGE_PROBE_ORIGIN ?? "http://127.0.0.1:5173";
 const PAIRING_TOKEN = process.env.SOUNDBRIDGE_PAIRING_TOKEN ?? crypto.randomBytes(24).toString("base64url");
 const REQUEST_TIMEOUT_MS = intFromEnv("SOUNDBRIDGE_PROBE_TIMEOUT_MS", 15000, 1000, 120000);
 const MAX_BLOCK_SIZE = intFromEnv("SOUNDBRIDGE_PROBE_MAX_BLOCK_SIZE", 64, 1, 8192);
+const MAX_NATIVE_STATE_FILE_BYTES = 2 * Math.ceil((384 * 1024) / 3) * 4 + 32;
 const SAMPLE_RATE = intFromEnv("SOUNDBRIDGE_PROBE_SAMPLE_RATE", 48000, 8000, 384000);
 const LIMIT = intFromEnv("SOUNDBRIDGE_PROBE_LIMIT", 0, 0, 10000);
 const NAME_FILTER = process.env.SOUNDBRIDGE_PROBE_FILTER ?? "";
@@ -145,6 +146,7 @@ async function probePlugin(socket, session, plugin) {
     if (typeof state.state === "string" && state.state.length > 0) {
       await phase(result, "setState", () => request(socket, "setState", { instanceId, state: state.state }, true, session));
       await probeFileGrantStateRestore(socket, session, plugin, instanceId, state, result);
+      await probeFileGrantStateSave(socket, session, instanceId, plugin, result);
     }
 
     await phase(result, "getLatency", () =>
@@ -282,6 +284,62 @@ async function probeFileGrantStateRestore(socket, session, plugin, instanceId, s
       await request(socket, "revokeFileGrant", { grantId }, true, session).catch(() => undefined);
     }
     fs.rmSync(statePath, { force: true });
+  }
+}
+
+async function probeFileGrantStateSave(socket, session, instanceId, plugin, result) {
+  const stateDir = fs.mkdtempSync(path.join(FILE_GRANT_ROOT, `${safeFilename(plugin.pluginId)}-save-`));
+  let directoryGrantId = "";
+  let fileGrantId = "";
+  try {
+    const directoryGrant = await phase(result, "createStateDirectoryGrant", () =>
+      request(socket, "createFileGrant", { path: stateDir, purpose: "state", access: "readWrite", kind: "directory" }, true, session)
+    );
+    directoryGrantId = directoryGrant.grantId;
+    await phase(result, "attachStateDirectoryGrant", () =>
+      request(socket, "attachFileGrant", { instanceId, grantId: directoryGrantId, purpose: "state", access: "readWrite", kind: "directory" }, true, session)
+    );
+    const saved = await phase(result, "useFileGrantSaveStateDirectory", () =>
+      request(socket, "useFileGrant", { instanceId, grantId: directoryGrantId, operation: "saveStateDirectory" }, true, session)
+    );
+    assertProbe(saved.applied === true, "bad_file_grant_save", "file grant state save was not applied");
+    assertNoNativeLaunchData(saved, "file grant save response");
+    result.fileGrantStateSave = "applied";
+
+    const savedFiles = fs.readdirSync(stateDir, { withFileTypes: true }).filter((entry) => entry.isFile());
+    assertProbe(savedFiles.length === 1, "bad_file_grant_save_file", "file grant state save did not create exactly one state file");
+    const savedPath = path.join(stateDir, savedFiles[0].name);
+    const savedStats = fs.lstatSync(savedPath);
+    assertProbe(savedStats.isFile(), "bad_file_grant_save_file", "saved state path is not a regular file");
+    assertProbe(
+      savedStats.size > 0 && savedStats.size <= MAX_NATIVE_STATE_FILE_BYTES,
+      "bad_file_grant_save_file",
+      "saved state file size is invalid"
+    );
+
+    const fileGrant = await phase(result, "createSavedStateFileGrant", () =>
+      request(socket, "createFileGrant", { path: savedPath, purpose: "state", access: "read", kind: "file" }, true, session)
+    );
+    fileGrantId = fileGrant.grantId;
+    await phase(result, "attachSavedStateFileGrant", () =>
+      request(socket, "attachFileGrant", { instanceId, grantId: fileGrantId, purpose: "state", access: "read", kind: "file" }, true, session)
+    );
+    const restored = await phase(result, "useFileGrantRestoreSavedState", () =>
+      request(socket, "useFileGrant", { instanceId, grantId: fileGrantId, operation: "restoreState" }, true, session)
+    );
+    assertProbe(restored.applied === true, "bad_file_grant_saved_restore", "saved file grant state restore was not applied");
+    assertNoNativeLaunchData(restored, "saved file grant restore response");
+    result.fileGrantSavedStateRestore = "applied";
+  } finally {
+    if (fileGrantId) {
+      await request(socket, "detachFileGrant", { instanceId, grantId: fileGrantId }, true, session).catch(() => undefined);
+      await request(socket, "revokeFileGrant", { grantId: fileGrantId }, true, session).catch(() => undefined);
+    }
+    if (directoryGrantId) {
+      await request(socket, "detachFileGrant", { instanceId, grantId: directoryGrantId }, true, session).catch(() => undefined);
+      await request(socket, "revokeFileGrant", { grantId: directoryGrantId }, true, session).catch(() => undefined);
+    }
+    fs.rmSync(stateDir, { force: true, recursive: true });
   }
 }
 

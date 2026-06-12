@@ -150,6 +150,10 @@ public:
     return std::string("{\"state\":\"") + stateBase64() + "\"}";
   }
 
+  void writeStateFile(const NativeFileGrantCommand& command) const {
+    writeSingleStateFile(command, stateBase64(), kMaxWorkerStateBytes);
+  }
+
   std::string setState(const std::string& stateText) {
     if (stateText == "-") {
       return "{\"ok\":true}";
@@ -907,9 +911,18 @@ int runAudioUnitHostWorkerMac(int argc, char** argv) {
         }
 
         if (command == "fileGrant") {
-          host.setState(readSingleStateFile(parseFileGrantCommand(stream), kMaxWorkerStateBytes));
-          std::cout << fileGrantAppliedJson() << std::endl;
-          continue;
+          const auto fileGrant = parseFileGrantCommand(stream);
+          if (fileGrant.operation == "restoreState") {
+            host.setState(readSingleStateFile(fileGrant, kMaxWorkerStateBytes));
+            std::cout << fileGrantAppliedJson() << std::endl;
+            continue;
+          }
+          if (fileGrant.operation == "saveStateDirectory") {
+            host.writeStateFile(fileGrant);
+            std::cout << fileGrantSavedJson() << std::endl;
+            continue;
+          }
+          throw std::runtime_error("unsupported_file_grant_operation");
         }
 
         if (command == "latency") {

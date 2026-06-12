@@ -29,7 +29,7 @@ The daemon listens on loopback only. It provides:
 - opaque state save/restore
 - latency, tail-time, and error reporting
 
-The development daemon in this repository implements the protocol with a stereo gain effect, example bundle instruments, and native worker handoff for installed VST3, AU, and compatible LV2 audio/control plugins. It also owns root-limited file grants and resolves attached grants for compatible native workers through operation-specific IPC instead of exposing paths to browser hosts. The reference native workers implement grant-backed `restoreState` for bounded worker-native state files; other file operations remain explicit adapter work. That lets Web DAWs integrate the browser transport while the production daemon is still taking shape.
+The development daemon in this repository implements the protocol with a stereo gain effect, example bundle instruments, and native worker handoff for installed VST3, AU, and compatible LV2 audio/control plugins. It also owns root-limited file grants and resolves attached grants for compatible native workers through operation-specific IPC instead of exposing paths to browser hosts. The reference native workers implement grant-backed restore/save for bounded worker-native state files; other file operations remain explicit adapter work. That lets Web DAWs integrate the browser transport while the production daemon is still taking shape.
 
 ### Native Plugin Hosts
 

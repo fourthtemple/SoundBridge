@@ -380,6 +380,10 @@ public:
     return output.str();
   }
 
+  void writeStateFile(const NativeFileGrantCommand& command) const {
+    writeDualStateFile(command, componentStateBase64(), controllerStateBase64(), kMaxWorkerStateBytes);
+  }
+
   std::string setState(const std::string& componentStateText, const std::string& controllerStateText) {
     if (componentStateText != "-") {
       auto componentState = base64Decode(componentStateText, kMaxWorkerStateBytes);
@@ -1017,10 +1021,19 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
         }
 
         if (command == "fileGrant") {
-          const auto stateFile = readDualStateFile(parseFileGrantCommand(stream), kMaxWorkerStateBytes);
-          host.setState(stateFile.primary, stateFile.secondary);
-          std::cout << fileGrantAppliedJson() << std::endl;
-          continue;
+          const auto fileGrant = parseFileGrantCommand(stream);
+          if (fileGrant.operation == "restoreState") {
+            const auto stateFile = readDualStateFile(fileGrant, kMaxWorkerStateBytes);
+            host.setState(stateFile.primary, stateFile.secondary);
+            std::cout << fileGrantAppliedJson() << std::endl;
+            continue;
+          }
+          if (fileGrant.operation == "saveStateDirectory") {
+            host.writeStateFile(fileGrant);
+            std::cout << fileGrantSavedJson() << std::endl;
+            continue;
+          }
+          throw std::runtime_error("unsupported_file_grant_operation");
         }
 
         if (command == "latency") {
