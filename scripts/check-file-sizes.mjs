@@ -8,7 +8,6 @@ const NEAR_LIMIT_LINES = 750;
 const NEAR_LIMIT_BUDGETS = new Map([
   ["native/bridge-daemon/src/Lv2Scanner.cpp", 883],
   ["native/bridge-daemon/src/Lv2HostedPlugin.cpp", 825],
-  ["scripts/installed-plugin-probe.mjs", 815],
   ["native/bridge-daemon/src/Vst3HostWorkerSupport.cpp", 756]
 ]);
 
