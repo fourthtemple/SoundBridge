@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { createDaemonControlEvents } from "./daemon-control-events.mjs";
 import { createDaemonEditors } from "./daemon-editors.mjs";
 import { createDaemonFileGrants } from "./daemon-file-grants.mjs";
+import { createDaemonInstanceFileGrants } from "./daemon-instance-file-grants.mjs";
 import { createDaemonInstrumentRendering } from "./daemon-instrument-rendering.mjs";
 import { createDaemonLifecycle } from "./daemon-lifecycle.mjs";
 import { createMockInstrumentSupport } from "./daemon-mock-instruments.mjs";
@@ -59,6 +60,7 @@ const MAX_EDITORS_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_EDITORS_PER_SESSION"
 const MAX_TOTAL_EDITORS = envInteger("SOUNDBRIDGE_MAX_TOTAL_EDITORS", 32);
 const EDITOR_SESSION_TTL_MS = envInteger("SOUNDBRIDGE_EDITOR_SESSION_TTL_MS", 10 * 60 * 1000);
 const MAX_FILE_GRANTS_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_FILE_GRANTS_PER_SESSION", 8);
+const MAX_FILE_GRANTS_PER_INSTANCE = Math.max(1, Math.min(envInteger("SOUNDBRIDGE_MAX_FILE_GRANTS_PER_INSTANCE", 8), 64));
 const MAX_TOTAL_FILE_GRANTS = envInteger("SOUNDBRIDGE_MAX_TOTAL_FILE_GRANTS", 64);
 const FILE_GRANT_TTL_MS = envInteger("SOUNDBRIDGE_FILE_GRANT_TTL_MS", 10 * 60 * 1000);
 const MAX_FILE_GRANT_PATH_BYTES = Math.min(envInteger("SOUNDBRIDGE_MAX_FILE_GRANT_PATH_BYTES", 4096), 4096);
@@ -244,6 +246,11 @@ const fileGrantSupport = createDaemonFileGrants({
     maxFileGrantsPerSession: MAX_FILE_GRANTS_PER_SESSION,
     maxTotalFileGrants: MAX_TOTAL_FILE_GRANTS
   },
+  makeProtocolError: protocolError
+});
+const instanceFileGrantSupport = createDaemonInstanceFileGrants({
+  fileGrantSupport,
+  maxFileGrantsPerInstance: MAX_FILE_GRANTS_PER_INSTANCE,
   makeProtocolError: protocolError
 });
 const {
@@ -458,6 +465,15 @@ async function dispatchCommand(envelope, context) {
     case "revokeFileGrant":
       return fileGrantSupport.revokeFileGrant(payload.grantId, session);
 
+    case "attachFileGrant":
+      return instanceFileGrantSupport.attachFileGrant(payload, session, getInstance);
+
+    case "listInstanceFileGrants":
+      return instanceFileGrantSupport.listInstanceFileGrants(payload, session, getInstance);
+
+    case "detachFileGrant":
+      return instanceFileGrantSupport.detachFileGrant(payload, session, getInstance);
+
     case "heartbeat":
       return {
         now: Date.now(),
@@ -519,6 +535,7 @@ function helloResponse(paired) {
         maxTotalEditors: MAX_TOTAL_EDITORS,
         maxEditorSessionTtlMs: EDITOR_SESSION_TTL_MS,
         maxFileGrantsPerSession: MAX_FILE_GRANTS_PER_SESSION,
+        maxFileGrantsPerInstance: MAX_FILE_GRANTS_PER_INSTANCE,
         maxTotalFileGrants: MAX_TOTAL_FILE_GRANTS,
         maxFileGrantTtlMs: FILE_GRANT_TTL_MS,
         maxFileGrantPathBytes: MAX_FILE_GRANT_PATH_BYTES,
@@ -677,6 +694,7 @@ async function createInstance(payload, session) {
     vst3ProgramLists: plugin.vst3ProgramLists ?? [],
     vst3NoteExpressions: plugin.vst3NoteExpressions ?? [],
     nativeParameterIds: new Set(),
+    fileGrantAttachments: new Map(),
     pluginLatencySamples: 0,
     pluginTailSamples: 0,
     pluginInfiniteTail: false,

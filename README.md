@@ -161,7 +161,7 @@ Browser-to-native plugin bridges are powerful enough to need public review. Soun
 
 Native plugin editor windows are intentionally not loaded into the daemon. Generic parameter editors work today; native editor sessions require an explicitly configured separate UI broker process, and remain disabled by default.
 
-Preset/sample/cache/license file access is also not ambient. The daemon exposes an opt-in file grant foundation that stays disabled unless `SOUNDBRIDGE_FILE_GRANT_ROOTS` names explicit local roots; browser responses receive opaque grant ids and display names, not absolute paths. Production-style approvals use an explicit native broker configured with `SOUNDBRIDGE_FILE_GRANT_BROKER_PATH`; browser-supplied path strings additionally require `SOUNDBRIDGE_FILE_GRANT_ALLOW_BROWSER_PATHS=1` and are intended only for development and test harnesses.
+Preset/sample/cache/license file access is also not ambient. The daemon exposes an opt-in file grant foundation that stays disabled unless `SOUNDBRIDGE_FILE_GRANT_ROOTS` names explicit local roots; browser responses receive opaque grant ids and display names, not absolute paths. Production-style approvals use an explicit native broker configured with `SOUNDBRIDGE_FILE_GRANT_BROKER_PATH`, then hosts can attach the opaque grant to a session-owned plugin instance. Browser-supplied path strings additionally require `SOUNDBRIDGE_FILE_GRANT_ALLOW_BROWSER_PATHS=1` and are intended only for development and test harnesses.
 
 ## Common Problems
 

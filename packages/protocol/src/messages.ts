@@ -26,6 +26,9 @@ export type ProtocolCommand =
   | "createFileGrant"
   | "listFileGrants"
   | "revokeFileGrant"
+  | "attachFileGrant"
+  | "listInstanceFileGrants"
+  | "detachFileGrant"
   | "heartbeat";
 
 export type PluginFormat = "vst3" | "au" | "lv2" | "mock" | "unknown";
@@ -76,6 +79,7 @@ export interface HelloResponse {
       fileGrantApprovalBroker?: boolean;
       browserFileGrantPaths?: boolean;
       maxFileGrantsPerSession?: number;
+      maxFileGrantsPerInstance?: number;
       maxTotalFileGrants?: number;
       maxFileGrantTtlMs?: number;
       maxFileGrantPathBytes?: number;
@@ -345,6 +349,44 @@ export interface RevokeFileGrantRequest {
 
 export interface RevokeFileGrantResponse {
   revoked: boolean;
+  grantId: string;
+}
+
+export interface FileGrantAttachment extends FileGrant {
+  attachedAt: number;
+}
+
+export interface AttachFileGrantRequest {
+  instanceId: string;
+  grantId: string;
+  purpose?: FileGrantPurpose;
+  access?: FileGrantAccess;
+  kind?: FileGrantKind;
+}
+
+export interface AttachFileGrantResponse {
+  attached: boolean;
+  instanceId: string;
+  grant: FileGrantAttachment;
+}
+
+export interface ListInstanceFileGrantsRequest {
+  instanceId: string;
+}
+
+export interface ListInstanceFileGrantsResponse {
+  instanceId: string;
+  grants: FileGrantAttachment[];
+}
+
+export interface DetachFileGrantRequest {
+  instanceId: string;
+  grantId: string;
+}
+
+export interface DetachFileGrantResponse {
+  detached: boolean;
+  instanceId: string;
   grantId: string;
 }
 

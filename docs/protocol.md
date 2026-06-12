@@ -690,7 +690,42 @@ In both modes, `createFileGrant` resolves the approved absolute path through the
 }
 ```
 
-`listFileGrants` returns only grants owned by the paired session. `revokeFileGrant` takes `{ "grantId": "filegrant-..." }` and requires the same session that created the grant. Browser-facing grant responses must not include absolute paths, configured root paths, scanner diagnostics, or native launch details. Future worker and UI-broker integrations should pass opaque grant ids through SoundBridge IPC rather than granting ambient filesystem access.
+`listFileGrants` returns only grants owned by the paired session. `revokeFileGrant` takes `{ "grantId": "filegrant-..." }` and requires the same session that created the grant. Browser-facing grant responses must not include absolute paths, configured root paths, scanner diagnostics, or native launch details.
+
+### `attachFileGrant` / `listInstanceFileGrants` / `detachFileGrant`
+
+Plugin instances can hold path-free references to session-owned file grants. This is the handoff point for preset, sample, cache, license, and state flows that need native plugin workers or UI brokers to use a local file without exposing the path to browser code.
+
+```json
+{
+  "instanceId": "inst-...",
+  "grantId": "filegrant-...",
+  "purpose": "sample",
+  "access": "read",
+  "kind": "file"
+}
+```
+
+`attachFileGrant` requires the same paired session to own both the plugin instance and the file grant. Optional `purpose`, `access`, and `kind` fields are constraints: the daemon rejects mismatches before an attachment is recorded. The response is still path-free:
+
+```json
+{
+  "attached": true,
+  "instanceId": "inst-...",
+  "grant": {
+    "grantId": "filegrant-...",
+    "purpose": "sample",
+    "access": "read",
+    "kind": "file",
+    "displayName": "Kick.wav",
+    "createdAt": 1710000000000,
+    "expiresAt": 1710000600000,
+    "attachedAt": 1710000001000
+  }
+}
+```
+
+`listInstanceFileGrants` takes `{ "instanceId": "inst-..." }` and returns only that session-owned instance's live, path-free attachments. `detachFileGrant` takes `{ "instanceId": "inst-...", "grantId": "filegrant-..." }`. Native workers and UI brokers should resolve attached grant ids inside daemon-owned code only at the moment of use.
 
 ### `heartbeat`
 

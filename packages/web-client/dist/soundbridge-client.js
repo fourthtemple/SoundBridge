@@ -152,6 +152,18 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("revokeFileGrant", { grantId });
   }
 
+  attachFileGrant(instanceId, grantId, constraints = {}) {
+    return this.request("attachFileGrant", { instanceId, grantId, ...constraints });
+  }
+
+  listInstanceFileGrants(instanceId) {
+    return this.request("listInstanceFileGrants", { instanceId });
+  }
+
+  detachFileGrant(instanceId, grantId) {
+    return this.request("detachFileGrant", { instanceId, grantId });
+  }
+
   heartbeat() {
     return this.request("heartbeat", { now: Date.now() });
   }

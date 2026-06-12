@@ -137,6 +137,32 @@ export function createDaemonFileGrants({
     return grant;
   }
 
+  function resolveFileGrantForUse(grantId, session, constraints = {}) {
+    const grant = getFileGrant(grantId, session);
+    const purpose = constraints.purpose == null ? undefined : requireEnum(constraints.purpose, PURPOSES, "purpose");
+    const access = constraints.access == null ? undefined : requireEnum(constraints.access, ACCESS_MODES, "access");
+    const kind = constraints.kind == null ? undefined : requireEnum(constraints.kind, KINDS, "kind");
+    if (purpose && grant.purpose !== purpose) {
+      throw makeProtocolError("file_grant_purpose_mismatch", "File grant purpose does not match this use.", {
+        expectedPurpose: purpose,
+        grantPurpose: grant.purpose
+      });
+    }
+    if (kind && grant.kind !== kind) {
+      throw makeProtocolError("file_grant_kind_mismatch", "File grant kind does not match this use.", {
+        expectedKind: kind,
+        grantKind: grant.kind
+      });
+    }
+    if (access && !grantAccessCovers(grant.access, access)) {
+      throw makeProtocolError("file_grant_access_mismatch", "File grant access does not cover this use.", {
+        requiredAccess: access,
+        grantAccess: grant.access
+      });
+    }
+    return grant;
+  }
+
   function destroyFileGrantRecord(grant) {
     fileGrants.delete(grant.grantId);
     sessions.get(grant.ownerSessionToken)?.fileGrants?.delete(grant.grantId);
@@ -226,6 +252,7 @@ export function createDaemonFileGrants({
     listFileGrants,
     nativeApprovalAvailable,
     publicFileGrant,
+    resolveFileGrantForUse,
     revokeFileGrant
   };
 }
@@ -275,4 +302,11 @@ function boundedText(value, maxBytes) {
     output += char;
   }
   return output;
+}
+
+function grantAccessCovers(grantAccess, requiredAccess) {
+  if (grantAccess === "readWrite") {
+    return true;
+  }
+  return grantAccess === requiredAccess;
 }

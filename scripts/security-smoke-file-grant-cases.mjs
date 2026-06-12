@@ -261,6 +261,56 @@ export function createSecurityFileGrantCases({
         "createFileGrant returns a bounded path-free grant"
       );
 
+      const instance = await request(
+        owner,
+        "createInstance",
+        { pluginId: "mock.gain", sampleRate: 48000, maxBlockSize: 128, inputChannels: 2, outputChannels: 2 },
+        true,
+        ownerPair.sessionToken
+      );
+      const attachment = await request(
+        owner,
+        "attachFileGrant",
+        { instanceId: instance.instanceId, grantId: grant.grantId, purpose: "sample", access: "read", kind: "file" },
+        true,
+        ownerPair.sessionToken
+      );
+      check(
+        attachment.attached === true &&
+          attachment.instanceId === instance.instanceId &&
+          attachment.grant?.grantId === grant.grantId &&
+          attachment.grant?.displayName === "Kick.wav" &&
+          publicGrantIsPathFree(attachment),
+        "attachFileGrant binds a path-free grant to a session-owned instance"
+      );
+
+      const attached = await request(
+        owner,
+        "listInstanceFileGrants",
+        { instanceId: instance.instanceId },
+        true,
+        ownerPair.sessionToken
+      );
+      check(
+        attached.instanceId === instance.instanceId &&
+          attached.grants?.length === 1 &&
+          attached.grants[0].grantId === grant.grantId &&
+          publicGrantIsPathFree(attached),
+        "listInstanceFileGrants returns only path-free instance attachments"
+      );
+
+      const purposeMismatch = await request(
+        owner,
+        "attachFileGrant",
+        { instanceId: instance.instanceId, grantId: grant.grantId, purpose: "license" },
+        true,
+        ownerPair.sessionToken
+      ).then(
+        () => ({ ok: true }),
+        (error) => ({ code: error.code })
+      );
+      check(purposeMismatch.code === "file_grant_purpose_mismatch", "file grant attachments enforce requested purpose");
+
       const listed = await request(owner, "listFileGrants", {}, true, ownerPair.sessionToken);
       check(
         listed.grants?.length === 1 &&
@@ -283,6 +333,37 @@ export function createSecurityFileGrantCases({
 
       const other = await connect(host, brokerPort, `${host}:${brokerPort}`, origin);
       const otherPair = await request(other, "pair", { origin, pairingToken: token }, false);
+      const otherInstance = await request(
+        other,
+        "createInstance",
+        { pluginId: "mock.gain", sampleRate: 48000, maxBlockSize: 128, inputChannels: 2, outputChannels: 2 },
+        true,
+        otherPair.sessionToken
+      );
+      const crossGrantAttach = await request(
+        other,
+        "attachFileGrant",
+        { instanceId: otherInstance.instanceId, grantId: grant.grantId, purpose: "sample", access: "read", kind: "file" },
+        true,
+        otherPair.sessionToken
+      ).then(
+        () => ({ ok: true }),
+        (error) => ({ code: error.code })
+      );
+      check(crossGrantAttach.code === "file_grant_access_denied", "another session cannot attach this file grant");
+
+      const crossInstanceAttach = await request(
+        other,
+        "attachFileGrant",
+        { instanceId: instance.instanceId, grantId: grant.grantId, purpose: "sample", access: "read", kind: "file" },
+        true,
+        otherPair.sessionToken
+      ).then(
+        () => ({ ok: true }),
+        (error) => ({ code: error.code })
+      );
+      check(crossInstanceAttach.code === "instance_access_denied", "another session cannot attach grants to this instance");
+
       const revokeDenied = await request(
         other,
         "revokeFileGrant",
@@ -294,6 +375,27 @@ export function createSecurityFileGrantCases({
         (error) => ({ code: error.code })
       );
       check(revokeDenied.code === "file_grant_access_denied", "another session cannot revoke this file grant");
+
+      const detached = await request(
+        owner,
+        "detachFileGrant",
+        { instanceId: instance.instanceId, grantId: grant.grantId },
+        true,
+        ownerPair.sessionToken
+      );
+      const afterDetach = await request(
+        owner,
+        "listInstanceFileGrants",
+        { instanceId: instance.instanceId },
+        true,
+        ownerPair.sessionToken
+      );
+      check(
+        detached.detached === true &&
+          detached.grantId === grant.grantId &&
+          afterDetach.grants?.length === 0,
+        "owner session can detach an instance file grant"
+      );
 
       const revoked = await request(owner, "revokeFileGrant", { grantId: grant.grantId }, true, ownerPair.sessionToken);
       const afterRevoke = await request(owner, "listFileGrants", {}, true, ownerPair.sessionToken);

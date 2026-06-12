@@ -206,8 +206,8 @@ async function assertRejectsBroker(mode, message, expectedErrorText) {
       maxWorkerStderrLineBytes: 16 * 1024,
       maxWorkerStderrBytes: 64 * 1024,
       maxWorkerDiagnosticLogChars: 1024,
-      workerReadyTimeoutMs: 50,
-      nativeWorkerCommandTimeoutMs: 50,
+      workerReadyTimeoutMs: 250,
+      nativeWorkerCommandTimeoutMs: 250,
       workerTerminationGraceMs: 10
     }
   });

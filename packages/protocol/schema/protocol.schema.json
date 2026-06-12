@@ -39,6 +39,9 @@
         "createFileGrant",
         "listFileGrants",
         "revokeFileGrant",
+        "attachFileGrant",
+        "listInstanceFileGrants",
+        "detachFileGrant",
         "heartbeat"
       ]
     },
@@ -114,6 +117,7 @@
                 "fileGrantApprovalBroker": { "type": "boolean" },
                 "browserFileGrantPaths": { "type": "boolean" },
                 "maxFileGrantsPerSession": { "type": "number" },
+                "maxFileGrantsPerInstance": { "type": "number" },
                 "maxTotalFileGrants": { "type": "number" },
                 "maxFileGrantTtlMs": { "type": "number" },
                 "maxFileGrantPathBytes": { "type": "number" },
@@ -252,6 +256,18 @@
         {
           "if": { "properties": { "command": { "const": "revokeFileGrant" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/revokeFileGrantRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "attachFileGrant" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/attachFileGrantRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "listInstanceFileGrants" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/listInstanceFileGrantsRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "detachFileGrant" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/detachFileGrantRequest" } } }
         }
       ]
     },
@@ -901,6 +917,35 @@
       "required": ["grantId"],
       "additionalProperties": true,
       "properties": {
+        "grantId": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "attachFileGrantRequest": {
+      "type": "object",
+      "required": ["instanceId", "grantId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "grantId": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "purpose": { "type": "string", "enum": ["preset", "sample", "cache", "license", "state", "other"] },
+        "access": { "type": "string", "enum": ["read", "write", "readWrite"] },
+        "kind": { "type": "string", "enum": ["file", "directory"] }
+      }
+    },
+    "listInstanceFileGrantsRequest": {
+      "type": "object",
+      "required": ["instanceId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "detachFileGrantRequest": {
+      "type": "object",
+      "required": ["instanceId", "grantId"],
+      "additionalProperties": true,
+      "properties": {
+        "instanceId": { "type": "string", "minLength": 1, "maxLength": 80 },
         "grantId": { "type": "string", "minLength": 1, "maxLength": 80 }
       }
     }

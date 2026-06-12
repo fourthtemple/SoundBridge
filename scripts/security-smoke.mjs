@@ -129,7 +129,10 @@ async function run() {
     "closeEditor",
     "createFileGrant",
     "listFileGrants",
-    "revokeFileGrant"
+    "revokeFileGrant",
+    "attachFileGrant",
+    "listInstanceFileGrants",
+    "detachFileGrant"
   ]) {
     const blocked = await request(main, command, {}, false).then(
       () => ({ ok: true }),
@@ -259,6 +262,7 @@ async function run() {
       pairedHello.capabilities?.security?.fileBroker === false &&
       pairedHello.capabilities?.security?.browserFileGrantPaths === false &&
       pairedHello.capabilities?.security?.maxFileGrantsPerSession > 0 &&
+      pairedHello.capabilities?.security?.maxFileGrantsPerInstance > 0 &&
       pairedHello.capabilities?.security?.maxFileGrantPathBytes <= 4096,
     "paired hello advertises file brokering as disabled by default"
   );
