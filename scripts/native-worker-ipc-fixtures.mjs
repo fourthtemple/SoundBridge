@@ -1,6 +1,82 @@
 import fs from "node:fs";
 import path from "node:path";
 
+export async function exerciseGrantAwareNativeWorker({
+  check,
+  createTestWorkers,
+  fixtureGrantPath,
+  nativeWorkerInstance,
+  tempDir,
+  workerPath
+}) {
+  const grantWorkers = createTestWorkers(workerPath, {
+    maxWorkerCommandBytes: 4096,
+    maxWorkerPendingCommandBytes: 4096
+  });
+  const grantWorker = new grantWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await grantWorker.ready;
+  const grantWorkerResult = await grantWorker.useFileGrant({
+    operation: "loadSample",
+    grant: {
+      grantId: "filegrant-test",
+      purpose: "sample",
+      access: "read",
+      kind: "file",
+      displayName: "Fixture Grant.wav",
+      absolutePath: fixtureGrantPath
+    }
+  });
+  check(
+    grantWorkerResult.applied === true && grantWorkerResult.status === "grant-ok",
+    "native host workers encode bounded file grant commands"
+  );
+  const stateDirectoryGrantWorkerResult = await grantWorker.useFileGrant({
+    operation: "saveStateDirectory",
+    grant: {
+      grantId: "filegrant-state-dir",
+      purpose: "state",
+      access: "readWrite",
+      kind: "directory",
+      displayName: "Fixture Grants",
+      absolutePath: tempDir
+    }
+  });
+  check(
+    stateDirectoryGrantWorkerResult.applied === true && stateDirectoryGrantWorkerResult.status === "state-dir-ok",
+    "native host workers encode bounded directory file grant commands"
+  );
+  const parameterWorker = new grantWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await parameterWorker.ready;
+  const spacedParameter = await parameterWorker.setParameter("gain amount", 0.25, 7);
+  check(
+    spacedParameter?.id === "gain amount" &&
+      Math.abs(spacedParameter.normalizedValue - 0.25) < 0.000001 &&
+      spacedParameter.displayValue === "offset-ok",
+    "native host workers encode bounded parameter id commands"
+  );
+  parameterWorker.destroy();
+  const textWorker = new grantWorkers.NativeHostWorker(
+    { format: "vst3", bundlePath: tempDir, renderEngine: "native-vst3" },
+    nativeWorkerInstance()
+  );
+  await textWorker.ready;
+  const textParameter = await textWorker.setParameterDisplayValue("42", "0.0 dB");
+  check(
+    textParameter?.id === "42" &&
+      textParameter.displayValue === "0.0 dB" &&
+      Math.abs(textParameter.normalizedValue - 0.5) < 0.000001,
+    "native host workers encode bounded parameter display text commands"
+  );
+  textWorker.destroy();
+  grantWorker.destroy();
+}
+
 export function writeNativeWorkerIpcFixtures({ tempDir, fixtureGrantPath }) {
   return {
     exampleWorkerPath: writeExecutable(
@@ -215,11 +291,24 @@ process.stdin.on("data", (chunk) => {
     const line = buffer.slice(0, newline).trim();
     buffer = buffer.slice(newline + 1);
     const parts = line.split(" ");
-    if (parts[0] === "setParameterDisplayValue") {
-      const displayValue = Buffer.from(parts[2] === "-" ? "" : parts[2], "base64").toString("utf8");
+    const workerText = (token) => Buffer.from(token === "-" ? "" : token, "base64").toString("utf8");
+    if (parts[0] === "setParameter") {
+      const parameterId = workerText(parts[1]);
       process.stdout.write(JSON.stringify({
         parameter: {
-          id: parts[1],
+          id: parameterId,
+          normalizedValue: Number(parts[2]),
+          displayValue: parts[3] === "7" ? "offset-ok" : "offset-missing"
+        }
+      }) + "\\n");
+      continue;
+    }
+    if (parts[0] === "setParameterDisplayValue") {
+      const parameterId = workerText(parts[1]);
+      const displayValue = workerText(parts[2]);
+      process.stdout.write(JSON.stringify({
+        parameter: {
+          id: parameterId,
           normalizedValue: displayValue === "0.0 dB" ? 0.5 : 0,
           displayValue
         }
@@ -230,8 +319,8 @@ process.stdin.on("data", (chunk) => {
       process.stdout.write(JSON.stringify({ error: "unknown_command" }) + "\\n");
       continue;
     }
-    const displayName = Buffer.from(parts[6] === "-" ? "" : parts[6], "base64").toString("utf8");
-    const absolutePath = Buffer.from(parts[7] === "-" ? "" : parts[7], "base64").toString("utf8");
+    const displayName = workerText(parts[6]);
+    const absolutePath = workerText(parts[7]);
     const sampleApplied = parts[1] === "loadSample" &&
       parts[2] === "sample" &&
       parts[3] === "read" &&

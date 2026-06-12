@@ -67,6 +67,8 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
   try {
     const ready = await readJsonLine();
     assert(ready.ok === true && ready.ready === true, "native LV2 worker reports ready");
+    const gainParameter = workerText("gain");
+    const modeParameter = workerText("mode");
 
     const parameters = await requestWorker("parameters");
     const gain = parameters.parameters?.find((parameter) => parameter.id === "gain");
@@ -91,12 +93,12 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
       "native LV2 worker honors declared LV2 port-groups as grouped main buses"
     );
 
-    const set = await requestWorker("setParameter gain 0.75 0");
+    const set = await requestWorker(`setParameter ${gainParameter} 0.75 0`);
     assert(
       set.parameter?.id === "gain" && Math.abs(set.parameter.normalizedValue - 0.75) < 0.000001,
       "native LV2 worker updates a control port"
     );
-    const modeSet = await requestWorker("setParameter mode 0.6 0");
+    const modeSet = await requestWorker(`setParameter ${modeParameter} 0.6 0`);
     assert(
       modeSet.parameter?.id === "mode" &&
         modeSet.parameter.stepCount === 3 &&
@@ -107,8 +109,8 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
 
     const savedState = await requestWorker("getState");
     assert(typeof savedState.state === "string" && savedState.state.length > 0, "native LV2 worker returns bounded control state");
-    await requestWorker("setParameter gain 0.1 0");
-    await requestWorker("setParameter mode 0 0");
+    await requestWorker(`setParameter ${gainParameter} 0.1 0`);
+    await requestWorker(`setParameter ${modeParameter} 0 0`);
     await requestWorker(`setState ${savedState.state}`);
     const restoredParameters = await requestWorker("parameters");
     const restoredGain = restoredParameters.parameters?.find((parameter) => parameter.id === "gain");
@@ -125,8 +127,8 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
     try {
       const presetPath = path.join(presetDirectory, "Gain Snapshot.preset");
       fs.writeFileSync(presetPath, `${savedState.state}\n`, "utf8");
-      await requestWorker("setParameter gain 0.1 0");
-      await requestWorker("setParameter mode 0 0");
+      await requestWorker(`setParameter ${gainParameter} 0.1 0`);
+      await requestWorker(`setParameter ${modeParameter} 0 0`);
       const loadedPreset = await requestWorker(
         `fileGrant loadPreset preset read file filegrant-lv2-preset ${workerText("Gain Snapshot.preset")} ${workerText(presetPath)}`
       );
@@ -175,7 +177,7 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
     );
     assert(transported.channels?.length === 2, "native LV2 worker accepts bounded host transport position");
 
-    const offsetSet = await requestWorker("setParameter gain 0.25 2");
+    const offsetSet = await requestWorker(`setParameter ${gainParameter} 0.25 2`);
     assert(
       offsetSet.parameter?.id === "gain" && Math.abs(offsetSet.parameter.normalizedValue - 0.25) < 0.000001,
       "native LV2 worker accepts parameter events with sample offsets"
@@ -197,7 +199,7 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
     const midi = await requestWorker("midi on:60:0.8:0:0;cc:1:0.5:0:1;bend:0.1:0:2;pressure:0.4:0:3;poly:60:0.2:0:3;program:2:0:3");
     assert(midi.eventCount === 6, "native LV2 worker queues richer bounded MIDI batches");
 
-    await requestWorker("setParameter gain 0.5 0");
+    await requestWorker(`setParameter ${gainParameter} 0.5 0`);
     const midiVolume = await requestWorker("midi cc:7:0.25:0:0");
     assert(midiVolume.eventCount === 1, "native LV2 worker queues MIDI for atom ports");
     const midiRendered = await requestWorker("render 4 48000 0.4,0.4,0.4,0.4|0.4,0.4,0.4,0.4");
@@ -295,6 +297,7 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
   try {
     const ready = await readRestrictedJsonLine();
     assert(ready.ok === true && ready.ready === true, "native LV2 block-profile worker reports ready");
+    const gainParameter = workerText("gain");
     const fullBlock = new Array(128).fill("0.2").join(",");
     const restrictedRender = await requestRestrictedWorker(`render 128 48000 ${fullBlock}|${fullBlock}`);
     assert(restrictedRender.channels?.[0]?.length === 128, "native LV2 block-profile worker accepts fixed power-of-two blocks");
@@ -302,7 +305,7 @@ export async function runNativeLv2WorkerSmoke({ nativeRenderer, assert, assertLa
     restrictedWorker.stdin.write(`render 64 48000 ${shortBlock}|${shortBlock}\n`, "utf8");
     const invalidBlock = await readRestrictedJsonLine();
     assert(invalidBlock.error === "invalid_lv2_block_size", "native LV2 block-profile worker rejects short render blocks");
-    restrictedWorker.stdin.write("setParameter gain 0.5 4\n", "utf8");
+    restrictedWorker.stdin.write(`setParameter ${gainParameter} 0.5 4\n`, "utf8");
     const invalidParameterOffset = await readRestrictedJsonLine();
     assert(
       invalidParameterOffset.error === "lv2_block_profile_requires_block_boundary_parameters",

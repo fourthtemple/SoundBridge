@@ -424,7 +424,7 @@ export function createNativeWorkerProcesses({
       if (!["au", "vst3", "lv2"].includes(this.nativeHost.format)) {
         return undefined;
       }
-      const parsed = await this.request(`setParameter ${parameterId} ${normalizedValue} ${sampleOffset}`);
+      const parsed = await this.request(`setParameter ${encodeWorkerText(parameterId)} ${normalizedValue} ${sampleOffset}`);
       if (!parsed.parameter) {
         return undefined;
       }
@@ -435,7 +435,9 @@ export function createNativeWorkerProcesses({
       if (!["au", "vst3"].includes(this.nativeHost.format)) {
         return undefined;
       }
-      const parsed = await this.request(`setParameterDisplayValue ${parameterId} ${encodeWorkerText(displayValue)}`);
+      const parsed = await this.request(
+        `setParameterDisplayValue ${encodeWorkerText(parameterId)} ${encodeWorkerText(displayValue)}`
+      );
       if (!parsed.parameter) {
         return undefined;
       }

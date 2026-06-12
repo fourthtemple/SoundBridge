@@ -221,15 +221,16 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
         }
 
         if (command == "setParameter") {
-          std::string parameterIdText;
+          std::string parameterIdToken;
           std::string valueText;
           std::string sampleOffsetText;
           Steinberg::Vst::ParamID parameterId = 0;
           double value = 0.0;
           std::uint32_t sampleOffset = 0;
-          stream >> parameterIdText;
+          stream >> parameterIdToken;
           stream >> valueText;
           stream >> sampleOffsetText;
+          const auto parameterIdText = base64DecodeTextToken(parameterIdToken, kMaxWorkerParameterStringBytes);
           if (!parseParamIdArg(parameterIdText.c_str(), parameterId) ||
               !parseDoubleArg(valueText.c_str(), 0.0, 1.0, value) ||
               (!sampleOffsetText.empty() && !parseUint32Arg(sampleOffsetText.c_str(), 0, kMaxWorkerFrames - 1, sampleOffset))) {
@@ -241,21 +242,21 @@ int runVst3HostWorkerWithSdk(int argc, char** argv) {
         }
 
         if (command == "setParameterDisplayValue") {
-          std::string parameterIdText;
+          std::string parameterIdToken;
           std::string displayValueText;
           Steinberg::Vst::ParamID parameterId = 0;
-          stream >> parameterIdText;
+          stream >> parameterIdToken;
           stream >> displayValueText;
+          const auto parameterIdText = base64DecodeTextToken(parameterIdToken, kMaxWorkerParameterStringBytes);
           if (!parseParamIdArg(parameterIdText.c_str(), parameterId) || displayValueText.empty() || displayValueText == "-") {
             std::cout << "{\"error\":\"invalid_parameter_display_arguments\"}" << std::endl;
             continue;
           }
-          const auto decoded = base64Decode(displayValueText, kMaxWorkerParameterStringBytes);
-          if (decoded.empty() || std::find(decoded.begin(), decoded.end(), 0) != decoded.end()) {
+          const auto displayValue = base64DecodeTextToken(displayValueText, kMaxWorkerParameterStringBytes);
+          if (displayValue.empty() || displayValue.find('\0') != std::string::npos) {
             std::cout << "{\"error\":\"invalid_parameter_display_arguments\"}" << std::endl;
             continue;
           }
-          const std::string displayValue(decoded.begin(), decoded.end());
           std::cout << host.setParameterDisplayValue(parameterId, displayValue) << std::endl;
           continue;
         }

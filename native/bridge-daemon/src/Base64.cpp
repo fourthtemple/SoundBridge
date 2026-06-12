@@ -120,4 +120,12 @@ std::vector<std::uint8_t> base64Decode(const std::string& text, std::size_t maxD
   return output;
 }
 
+std::string base64DecodeTextToken(const std::string& text, std::size_t maxDecodedBytes) {
+  if (text == "-") {
+    return "";
+  }
+  const auto decoded = base64Decode(text, maxDecodedBytes);
+  return std::string(decoded.begin(), decoded.end());
+}
+
 } // namespace soundbridge

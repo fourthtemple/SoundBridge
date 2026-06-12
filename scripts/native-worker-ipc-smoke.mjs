@@ -8,7 +8,7 @@ import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
 import { exerciseInstalledProbeSupport } from "./native-worker-ipc-installed-probe-cases.mjs";
-import { writeNativeWorkerIpcFixtures } from "./native-worker-ipc-fixtures.mjs";
+import { exerciseGrantAwareNativeWorker, writeNativeWorkerIpcFixtures } from "./native-worker-ipc-fixtures.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
@@ -242,59 +242,14 @@ try {
 
   const workers = createTestWorkers(nativeWorkerPath);
 
-  const grantWorkers = createTestWorkers(grantAwareNativeWorkerPath, {
-    maxWorkerCommandBytes: 4096,
-    maxWorkerPendingCommandBytes: 4096
+  await exerciseGrantAwareNativeWorker({
+    check,
+    createTestWorkers,
+    fixtureGrantPath,
+    nativeWorkerInstance,
+    tempDir,
+    workerPath: grantAwareNativeWorkerPath
   });
-  const grantWorker = new grantWorkers.NativeHostWorker(
-    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
-    nativeWorkerInstance()
-  );
-  await grantWorker.ready;
-  const grantWorkerResult = await grantWorker.useFileGrant({
-    operation: "loadSample",
-    grant: {
-      grantId: "filegrant-test",
-      purpose: "sample",
-      access: "read",
-      kind: "file",
-      displayName: "Fixture Grant.wav",
-      absolutePath: fixtureGrantPath
-    }
-  });
-  check(
-    grantWorkerResult.applied === true && grantWorkerResult.status === "grant-ok",
-    "native host workers encode bounded file grant commands"
-  );
-  const stateDirectoryGrantWorkerResult = await grantWorker.useFileGrant({
-    operation: "saveStateDirectory",
-    grant: {
-      grantId: "filegrant-state-dir",
-      purpose: "state",
-      access: "readWrite",
-      kind: "directory",
-      displayName: "Fixture Grants",
-      absolutePath: tempDir
-    }
-  });
-  check(
-    stateDirectoryGrantWorkerResult.applied === true && stateDirectoryGrantWorkerResult.status === "state-dir-ok",
-    "native host workers encode bounded directory file grant commands"
-  );
-  const textWorker = new grantWorkers.NativeHostWorker(
-    { format: "vst3", bundlePath: tempDir, renderEngine: "native-vst3" },
-    nativeWorkerInstance()
-  );
-  await textWorker.ready;
-  const textParameter = await textWorker.setParameterDisplayValue("42", "0.0 dB");
-  check(
-    textParameter?.id === "42" &&
-      textParameter.displayValue === "0.0 dB" &&
-      Math.abs(textParameter.normalizedValue - 0.5) < 0.000001,
-    "native host workers encode bounded parameter display text commands"
-  );
-  textWorker.destroy();
-  grantWorker.destroy();
 
   const fileGrantOperation = await exerciseDaemonFileGrantOperation({
     absolutePath: fixtureGrantPath,

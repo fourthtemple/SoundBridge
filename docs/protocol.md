@@ -557,7 +557,7 @@ Response:
 
 `renderEngine` is optional diagnostics. Current values include `bundle-worker`, `bundle-executable`, `native-example`, `native-au`, `native-vst3`, `native-lv2`, and `js-fallback`. JSON arrays are intentionally only for the mock daemon and early validation. Production transports should use binary Float32 frames or shared memory/shared ring buffers for bus-indexed audio.
 
-Block size is bounded: the daemon clamps the frame count to the instance's `maxBlockSize`, accepts at most 32 channels, and clamps `sampleRate` to 8000–384000 Hz. Native host workers re-clamp these values before allocating. Worker startup, command execution, and response lines are also bounded so a crashed or malicious worker cannot strand requests forever or force the daemon to buffer unlimited stdout.
+Block size is bounded: the daemon clamps the frame count to the instance's `maxBlockSize`, accepts at most 32 channels, and clamps `sampleRate` to 8000–384000 Hz. Native host workers re-clamp these values before allocating. Worker startup, command execution, and response lines are also bounded so a crashed or malicious worker cannot strand requests forever or force the daemon to buffer unlimited stdout. Text tokens sent over native worker line protocols, including parameter ids, display strings, and brokered file-grant names/paths, are base64-encoded by the daemon and decoded by workers under format-specific byte caps before parsing or lookup.
 
 ### `sendMidiEvents`
 

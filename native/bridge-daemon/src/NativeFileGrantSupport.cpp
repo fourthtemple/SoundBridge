@@ -53,11 +53,7 @@ std::string boundedToken(std::string value, std::size_t maxBytes) {
 }
 
 std::string decodeTextToken(const std::string& token, std::size_t maxBytes) {
-  if (token == "-") {
-    return "";
-  }
-  const auto decoded = base64Decode(token, maxBytes);
-  return std::string(decoded.begin(), decoded.end());
+  return base64DecodeTextToken(token, maxBytes);
 }
 
 bool hasControlCharacter(const std::string& value) {

@@ -1,5 +1,6 @@
 #include "SoundBridge/Lv2HostWorker.h"
 
+#include "SoundBridge/Base64.h"
 #include "SoundBridge/Lv2HostedPlugin.h"
 #include "SoundBridge/Lv2HostWorkerSupport.h"
 #include "SoundBridge/NativeFileGrantSupport.h"
@@ -147,14 +148,15 @@ int runLv2HostWorkerNative(int argc, char** argv) {
         }
 
         if (command == "setParameter") {
-          std::string parameterId;
+          std::string parameterIdToken;
           std::string valueText;
           std::string sampleOffsetText;
           std::uint32_t sampleOffset = 0;
           double value = 0.0;
-          stream >> parameterId;
+          stream >> parameterIdToken;
           stream >> valueText;
           stream >> sampleOffsetText;
+          const auto parameterId = base64DecodeTextToken(parameterIdToken, kMaxWorkerParameterStringBytes);
           if (parameterId.empty() ||
               !parseDoubleArg(valueText.c_str(), 0.0, 1.0, value) ||
               (!sampleOffsetText.empty() && !parseUint32Arg(sampleOffsetText.c_str(), 0, kMaxWorkerFrames - 1, sampleOffset))) {
