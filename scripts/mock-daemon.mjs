@@ -17,7 +17,7 @@ import {
   tokenEquals
 } from "./daemon-security-helpers.mjs";
 import { createDaemonWebSocketServer } from "./daemon-websocket-server.mjs";
-import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
+import { createDaemonWorkerSecurity } from "./daemon-worker-security.mjs";
 
 const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47370);
@@ -30,16 +30,6 @@ const MAX_SESSIONS_PER_ORIGIN = envInteger("SOUNDBRIDGE_MAX_SESSIONS_PER_ORIGIN"
 const MAX_INSTANCES_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_INSTANCES_PER_SESSION", 8);
 const MAX_TOTAL_INSTANCES = envInteger("SOUNDBRIDGE_MAX_TOTAL_INSTANCES", 32);
 const MAX_WEBSOCKET_MESSAGE_BYTES = envInteger("SOUNDBRIDGE_MAX_WEBSOCKET_MESSAGE_BYTES", 1024 * 1024);
-const MAX_WORKER_STDOUT_LINE_BYTES = envInteger("SOUNDBRIDGE_MAX_WORKER_STDOUT_LINE_BYTES", 16 * 1024 * 1024);
-const MAX_WORKER_COMMAND_BYTES = envInteger("SOUNDBRIDGE_MAX_WORKER_COMMAND_BYTES", 16 * 1024 * 1024);
-const MAX_WORKER_PENDING_COMMAND_BYTES = envInteger("SOUNDBRIDGE_MAX_WORKER_PENDING_COMMAND_BYTES", 64 * 1024 * 1024);
-const MAX_WORKER_STDERR_LINE_BYTES = envInteger("SOUNDBRIDGE_MAX_WORKER_STDERR_LINE_BYTES", 1024 * 1024);
-const MAX_WORKER_STDERR_BYTES = envInteger("SOUNDBRIDGE_MAX_WORKER_STDERR_BYTES", 4 * 1024 * 1024);
-const MAX_WORKER_PENDING_COMMANDS = envInteger("SOUNDBRIDGE_MAX_WORKER_PENDING_COMMANDS", 64);
-const WORKER_READY_TIMEOUT_MS = envInteger("SOUNDBRIDGE_WORKER_READY_TIMEOUT_MS", 5000);
-const WORKER_TERMINATION_GRACE_MS = envInteger("SOUNDBRIDGE_WORKER_TERMINATION_GRACE_MS", 250);
-const EXAMPLE_WORKER_COMMAND_TIMEOUT_MS = envInteger("SOUNDBRIDGE_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS", 1500);
-const NATIVE_WORKER_COMMAND_TIMEOUT_MS = envInteger("SOUNDBRIDGE_NATIVE_WORKER_COMMAND_TIMEOUT_MS", 5000);
 const MAX_TOTAL_SESSIONS = envInteger("SOUNDBRIDGE_MAX_TOTAL_SESSIONS", 64);
 const MAX_AUDIO_CHANNELS = envInteger("SOUNDBRIDGE_MAX_AUDIO_CHANNELS", 32);
 const MAX_PLUGIN_BUSES = envInteger("SOUNDBRIDGE_MAX_PLUGIN_BUSES", 32);
@@ -196,20 +186,11 @@ const {
 const {
   ExampleInstrumentWorker,
   NativeHostWorker,
-  formatNativeHostName
-} = createNativeWorkerProcesses({
+  formatNativeHostName,
+  securityLimits: workerSecurityLimits
+} = createDaemonWorkerSecurity({
   nativeRenderer: NATIVE_RENDERER,
-  normalizers,
-  maxWorkerStdoutLineBytes: MAX_WORKER_STDOUT_LINE_BYTES,
-  maxWorkerCommandBytes: MAX_WORKER_COMMAND_BYTES,
-  maxWorkerPendingCommandBytes: MAX_WORKER_PENDING_COMMAND_BYTES,
-  maxWorkerStderrLineBytes: MAX_WORKER_STDERR_LINE_BYTES,
-  maxWorkerStderrBytes: MAX_WORKER_STDERR_BYTES,
-  maxWorkerPendingCommands: MAX_WORKER_PENDING_COMMANDS,
-  workerReadyTimeoutMs: WORKER_READY_TIMEOUT_MS,
-  workerTerminationGraceMs: WORKER_TERMINATION_GRACE_MS,
-  exampleWorkerCommandTimeoutMs: EXAMPLE_WORKER_COMMAND_TIMEOUT_MS,
-  nativeWorkerCommandTimeoutMs: NATIVE_WORKER_COMMAND_TIMEOUT_MS
+  normalizers
 });
 
 const sessions = new Map();
@@ -446,16 +427,7 @@ function helloResponse(paired) {
         maxTransportTempoBpm: MAX_TRANSPORT_TEMPO_BPM,
         maxTransportPositionMusic: MAX_TRANSPORT_POSITION_MUSIC,
         maxTransportSamplePosition: MAX_TRANSPORT_SAMPLE_POSITION,
-        maxWorkerStdoutLineBytes: MAX_WORKER_STDOUT_LINE_BYTES,
-        maxWorkerCommandBytes: MAX_WORKER_COMMAND_BYTES,
-        maxWorkerPendingCommandBytes: MAX_WORKER_PENDING_COMMAND_BYTES,
-        maxWorkerStderrLineBytes: MAX_WORKER_STDERR_LINE_BYTES,
-        maxWorkerStderrBytes: MAX_WORKER_STDERR_BYTES,
-        maxWorkerPendingCommands: MAX_WORKER_PENDING_COMMANDS,
-        workerReadyTimeoutMs: WORKER_READY_TIMEOUT_MS,
-        workerTerminationGraceMs: WORKER_TERMINATION_GRACE_MS,
-        exampleWorkerCommandTimeoutMs: EXAMPLE_WORKER_COMMAND_TIMEOUT_MS,
-        nativeWorkerCommandTimeoutMs: NATIVE_WORKER_COMMAND_TIMEOUT_MS
+        ...workerSecurityLimits
       }
     }
   };
