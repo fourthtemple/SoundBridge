@@ -7,8 +7,7 @@ const NEAR_LIMIT_LINES = 1000;
 
 const NEAR_LIMIT_BUDGETS = new Map([
   ["native/bridge-daemon/src/Lv2HostWorker.cpp", 1095],
-  ["native/bridge-daemon/src/Lv2HostWorkerSupport.cpp", 1056],
-  ["native/bridge-daemon/src/Vst3HostWorkerSupport.cpp", 1086]
+  ["native/bridge-daemon/src/Lv2HostWorkerSupport.cpp", 1056]
 ]);
 
 const SOURCE_EXTENSIONS = new Set([
