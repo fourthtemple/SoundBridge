@@ -2,10 +2,19 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const MAX_SOURCE_LINES = 1200;
-const NEAR_LIMIT_LINES = 1000;
+const MAX_SOURCE_LINES = 1000;
+const NEAR_LIMIT_LINES = 750;
 
-const NEAR_LIMIT_BUDGETS = new Map([]);
+const NEAR_LIMIT_BUDGETS = new Map([
+  ["scripts/mock-daemon.mjs", 921],
+  ["examples/browser-demo/src/app.js", 889],
+  ["native/bridge-daemon/src/Lv2Scanner.cpp", 883],
+  ["native/bridge-daemon/src/Lv2HostedPlugin.cpp", 825],
+  ["scripts/installed-plugin-probe.mjs", 815],
+  ["scripts/daemon-plugin-catalog.mjs", 814],
+  ["native/bridge-daemon/src/Vst3HostWorkerSupport.cpp", 756],
+  ["scripts/native-worker-ipc-smoke.mjs", 754]
+]);
 
 const SOURCE_EXTENSIONS = new Set([
   ".c",
