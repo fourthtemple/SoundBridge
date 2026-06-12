@@ -7,6 +7,7 @@ import { exerciseDaemonFileGrantOperation } from "./daemon-file-grant-operations
 import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
+import { assertNoNativeLaunchData, nativeStateFileText } from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { writeNativeWorkerIpcFixtures } from "./native-worker-ipc-fixtures.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
@@ -30,6 +31,16 @@ function protocolError(code, message, details) {
   return Object.assign(new Error(message), { code, details });
 }
 
+function probeAssert(condition, code, message) {
+  if (!condition) {
+    throw Object.assign(new Error(message), { code });
+  }
+}
+
+function nativeStateEnvelope(nativeState) {
+  return Buffer.from(JSON.stringify({ nativeState }), "utf8").toString("base64");
+}
+
 try {
   check(
     JSON.stringify([...installedProbeFormats({})]) === JSON.stringify(["vst3", "au", "lv2"]),
@@ -49,6 +60,35 @@ try {
   check(
     badProbeFormatCode?.includes("unsupported format"),
     "installed plugin probe rejects unsupported format filters"
+  );
+  const vst3ProbeState = nativeStateEnvelope({
+    format: "vst3",
+    component: "Y29tcG9uZW50",
+    controller: "Y29udHJvbGxlcg=="
+  });
+  check(
+    nativeStateFileText("vst3", vst3ProbeState) === "Y29tcG9uZW50 Y29udHJvbGxlcg==\n",
+    "installed plugin probe exports bounded VST3 state files"
+  );
+  const lv2ProbeState = nativeStateEnvelope({ format: "lv2", state: "bHYyLXN0YXRl" });
+  check(
+    nativeStateFileText("lv2", lv2ProbeState) === "bHYyLXN0YXRl\n" &&
+      nativeStateFileText("au", lv2ProbeState) === "",
+    "installed plugin probe exports only matching native state files"
+  );
+  let nativeLaunchLeakCode;
+  try {
+    assertNoNativeLaunchData(
+      { plugin: { pluginId: "vst3:test", metadata: { path: "/private/plugin.vst3" } } },
+      "installed probe response",
+      probeAssert
+    );
+  } catch (error) {
+    nativeLaunchLeakCode = error.code;
+  }
+  check(
+    nativeLaunchLeakCode === "native_editor_launch_data_leak",
+    "installed plugin probe rejects native launch data leaks"
   );
 
   check(

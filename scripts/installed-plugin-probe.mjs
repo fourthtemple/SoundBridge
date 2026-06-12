@@ -6,6 +6,12 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isKnownFileGrantOperation } from "./daemon-file-grant-operations.mjs";
+import {
+  assertNoNativeLaunchData,
+  probeFileGrantPresetLoad,
+  probeFileGrantStateRestore,
+  probeFileGrantStateSave
+} from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { createInstalledProbeReporter, installedProbeReportMode } from "./installed-plugin-probe-reporting.mjs";
 
@@ -14,7 +20,6 @@ const ORIGIN = process.env.SOUNDBRIDGE_PROBE_ORIGIN ?? "http://127.0.0.1:5173";
 const PAIRING_TOKEN = process.env.SOUNDBRIDGE_PAIRING_TOKEN ?? crypto.randomBytes(24).toString("base64url");
 const REQUEST_TIMEOUT_MS = intFromEnv("SOUNDBRIDGE_PROBE_TIMEOUT_MS", 15000, 1000, 120000);
 const MAX_BLOCK_SIZE = intFromEnv("SOUNDBRIDGE_PROBE_MAX_BLOCK_SIZE", 64, 1, 8192);
-const MAX_NATIVE_STATE_FILE_BYTES = 2 * Math.ceil((384 * 1024) / 3) * 4 + 32;
 const SAMPLE_RATE = intFromEnv("SOUNDBRIDGE_PROBE_SAMPLE_RATE", 48000, 8000, 384000);
 const LIMIT = intFromEnv("SOUNDBRIDGE_PROBE_LIMIT", 0, 0, 10000);
 const NAME_FILTER = process.env.SOUNDBRIDGE_PROBE_FILTER ?? "";
@@ -151,9 +156,41 @@ async function probePlugin(socket, session, plugin) {
     const state = await phase(result, "getState", () => request(socket, "getState", { instanceId }, true, session));
     if (typeof state.state === "string" && state.state.length > 0) {
       await phase(result, "setState", () => request(socket, "setState", { instanceId, state: state.state }, true, session));
-      await probeFileGrantStateRestore(socket, session, plugin, instanceId, state, result);
-      await probeFileGrantPresetLoad(socket, session, plugin, instanceId, state, result);
-      await probeFileGrantStateSave(socket, session, instanceId, plugin, result);
+      await probeFileGrantStateRestore({
+        assertProbe,
+        fileGrantRoot: FILE_GRANT_ROOT,
+        instanceId,
+        phase,
+        plugin,
+        request,
+        result,
+        session,
+        socket,
+        state
+      });
+      await probeFileGrantPresetLoad({
+        assertProbe,
+        fileGrantRoot: FILE_GRANT_ROOT,
+        instanceId,
+        phase,
+        plugin,
+        request,
+        result,
+        session,
+        socket,
+        state
+      });
+      await probeFileGrantStateSave({
+        assertProbe,
+        fileGrantRoot: FILE_GRANT_ROOT,
+        instanceId,
+        phase,
+        plugin,
+        request,
+        result,
+        session,
+        socket
+      });
     }
 
     await phase(result, "getLatency", () =>
@@ -327,126 +364,6 @@ async function probeNativeEditorBroker(socket, session, plugin, instanceId, resu
   );
 }
 
-async function probeFileGrantPresetLoad(socket, session, plugin, instanceId, state, result) {
-  const presetText = nativeStateFileText(plugin.format, state.state);
-  if (!presetText) {
-    result.fileGrantPresetLoad = "skipped";
-    return;
-  }
-  const presetPath = path.join(FILE_GRANT_ROOT, `${safeFilename(plugin.pluginId)}.preset`);
-  fs.writeFileSync(presetPath, presetText, "utf8");
-  let grantId = "";
-  try {
-    const grant = await phase(result, "createPresetFileGrant", () =>
-      request(socket, "createFileGrant", { path: presetPath, purpose: "preset", access: "read", kind: "file" }, true, session)
-    );
-    grantId = grant.grantId;
-    await phase(result, "attachPresetFileGrant", () =>
-      request(socket, "attachFileGrant", { instanceId, grantId, purpose: "preset", access: "read", kind: "file" }, true, session)
-    );
-    const loaded = await phase(result, "useFileGrantLoadPreset", () =>
-      request(socket, "useFileGrant", { instanceId, grantId, operation: "loadPreset" }, true, session)
-    );
-    assertProbe(loaded.applied === true, "bad_file_grant_preset_load", "file grant preset load was not applied");
-    assertNoNativeLaunchData(loaded, "file grant preset response");
-    result.fileGrantPresetLoad = "applied";
-  } finally {
-    if (grantId) {
-      await request(socket, "detachFileGrant", { instanceId, grantId }, true, session).catch(() => undefined);
-      await request(socket, "revokeFileGrant", { grantId }, true, session).catch(() => undefined);
-    }
-    fs.rmSync(presetPath, { force: true });
-  }
-}
-
-async function probeFileGrantStateRestore(socket, session, plugin, instanceId, state, result) {
-  const stateText = nativeStateFileText(plugin.format, state.state);
-  if (!stateText) {
-    result.fileGrantStateRestore = "skipped";
-    return;
-  }
-  const statePath = path.join(FILE_GRANT_ROOT, `${safeFilename(plugin.pluginId)}.state`);
-  fs.writeFileSync(statePath, stateText, "utf8");
-  let grantId = "";
-  try {
-    const grant = await phase(result, "createStateFileGrant", () =>
-      request(socket, "createFileGrant", { path: statePath, purpose: "state", access: "read", kind: "file" }, true, session)
-    );
-    grantId = grant.grantId;
-    await phase(result, "attachStateFileGrant", () =>
-      request(socket, "attachFileGrant", { instanceId, grantId, purpose: "state", access: "read", kind: "file" }, true, session)
-    );
-    const restored = await phase(result, "useFileGrantRestoreState", () =>
-      request(socket, "useFileGrant", { instanceId, grantId, operation: "restoreState" }, true, session)
-    );
-    assertProbe(restored.applied === true, "bad_file_grant_restore", "file grant state restore was not applied");
-    assertNoNativeLaunchData(restored, "file grant restore response");
-    result.fileGrantStateRestore = "applied";
-  } finally {
-    if (grantId) {
-      await request(socket, "detachFileGrant", { instanceId, grantId }, true, session).catch(() => undefined);
-      await request(socket, "revokeFileGrant", { grantId }, true, session).catch(() => undefined);
-    }
-    fs.rmSync(statePath, { force: true });
-  }
-}
-
-async function probeFileGrantStateSave(socket, session, instanceId, plugin, result) {
-  const stateDir = fs.mkdtempSync(path.join(FILE_GRANT_ROOT, `${safeFilename(plugin.pluginId)}-save-`));
-  let directoryGrantId = "";
-  let fileGrantId = "";
-  try {
-    const directoryGrant = await phase(result, "createStateDirectoryGrant", () =>
-      request(socket, "createFileGrant", { path: stateDir, purpose: "state", access: "readWrite", kind: "directory" }, true, session)
-    );
-    directoryGrantId = directoryGrant.grantId;
-    await phase(result, "attachStateDirectoryGrant", () =>
-      request(socket, "attachFileGrant", { instanceId, grantId: directoryGrantId, purpose: "state", access: "readWrite", kind: "directory" }, true, session)
-    );
-    const saved = await phase(result, "useFileGrantSaveStateDirectory", () =>
-      request(socket, "useFileGrant", { instanceId, grantId: directoryGrantId, operation: "saveStateDirectory" }, true, session)
-    );
-    assertProbe(saved.applied === true, "bad_file_grant_save", "file grant state save was not applied");
-    assertNoNativeLaunchData(saved, "file grant save response");
-    result.fileGrantStateSave = "applied";
-
-    const savedFiles = fs.readdirSync(stateDir, { withFileTypes: true }).filter((entry) => entry.isFile());
-    assertProbe(savedFiles.length === 1, "bad_file_grant_save_file", "file grant state save did not create exactly one state file");
-    const savedPath = path.join(stateDir, savedFiles[0].name);
-    const savedStats = fs.lstatSync(savedPath);
-    assertProbe(savedStats.isFile(), "bad_file_grant_save_file", "saved state path is not a regular file");
-    assertProbe(
-      savedStats.size > 0 && savedStats.size <= MAX_NATIVE_STATE_FILE_BYTES,
-      "bad_file_grant_save_file",
-      "saved state file size is invalid"
-    );
-
-    const fileGrant = await phase(result, "createSavedStateFileGrant", () =>
-      request(socket, "createFileGrant", { path: savedPath, purpose: "state", access: "read", kind: "file" }, true, session)
-    );
-    fileGrantId = fileGrant.grantId;
-    await phase(result, "attachSavedStateFileGrant", () =>
-      request(socket, "attachFileGrant", { instanceId, grantId: fileGrantId, purpose: "state", access: "read", kind: "file" }, true, session)
-    );
-    const restored = await phase(result, "useFileGrantRestoreSavedState", () =>
-      request(socket, "useFileGrant", { instanceId, grantId: fileGrantId, operation: "restoreState" }, true, session)
-    );
-    assertProbe(restored.applied === true, "bad_file_grant_saved_restore", "saved file grant state restore was not applied");
-    assertNoNativeLaunchData(restored, "saved file grant restore response");
-    result.fileGrantSavedStateRestore = "applied";
-  } finally {
-    if (fileGrantId) {
-      await request(socket, "detachFileGrant", { instanceId, grantId: fileGrantId }, true, session).catch(() => undefined);
-      await request(socket, "revokeFileGrant", { grantId: fileGrantId }, true, session).catch(() => undefined);
-    }
-    if (directoryGrantId) {
-      await request(socket, "detachFileGrant", { instanceId, grantId: directoryGrantId }, true, session).catch(() => undefined);
-      await request(socket, "revokeFileGrant", { grantId: directoryGrantId }, true, session).catch(() => undefined);
-    }
-    fs.rmSync(stateDir, { force: true, recursive: true });
-  }
-}
-
 async function phase(result, name, operation) {
   const started = Date.now();
   try {
@@ -457,38 +374,6 @@ async function phase(result, name, operation) {
     result.phases.push({ name, ok: false, elapsedMs: Date.now() - started, error: errorSummary(error) });
     throw error;
   }
-}
-
-function nativeStateFileText(format, stateEnvelope) {
-  let parsed;
-  try {
-    parsed = JSON.parse(Buffer.from(String(stateEnvelope), "base64").toString("utf8"));
-  } catch {
-    return "";
-  }
-  const nativeState = parsed?.nativeState;
-  if (!nativeState || nativeState.format !== format) {
-    return "";
-  }
-  if (format === "vst3") {
-    const component = String(nativeState.component ?? "");
-    const controller = String(nativeState.controller ?? "");
-    if (!component && !controller) {
-      return "";
-    }
-    return `${component || "-"} ${controller || "-"}\n`;
-  }
-  if (format === "au" || format === "lv2") {
-    const state = String(nativeState.state ?? "");
-    return state ? `${state}\n` : "";
-  }
-  return "";
-}
-
-function safeFilename(value) {
-  return String(value ?? "plugin")
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .slice(0, 120) || "plugin";
 }
 
 function createInstancePayload(plugin) {
@@ -514,34 +399,7 @@ function assertNativeEditorResponse(response, plugin, instanceId) {
   assertProbe(response.capabilities?.nativeWindow === true, "bad_native_editor_response", "native editor did not expose nativeWindow capability");
   assertProbe(response.plugin?.pluginId === plugin.pluginId, "bad_native_editor_response", "native editor plugin id mismatch");
   assertProbe(response.plugin?.format === plugin.format, "bad_native_editor_response", "native editor plugin format mismatch");
-  assertNoNativeLaunchData(response, "native editor response");
-}
-
-function assertNoNativeLaunchData(value, context) {
-  const forbiddenKeys = new Set([
-    "absolutePath",
-    "brokerSessionId",
-    "bundlePath",
-    "componentPath",
-    "diagnostics",
-    "executablePath",
-    "nativeHost",
-    "path",
-    "rootId"
-  ]);
-  const stack = [value];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (!current || typeof current !== "object") {
-      continue;
-    }
-    for (const [key, child] of Object.entries(current)) {
-      assertProbe(!forbiddenKeys.has(key), "native_editor_launch_data_leak", `${context} exposed ${key}`);
-      if (child && typeof child === "object") {
-        stack.push(child);
-      }
-    }
-  }
+  assertNoNativeLaunchData(response, "native editor response", assertProbe);
 }
 
 function renderPayloadForLayout(instanceId, layout) {
