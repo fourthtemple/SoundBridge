@@ -8,6 +8,7 @@ import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
+import { writeNativeWorkerIpcFixtures } from "./native-worker-ipc-fixtures.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
@@ -234,235 +235,28 @@ try {
     "daemon normalizers encode VST3 note-expression worker events"
   );
 
-  const exampleWorkerPath = writeExecutable(
-    "oversized-example-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stdout.write("x".repeat(2048));
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const nativeWorkerPath = writeExecutable(
-    "oversized-native-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stdout.write("y".repeat(2048));
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const exampleStderrWorkerPath = writeExecutable(
-    "oversized-example-stderr-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stderr.write("e".repeat(2048));
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const nativeStderrWorkerPath = writeExecutable(
-    "oversized-native-stderr-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stderr.write("n".repeat(2048));
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const exampleStderrBudgetWorkerPath = writeExecutable(
-    "stderr-budget-example-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stderr.write(" ".repeat(40) + "\\n" + " ".repeat(40) + "\\n");
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const nativeStderrBudgetWorkerPath = writeExecutable(
-    "stderr-budget-native-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stderr.write(" ".repeat(40) + "\\n" + " ".repeat(40) + "\\n");
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const diagnosticControlWorkerPath = writeExecutable(
-    "diagnostic-control-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.setEncoding("utf8");
-let handled = false;
-process.stdin.on("data", () => {
-  if (handled) {
-    return;
-  }
-  handled = true;
-  process.stderr.write("\\u001b[31mwarning\\rfake\\x7f\\n");
-  setTimeout(() => {
-    process.stdout.write(JSON.stringify({ channels: [[0]] }) + "\\n");
-  }, 10);
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const malformedExampleWorkerPath = writeExecutable(
-    "malformed-example-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stdout.write("not-json\\n");
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const malformedNativeReadyWorkerPath = writeExecutable(
-    "malformed-native-ready-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write("not-json\\n");
-setTimeout(() => {}, 30000);
-`
-  );
-  const invalidNativeReadyWorkerPath = writeExecutable(
-    "invalid-native-ready-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: false, error: "bad-ready" }) + "\\n");
-setTimeout(() => {}, 30000);
-`
-  );
-  const malformedNativeCommandWorkerPath = writeExecutable(
-    "malformed-native-command-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", () => {
-  process.stdout.write("not-json\\n");
-});
-setTimeout(() => {}, 30000);
-`
-  );
-  const unsolicitedExampleWorkerPath = writeExecutable(
-    "unsolicited-example-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true }) + "\\n");
-setTimeout(() => {}, 30000);
-`
-  );
-  const unsolicitedNativeWorkerPath = writeExecutable(
-    "unsolicited-native-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdout.write(JSON.stringify({ ok: true }) + "\\n");
-setTimeout(() => {}, 30000);
-`
-  );
-  const hangingNativeWorkerPath = writeExecutable(
-    "hanging-native-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.resume();
-setTimeout(() => {}, 30000);
-`
-  );
-  const hangingExampleCommandWorkerPath = writeExecutable(
-    "hanging-example-command-worker.mjs",
-    `#!/usr/bin/env node
-process.stdin.resume();
-setTimeout(() => {}, 30000);
-`
-  );
-  const hangingNativeCommandWorkerPath = writeExecutable(
-    "hanging-native-command-worker.mjs",
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.resume();
-setTimeout(() => {}, 30000);
-`
-  );
-  const stubbornExampleCommandWorkerPath = writeExecutable(
-    "stubborn-example-command-worker.mjs",
-    `#!/usr/bin/env node
-process.on("SIGTERM", () => {});
-process.stdin.resume();
-setTimeout(() => {}, 30000);
-`
-  );
-  const stubbornNativeCommandWorkerPath = writeExecutable(
-    "stubborn-native-command-worker.mjs",
-    `#!/usr/bin/env node
-process.on("SIGTERM", () => {});
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.resume();
-setTimeout(() => {}, 30000);
-`
-  );
   const fixtureGrantPath = path.join(tempDir, "Fixture Grant.wav");
-  const grantAwareNativeWorkerPath = writeExecutable(
-    "grant-aware-native-worker.mjs",
-    `#!/usr/bin/env node
-const expectedFilePath = ${JSON.stringify(fixtureGrantPath)};
-const expectedDirectoryPath = ${JSON.stringify(tempDir)};
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.setEncoding("utf8");
-let buffer = "";
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  while (true) {
-    const newline = buffer.indexOf("\\n");
-    if (newline < 0) {
-      return;
-    }
-    const line = buffer.slice(0, newline).trim();
-    buffer = buffer.slice(newline + 1);
-    const parts = line.split(" ");
-    if (parts[0] === "setParameterDisplayValue") {
-      const displayValue = Buffer.from(parts[2] === "-" ? "" : parts[2], "base64").toString("utf8");
-      process.stdout.write(JSON.stringify({
-        parameter: {
-          id: parts[1],
-          normalizedValue: displayValue === "0.0 dB" ? 0.5 : 0,
-          displayValue
-        }
-      }) + "\\n");
-      continue;
-    }
-    if (parts[0] !== "fileGrant") {
-      process.stdout.write(JSON.stringify({ error: "unknown_command" }) + "\\n");
-      continue;
-    }
-    const displayName = Buffer.from(parts[6] === "-" ? "" : parts[6], "base64").toString("utf8");
-    const absolutePath = Buffer.from(parts[7] === "-" ? "" : parts[7], "base64").toString("utf8");
-    const sampleApplied = parts[1] === "loadSample" &&
-      parts[2] === "sample" &&
-      parts[3] === "read" &&
-      parts[4] === "file" &&
-      parts[5] === "filegrant-test" &&
-      displayName === "Fixture Grant.wav" &&
-      absolutePath === expectedFilePath;
-    const stateDirectoryApplied = parts[1] === "saveStateDirectory" &&
-      parts[2] === "state" &&
-      parts[3] === "readWrite" &&
-      parts[4] === "directory" &&
-      parts[5] === "filegrant-state-dir" &&
-      displayName === "Fixture Grants" &&
-      absolutePath === expectedDirectoryPath;
-    process.stdout.write(JSON.stringify({
-      applied: sampleApplied || stateDirectoryApplied,
-      status: stateDirectoryApplied ? "state-dir-ok" : "grant-ok"
-    }) + "\\n");
-  }
-});
-setTimeout(() => {}, 30000);
-`
-  );
+  const {
+    exampleWorkerPath,
+    nativeWorkerPath,
+    exampleStderrWorkerPath,
+    nativeStderrWorkerPath,
+    exampleStderrBudgetWorkerPath,
+    nativeStderrBudgetWorkerPath,
+    diagnosticControlWorkerPath,
+    malformedExampleWorkerPath,
+    malformedNativeReadyWorkerPath,
+    invalidNativeReadyWorkerPath,
+    malformedNativeCommandWorkerPath,
+    unsolicitedExampleWorkerPath,
+    unsolicitedNativeWorkerPath,
+    hangingNativeWorkerPath,
+    hangingExampleCommandWorkerPath,
+    hangingNativeCommandWorkerPath,
+    stubbornExampleCommandWorkerPath,
+    stubbornNativeCommandWorkerPath,
+    grantAwareNativeWorkerPath
+  } = writeNativeWorkerIpcFixtures({ tempDir, fixtureGrantPath });
 
   const workers = createTestWorkers(nativeWorkerPath);
 
@@ -915,13 +709,6 @@ function hasPrivatePathFields(value) {
 console.log(`\n${passed} worker IPC checks passed, ${failures.length} failed.`);
 if (failures.length > 0) {
   process.exit(1);
-}
-
-function writeExecutable(filename, source) {
-  const file = path.join(tempDir, filename);
-  fs.writeFileSync(file, source, { mode: 0o755 });
-  fs.chmodSync(file, 0o755);
-  return file;
 }
 
 async function expectRejected(operation, expectedText, message) {
