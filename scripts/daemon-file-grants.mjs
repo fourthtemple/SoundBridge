@@ -11,6 +11,7 @@ export function createDaemonFileGrants({
   sessions,
   roots,
   allowBrowserPaths = false,
+  approvalBroker,
   limits,
   makeProtocolError
 }) {
@@ -31,16 +32,14 @@ export function createDaemonFileGrants({
     return available() && allowBrowserPaths === true;
   }
 
-  function createFileGrant(payload, session) {
+  function nativeApprovalAvailable() {
+    return available() && approvalBroker?.available === true;
+  }
+
+  async function createFileGrant(payload, session) {
     cleanupExpiredFileGrants();
     if (!available()) {
       throw makeProtocolError("file_broker_unavailable", "File grants require configured broker roots.");
-    }
-    if (!browserPathGrantsAvailable()) {
-      throw makeProtocolError(
-        "file_grant_approval_required",
-        "Browser-supplied file paths require an explicit native approval broker or development opt-in."
-      );
     }
     ensureSessionGrantSet(session);
     if (session.fileGrants.size >= maxFileGrantsPerSession) {
@@ -54,10 +53,11 @@ export function createDaemonFileGrants({
       });
     }
 
-    const requestedPath = requireBoundedPath(payload.path);
     const access = requireEnum(payload.access ?? "read", ACCESS_MODES, "access");
     const purpose = requireEnum(payload.purpose ?? "other", PURPOSES, "purpose");
     const requestedKind = payload.kind == null ? undefined : requireEnum(payload.kind, KINDS, "kind");
+    const approved = await approvedGrantPath(payload, { access, kind: requestedKind, purpose }, session);
+    const requestedPath = requireBoundedPath(approved.path);
     const resolved = resolveAllowedPath(requestedPath, requestedKind);
     const grantId = `filegrant-${crypto.randomUUID()}`;
     const expiresAt = Math.min(Date.now() + fileGrantTtlMs, session.expiresAt);
@@ -70,13 +70,36 @@ export function createDaemonFileGrants({
       purpose,
       access,
       kind: resolved.kind,
-      displayName: boundedText(resolved.displayName, maxFileGrantDisplayNameBytes) || resolved.kind,
+      displayName: boundedText(approved.displayName ?? resolved.displayName, maxFileGrantDisplayNameBytes) || resolved.kind,
       createdAt: Date.now(),
       expiresAt
     };
     fileGrants.set(grantId, grant);
     session.fileGrants.add(grantId);
     return publicFileGrant(grant);
+  }
+
+  async function approvedGrantPath(payload, request, session) {
+    if (payload.path != null) {
+      if (!browserPathGrantsAvailable()) {
+        throw makeProtocolError(
+          "file_grant_approval_required",
+          "Browser-supplied file paths require an explicit native approval broker or development opt-in."
+        );
+      }
+      return { path: payload.path };
+    }
+    if (!nativeApprovalAvailable()) {
+      throw makeProtocolError(
+        "file_grant_approval_required",
+        "File grants require an explicit native approval broker or development opt-in."
+      );
+    }
+    try {
+      return await approvalBroker.requestFileGrant({ request, session });
+    } catch {
+      throw makeProtocolError("file_grant_broker_failed", "File grant approval broker failed to approve this request.");
+    }
   }
 
   function listFileGrants(payload, session) {
@@ -201,6 +224,7 @@ export function createDaemonFileGrants({
     destroyFileGrantRecord,
     getFileGrant,
     listFileGrants,
+    nativeApprovalAvailable,
     publicFileGrant,
     revokeFileGrant
   };

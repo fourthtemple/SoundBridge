@@ -111,6 +111,7 @@
                 "maxTotalEditors": { "type": "number" },
                 "maxEditorSessionTtlMs": { "type": "number" },
                 "fileBroker": { "type": "boolean" },
+                "fileGrantApprovalBroker": { "type": "boolean" },
                 "browserFileGrantPaths": { "type": "boolean" },
                 "maxFileGrantsPerSession": { "type": "number" },
                 "maxTotalFileGrants": { "type": "number" },
@@ -887,7 +888,6 @@
     },
     "createFileGrantRequest": {
       "type": "object",
-      "required": ["path"],
       "additionalProperties": true,
       "properties": {
         "path": { "type": "string", "minLength": 1, "maxLength": 4096 },

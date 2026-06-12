@@ -2,8 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { connect, sendCloseFrame, waitForClose } from "./security-smoke-client.mjs";
 import { waitForListen } from "./security-smoke-daemon-cases.mjs";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const approvalFixturePath = path.join(scriptDir, "file-grant-approval-broker-fixture.mjs");
 
 export function createSecurityFileGrantCases({
   check,
@@ -86,7 +90,94 @@ export function createSecurityFileGrantCases({
       approvalDaemon.kill("SIGKILL");
     }
 
-    const brokerPort = port + 5;
+    const nativeApprovalPort = port + 5;
+    const nativeApprovalDaemon = spawn("node", ["scripts/mock-daemon.mjs"], {
+      env: {
+        ...process.env,
+        SOUNDBRIDGE_HOST: host,
+        SOUNDBRIDGE_PORT: String(nativeApprovalPort),
+        SOUNDBRIDGE_PAIRING_TOKEN: token,
+        SOUNDBRIDGE_FILE_GRANT_ROOTS: root,
+        SOUNDBRIDGE_FILE_GRANT_BROKER_PATH: process.execPath,
+        SOUNDBRIDGE_FILE_GRANT_BROKER_ARGS: JSON.stringify([approvalFixturePath, "ok", samplePath])
+      },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    nativeApprovalDaemon.stderr.on("data", () => {});
+
+    try {
+      await waitForListen(nativeApprovalDaemon);
+      const approved = await connect(host, nativeApprovalPort, `${host}:${nativeApprovalPort}`, origin);
+      const approvedPair = await request(approved, "pair", { origin, pairingToken: token }, false);
+      const hello = await request(approved, "hello", {}, true, approvedPair.sessionToken);
+      check(
+        hello.capabilities?.fileAccess === true &&
+          hello.capabilities?.security?.fileBroker === true &&
+          hello.capabilities?.security?.fileGrantApprovalBroker === true &&
+          hello.capabilities?.security?.browserFileGrantPaths === false,
+        "native approval broker enables path-free file grants without browser path mode"
+      );
+      const grant = await request(
+        approved,
+        "createFileGrant",
+        { purpose: "sample", access: "read", kind: "file" },
+        true,
+        approvedPair.sessionToken
+      );
+      check(
+        /^filegrant-[0-9a-f-]{36}$/.test(grant.grantId) &&
+          grant.displayName === "Approved Fixture" &&
+          grant.purpose === "sample" &&
+          grant.access === "read" &&
+          grant.kind === "file" &&
+          publicGrantIsPathFree(grant),
+        "native approval broker grants stay path-free in browser responses"
+      );
+      await request(approved, "revokeFileGrant", { grantId: grant.grantId }, true, approvedPair.sessionToken);
+      approved.socket?.destroy();
+    } finally {
+      nativeApprovalDaemon.kill("SIGKILL");
+    }
+
+    const outsideBrokerPort = port + 6;
+    const outsideBrokerDaemon = spawn("node", ["scripts/mock-daemon.mjs"], {
+      env: {
+        ...process.env,
+        SOUNDBRIDGE_HOST: host,
+        SOUNDBRIDGE_PORT: String(outsideBrokerPort),
+        SOUNDBRIDGE_PAIRING_TOKEN: token,
+        SOUNDBRIDGE_FILE_GRANT_ROOTS: root,
+        SOUNDBRIDGE_FILE_GRANT_BROKER_PATH: process.execPath,
+        SOUNDBRIDGE_FILE_GRANT_BROKER_ARGS: JSON.stringify([approvalFixturePath, "ok", outsidePath])
+      },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    outsideBrokerDaemon.stderr.on("data", () => {});
+
+    try {
+      await waitForListen(outsideBrokerDaemon);
+      const outsideBroker = await connect(host, outsideBrokerPort, `${host}:${outsideBrokerPort}`, origin);
+      const outsideBrokerPair = await request(outsideBroker, "pair", { origin, pairingToken: token }, false);
+      const outsideApproved = await request(
+        outsideBroker,
+        "createFileGrant",
+        { purpose: "sample", access: "read", kind: "file" },
+        true,
+        outsideBrokerPair.sessionToken
+      ).then(
+        () => ({ ok: true }),
+        (error) => ({ code: error.code })
+      );
+      check(
+        outsideApproved.code === "file_grant_outside_roots",
+        "native approval broker paths are still constrained to configured roots"
+      );
+      outsideBroker.socket?.destroy();
+    } finally {
+      outsideBrokerDaemon.kill("SIGKILL");
+    }
+
+    const brokerPort = port + 7;
     const daemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,

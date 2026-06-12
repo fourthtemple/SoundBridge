@@ -22,6 +22,7 @@ import {
 } from "./daemon-security-helpers.mjs";
 import { createDaemonWebSocketServer } from "./daemon-websocket-server.mjs";
 import { createDaemonWorkerSecurity } from "./daemon-worker-security.mjs";
+import { createConfiguredFileGrantApprovalBroker } from "./file-grant-approval-broker-process.mjs";
 
 const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47370);
@@ -219,6 +220,9 @@ const {
   nativeRenderer: NATIVE_RENDERER,
   normalizers
 });
+const fileGrantApprovalBroker = createConfiguredFileGrantApprovalBroker({
+  limits: workerSecurityLimits
+});
 const nativeEditorBroker = createConfiguredNativeEditorBroker({
   limits: workerSecurityLimits
 });
@@ -232,6 +236,7 @@ const fileGrantSupport = createDaemonFileGrants({
   sessions,
   roots: FILE_GRANT_ROOTS,
   allowBrowserPaths: ALLOW_BROWSER_FILE_GRANT_PATHS,
+  approvalBroker: fileGrantApprovalBroker,
   limits: {
     fileGrantTtlMs: FILE_GRANT_TTL_MS,
     maxFileGrantDisplayNameBytes: MAX_FILE_GRANT_DISPLAY_NAME_BYTES,
@@ -492,7 +497,7 @@ function helloResponse(paired) {
             automation: true,
             transport: true,
             genericEditor: true,
-            fileAccess: fileGrantSupport.browserPathGrantsAvailable(),
+            fileAccess: fileGrantSupport.browserPathGrantsAvailable() || fileGrantSupport.nativeApprovalAvailable(),
             nativeExampleRenderer: Boolean(NATIVE_RENDERER),
             nativeEditor: Boolean(nativeEditorBroker?.available)
           }
@@ -505,6 +510,7 @@ function helloResponse(paired) {
         cleanupOnDisconnect: true,
         hostHeaderValidation: true,
         fileBroker: fileGrantSupport.available(),
+        fileGrantApprovalBroker: fileGrantSupport.nativeApprovalAvailable(),
         browserFileGrantPaths: fileGrantSupport.browserPathGrantsAvailable(),
         nativeEditorBroker: Boolean(nativeEditorBroker?.available),
         maxInstancesPerSession: MAX_INSTANCES_PER_SESSION,

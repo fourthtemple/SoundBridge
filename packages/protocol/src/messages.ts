@@ -73,6 +73,7 @@ export interface HelloResponse {
       maxTotalEditors?: number;
       maxEditorSessionTtlMs?: number;
       fileBroker?: boolean;
+      fileGrantApprovalBroker?: boolean;
       browserFileGrantPaths?: boolean;
       maxFileGrantsPerSession?: number;
       maxTotalFileGrants?: number;
@@ -318,7 +319,7 @@ export type FileGrantAccess = "read" | "write" | "readWrite";
 export type FileGrantKind = "file" | "directory";
 
 export interface CreateFileGrantRequest {
-  path: string;
+  path?: string;
   purpose?: FileGrantPurpose;
   access?: FileGrantAccess;
   kind?: FileGrantKind;
