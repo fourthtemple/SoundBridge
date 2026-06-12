@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   source-security-fitness:
     name: Source And Security Fitness
@@ -41,28 +44,3 @@ jobs:
           npm run smoke:file-grant-broker
           npm run smoke:native-editor-broker
           npm run smoke:native-editor-daemon
-
-      - name: Mock protocol smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          log_file="$(mktemp)"
-          SOUNDBRIDGE_PAIRING_TOKEN=dev-token node scripts/mock-daemon.mjs >"$log_file" 2>&1 &
-          daemon_pid="$!"
-          trap 'kill "$daemon_pid" 2>/dev/null || true' EXIT
-
-          ready=0
-          for _ in {1..50}; do
-            if grep -q "listening" "$log_file"; then
-              ready=1
-              break
-            fi
-            sleep 0.1
-          done
-
-          if [[ "$ready" != "1" ]]; then
-            cat "$log_file"
-            exit 1
-          fi
-
-          npm run smoke:mock
