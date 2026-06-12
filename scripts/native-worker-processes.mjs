@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 export const DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES = 16 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_COMMAND_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_MAX_WORKER_PENDING_COMMAND_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_STDERR_LINE_BYTES = 1024 * 1024;
 export const DEFAULT_MAX_WORKER_STDERR_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_PENDING_COMMANDS = 64;
@@ -15,6 +16,7 @@ export function createNativeWorkerProcesses({
   normalizers,
   maxWorkerStdoutLineBytes = DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES,
   maxWorkerCommandBytes = DEFAULT_MAX_WORKER_COMMAND_BYTES,
+  maxWorkerPendingCommandBytes = DEFAULT_MAX_WORKER_PENDING_COMMAND_BYTES,
   maxWorkerStderrLineBytes = DEFAULT_MAX_WORKER_STDERR_LINE_BYTES,
   maxWorkerStderrBytes = DEFAULT_MAX_WORKER_STDERR_BYTES,
   maxWorkerPendingCommands = DEFAULT_MAX_WORKER_PENDING_COMMANDS,
@@ -38,6 +40,7 @@ export function createNativeWorkerProcesses({
   } = normalizers;
   const workerStdoutLineLimit = normalizeWorkerStdoutLineLimit(maxWorkerStdoutLineBytes);
   const workerCommandLimit = normalizeWorkerCommandLimit(maxWorkerCommandBytes);
+  const workerPendingCommandByteLimit = normalizeWorkerPendingCommandByteLimit(maxWorkerPendingCommandBytes);
   const workerStderrLineLimit = normalizeWorkerStderrLineLimit(maxWorkerStderrLineBytes);
   const workerStderrBudget = normalizeWorkerStderrBudget(maxWorkerStderrBytes);
   const workerPendingCommandLimit = normalizeWorkerPendingCommandLimit(maxWorkerPendingCommands);
@@ -57,11 +60,13 @@ export function createNativeWorkerProcesses({
       this.executablePath = executablePath;
       this.renderEngine = "bundle-worker";
       this.pending = [];
+      this.pendingCommandBytes = 0;
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
       this.stderrBytes = 0;
       this.maxStdoutLineBytes = workerStdoutLineLimit;
       this.maxCommandBytes = workerCommandLimit;
+      this.maxPendingCommandBytes = workerPendingCommandByteLimit;
       this.maxStderrLineBytes = workerStderrLineLimit;
       this.maxStderrBytes = workerStderrBudget;
       this.maxPendingCommands = workerPendingCommandLimit;
@@ -122,19 +127,24 @@ export function createNativeWorkerProcesses({
       if (this.pending.length >= this.maxPendingCommands) {
         return Promise.reject(workerPendingCommandsError(this.maxPendingCommands));
       }
-      if (workerLineTooLarge(command, this.maxCommandBytes)) {
+      const commandBytes = workerCommandBytes(command);
+      if (commandBytes > this.maxCommandBytes) {
         return Promise.reject(workerCommandTooLargeError(this.maxCommandBytes));
+      }
+      if (this.pendingCommandBytes + commandBytes > this.maxPendingCommandBytes) {
+        return Promise.reject(workerPendingCommandBytesError(this.maxPendingCommandBytes));
       }
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           this.abortWorker(workerCommandTimeoutError(this.commandTimeoutMs));
         }, this.commandTimeoutMs);
-        this.pending.push({ resolve, reject, timeout });
+        this.pending.push({ resolve, reject, timeout, commandBytes });
+        this.pendingCommandBytes += commandBytes;
         this.process.stdin.write(`${command}\n`, "utf8", (error) => {
           if (error) {
             clearTimeout(timeout);
-            this.pending = this.pending.filter((pending) => pending.resolve !== resolve);
+            this.removePending(resolve);
             reject(error);
           }
         });
@@ -164,6 +174,7 @@ export function createNativeWorkerProcesses({
           this.abortWorker(workerUnexpectedStdoutError());
           return;
         }
+        this.pendingCommandBytes -= pending.commandBytes;
 
         clearTimeout(pending.timeout);
         try {
@@ -186,8 +197,18 @@ export function createNativeWorkerProcesses({
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
       this.stderrBytes = 0;
+      this.pendingCommandBytes = 0;
       this.rejectAll(error);
       terminateWorkerProcess(this.process, this.workerTerminationGraceMs);
+    }
+
+    removePending(resolve) {
+      const index = this.pending.findIndex((pending) => pending.resolve === resolve);
+      if (index < 0) {
+        return;
+      }
+      const [pending] = this.pending.splice(index, 1);
+      this.pendingCommandBytes -= pending.commandBytes;
     }
 
     rejectAll(error) {
@@ -195,6 +216,7 @@ export function createNativeWorkerProcesses({
         clearTimeout(pending.timeout);
         pending.reject(error);
       }
+      this.pendingCommandBytes = 0;
     }
 
     destroy() {
@@ -217,11 +239,13 @@ export function createNativeWorkerProcesses({
       this.fallbackLayout = clonePluginLayout(instance.layout);
       this.renderEngine = nativeHost.renderEngine;
       this.pending = [];
+      this.pendingCommandBytes = 0;
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
       this.stderrBytes = 0;
       this.maxStdoutLineBytes = workerStdoutLineLimit;
       this.maxCommandBytes = workerCommandLimit;
+      this.maxPendingCommandBytes = workerPendingCommandByteLimit;
       this.maxStderrLineBytes = workerStderrLineLimit;
       this.maxStderrBytes = workerStderrBudget;
       this.maxPendingCommands = workerPendingCommandLimit;
@@ -369,19 +393,24 @@ export function createNativeWorkerProcesses({
       if (this.pending.length >= this.maxPendingCommands) {
         return Promise.reject(workerPendingCommandsError(this.maxPendingCommands));
       }
-      if (workerLineTooLarge(command, this.maxCommandBytes)) {
+      const commandBytes = workerCommandBytes(command);
+      if (commandBytes > this.maxCommandBytes) {
         return Promise.reject(workerCommandTooLargeError(this.maxCommandBytes));
+      }
+      if (this.pendingCommandBytes + commandBytes > this.maxPendingCommandBytes) {
+        return Promise.reject(workerPendingCommandBytesError(this.maxPendingCommandBytes));
       }
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           this.abortWorker(workerCommandTimeoutError(this.commandTimeoutMs));
         }, this.commandTimeoutMs);
-        this.pending.push({ resolve, reject, timeout });
+        this.pending.push({ resolve, reject, timeout, commandBytes });
+        this.pendingCommandBytes += commandBytes;
         this.process.stdin.write(`${command}\n`, "utf8", (error) => {
           if (error) {
             clearTimeout(timeout);
-            this.pending = this.pending.filter((pending) => pending.resolve !== resolve);
+            this.removePending(resolve);
             reject(error);
           }
         });
@@ -413,6 +442,7 @@ export function createNativeWorkerProcesses({
           const protocolError = workerStdoutParseError(error);
           const pending = this.pending.shift();
           if (pending) {
+            this.pendingCommandBytes -= pending.commandBytes;
             clearTimeout(pending.timeout);
             pending.reject(protocolError);
           }
@@ -435,6 +465,7 @@ export function createNativeWorkerProcesses({
           this.abortWorker(workerUnexpectedStdoutError());
           return;
         }
+        this.pendingCommandBytes -= pending.commandBytes;
 
         clearTimeout(pending.timeout);
         if (parsed.error) {
@@ -449,6 +480,7 @@ export function createNativeWorkerProcesses({
       this.stdoutBuffer = "";
       this.stderrBuffer = "";
       this.stderrBytes = 0;
+      this.pendingCommandBytes = 0;
       this.rejectAll(error);
       terminateWorkerProcess(this.process, this.workerTerminationGraceMs);
     }
@@ -477,6 +509,16 @@ export function createNativeWorkerProcesses({
         clearTimeout(pending.timeout);
         pending.reject(error);
       }
+      this.pendingCommandBytes = 0;
+    }
+
+    removePending(resolve) {
+      const index = this.pending.findIndex((pending) => pending.resolve === resolve);
+      if (index < 0) {
+        return;
+      }
+      const [pending] = this.pending.splice(index, 1);
+      this.pendingCommandBytes -= pending.commandBytes;
     }
 
     destroy() {
@@ -543,6 +585,14 @@ function normalizeWorkerCommandLimit(value) {
   return number;
 }
 
+function normalizeWorkerPendingCommandByteLimit(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number <= 0) {
+    return DEFAULT_MAX_WORKER_PENDING_COMMAND_BYTES;
+  }
+  return number;
+}
+
 function normalizeWorkerStderrLineLimit(value) {
   const number = Math.floor(Number(value));
   if (!Number.isFinite(number) || number <= 0) {
@@ -596,6 +646,10 @@ function normalizeWorkerCommandTimeout(value, fallback) {
 
 function workerLineTooLarge(line, maxBytes) {
   return Buffer.byteLength(line, "utf8") > maxBytes;
+}
+
+function workerCommandBytes(command) {
+  return Buffer.byteLength(`${command}\n`, "utf8");
 }
 
 function handleWorkerStderr(worker, chunk, label) {
@@ -669,6 +723,10 @@ function workerReadyHandshakeError(message) {
 
 function workerPendingCommandsError(maxCommands) {
   return new Error(`worker_pending_commands_exceeded: worker has ${maxCommands} pending commands`);
+}
+
+function workerPendingCommandBytesError(maxBytes) {
+  return new Error(`worker_pending_command_bytes_exceeded: worker pending commands exceeded ${maxBytes} bytes`);
 }
 
 function workerCommandTimeoutError(timeoutMs) {

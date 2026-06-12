@@ -98,6 +98,7 @@ Example paired capability payload:
       "maxAutomationLanePoints": 4096,
       "maxWorkerStdoutLineBytes": 16777216,
       "maxWorkerCommandBytes": 16777216,
+      "maxWorkerPendingCommandBytes": 67108864,
       "maxWorkerStderrLineBytes": 1048576,
       "maxWorkerStderrBytes": 4194304,
       "maxWorkerPendingCommands": 64,

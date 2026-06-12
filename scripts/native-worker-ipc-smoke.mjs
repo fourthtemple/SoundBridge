@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { once } from "node:events";
 import os from "node:os";
 import path from "node:path";
 import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
@@ -6,6 +7,7 @@ import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
 const MAX_TEST_COMMAND_BYTES = 128;
+const MAX_TEST_PENDING_COMMAND_BYTES = 256;
 const MAX_TEST_STDERR_LINE_BYTES = 128;
 const MAX_TEST_STDERR_BYTES = 64;
 const MAX_TEST_PENDING_COMMANDS = 8;
@@ -338,6 +340,36 @@ setTimeout(() => {}, 30000);
   check(commandLimitNativeWorker.pending.length === 0, "oversized native worker commands are not queued");
   commandLimitNativeWorker.destroy();
 
+  const commandByteBudgetWorkers = createTestWorkers(hangingNativeCommandWorkerPath, {
+    maxWorkerPendingCommandBytes: 16
+  });
+  const commandByteBudgetExampleWorker =
+    new commandByteBudgetWorkers.ExampleInstrumentWorker(hangingExampleCommandWorkerPath);
+  const pendingByteBudgetExampleCommand = commandByteBudgetExampleWorker.request("x".repeat(8)).catch(() => undefined);
+  await expectRejected(
+    () => commandByteBudgetExampleWorker.request("x".repeat(8)),
+    "worker_pending_command_bytes_exceeded",
+    "example instrument workers reject commands beyond the pending byte budget"
+  );
+  check(commandByteBudgetExampleWorker.pending.length === 1, "oversized pending-byte example commands are not queued");
+  commandByteBudgetExampleWorker.destroy();
+  await pendingByteBudgetExampleCommand;
+
+  const commandByteBudgetNativeWorker = new commandByteBudgetWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await commandByteBudgetNativeWorker.ready;
+  const pendingByteBudgetNativeCommand = commandByteBudgetNativeWorker.request("x".repeat(8)).catch(() => undefined);
+  await expectRejected(
+    () => commandByteBudgetNativeWorker.request("x".repeat(8)),
+    "worker_pending_command_bytes_exceeded",
+    "native host workers reject commands beyond the pending byte budget"
+  );
+  check(commandByteBudgetNativeWorker.pending.length === 1, "oversized pending-byte native commands are not queued");
+  commandByteBudgetNativeWorker.destroy();
+  await pendingByteBudgetNativeCommand;
+
   const cappedExampleWorkers = createTestWorkers(hangingNativeCommandWorkerPath, { maxWorkerPendingCommands: 1 });
   const cappedExampleWorker = new cappedExampleWorkers.ExampleInstrumentWorker(hangingExampleCommandWorkerPath);
   const pendingExampleCommand = cappedExampleWorker
@@ -405,13 +437,13 @@ setTimeout(() => {}, 30000);
     workerTerminationGraceMs: TEST_TERMINATION_GRACE_MS
   });
   const stubbornExampleCommandWorker = new stubbornWorkers.ExampleInstrumentWorker(stubbornExampleCommandWorkerPath);
+  await delay(100);
   await expectRejected(
     () => stubbornExampleCommandWorker.render({ frames: 1, sampleRate: 48000, gain: 0.5, tone: 0.5, detune: 0.5 }),
     "worker_command_timeout",
     "example instrument workers time out stubborn commands"
   );
-  await waitForExitSignal(stubbornExampleCommandWorker, "SIGKILL");
-  check(stubbornExampleCommandWorker.process?.signalCode === "SIGKILL", "stubborn example worker escalates to SIGKILL");
+  check((await waitForExitSignal(stubbornExampleCommandWorker)) === "SIGKILL", "stubborn example worker escalates to SIGKILL");
   stubbornExampleCommandWorker.destroy();
 
   const stubbornNativeCommandWorker = new stubbornWorkers.NativeHostWorker(
@@ -424,8 +456,7 @@ setTimeout(() => {}, 30000);
     "worker_command_timeout",
     "native host workers time out stubborn commands"
   );
-  await waitForExitSignal(stubbornNativeCommandWorker, "SIGKILL");
-  check(stubbornNativeCommandWorker.process?.signalCode === "SIGKILL", "stubborn native worker escalates to SIGKILL");
+  check((await waitForExitSignal(stubbornNativeCommandWorker)) === "SIGKILL", "stubborn native worker escalates to SIGKILL");
   stubbornNativeCommandWorker.destroy();
 } finally {
   fs.rmSync(tempDir, { force: true, recursive: true });
@@ -437,6 +468,7 @@ function createTestWorkers(nativeRenderer, options = {}) {
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
     maxWorkerCommandBytes: options.maxWorkerCommandBytes ?? MAX_TEST_COMMAND_BYTES,
+    maxWorkerPendingCommandBytes: options.maxWorkerPendingCommandBytes ?? MAX_TEST_PENDING_COMMAND_BYTES,
     maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
     maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     maxWorkerPendingCommands: options.maxWorkerPendingCommands ?? MAX_TEST_PENDING_COMMANDS,
@@ -509,13 +541,20 @@ async function waitForKilled(worker) {
   }
 }
 
-async function waitForExitSignal(worker, signal) {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (worker.process?.signalCode === signal) {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 10));
+async function waitForExitSignal(worker) {
+  const process = worker.process;
+  if (!process) {
+    return undefined;
   }
+  if (process.signalCode) {
+    return process.signalCode;
+  }
+  const result = await Promise.race([once(process, "exit"), delay(1000).then(() => [undefined, undefined])]);
+  return result[1];
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function check(condition, message) {
