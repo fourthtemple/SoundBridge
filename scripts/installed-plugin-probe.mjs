@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { isKnownFileGrantOperation } from "./daemon-file-grant-operations.mjs";
+import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { createInstalledProbeReporter, installedProbeReportMode } from "./installed-plugin-probe-reporting.mjs";
 
 const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
@@ -20,12 +21,7 @@ const NAME_FILTER = process.env.SOUNDBRIDGE_PROBE_FILTER ?? "";
 const REPORT_MODE = installedProbeReportMode();
 const PROBE_NATIVE_EDITOR_BROKER = flagFromEnv("SOUNDBRIDGE_PROBE_NATIVE_EDITOR_BROKER");
 const NATIVE_EDITOR_BROKER_FIXTURE = fileURLToPath(new URL("./native-editor-broker-fixture.mjs", import.meta.url));
-const FORMATS = new Set(
-  (process.env.SOUNDBRIDGE_PROBE_FORMATS ?? "vst3,au")
-    .split(",")
-    .map((format) => format.trim().toLowerCase())
-    .filter(Boolean)
-);
+const FORMATS = installedProbeFormats();
 
 let requestSeq = 0;
 const FILE_GRANT_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "soundbridge-probe-grants-"));

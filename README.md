@@ -183,10 +183,10 @@ npm run scan:lv2
 A plugin shows up but you want to verify real hosting:
 
 ```sh
-SOUNDBRIDGE_PROBE_FILTER=Cymatics SOUNDBRIDGE_PROBE_FORMATS=vst3,au npm run probe:installed
+SOUNDBRIDGE_PROBE_FILTER=Cymatics npm run probe:installed
 ```
 
-The installed-plugin probe starts a temporary loopback daemon with a random pairing token and explicit origin allowlist, then runs bounded create, parameter, state, latency, tail, MIDI, render, output-bus layout, and destroy checks against matching installed plugins. Set `SOUNDBRIDGE_PROBE_FILTER` to a plugin or vendor substring. Leave it empty only when you deliberately want to load every matching installed plugin.
+The installed-plugin probe starts a temporary loopback daemon with a random pairing token and explicit origin allowlist, then runs bounded create, parameter, state, latency, tail, MIDI, render, output-bus layout, and destroy checks against matching installed VST3, AU, and LV2 plugins. Set `SOUNDBRIDGE_PROBE_FILTER` to a plugin or vendor substring. Leave it empty only when you deliberately want to load every matching installed plugin. Use `SOUNDBRIDGE_PROBE_FORMATS=vst3,au`, `lv2`, or another comma-separated subset only when you intentionally want to narrow the run.
 
 For a compact pass/fail report without the full per-plugin JSON:
 
@@ -197,7 +197,7 @@ SOUNDBRIDGE_PROBE_REPORT=summary SOUNDBRIDGE_PROBE_FILTER=Cymatics npm run probe
 To include the native editor broker open/close path against those installed instances:
 
 ```sh
-SOUNDBRIDGE_PROBE_NATIVE_EDITOR_BROKER=1 SOUNDBRIDGE_PROBE_FILTER=Cymatics SOUNDBRIDGE_PROBE_FORMATS=vst3,au npm run probe:installed
+SOUNDBRIDGE_PROBE_NATIVE_EDITOR_BROKER=1 SOUNDBRIDGE_PROBE_FILTER=Cymatics npm run probe:installed
 ```
 
 That mode uses the repo's safe fixture broker by default. Set `SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH` and `SOUNDBRIDGE_NATIVE_EDITOR_BROKER_ARGS` only when testing a real platform UI broker.

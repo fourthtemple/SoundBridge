@@ -7,6 +7,7 @@ import { exerciseDaemonFileGrantOperation } from "./daemon-file-grant-operations
 import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
+import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
@@ -29,6 +30,26 @@ function protocolError(code, message, details) {
 }
 
 try {
+  check(
+    JSON.stringify([...installedProbeFormats({})]) === JSON.stringify(["vst3", "au", "lv2"]),
+    "installed plugin probe includes VST3, AU, and LV2 by default"
+  );
+  check(
+    JSON.stringify([...installedProbeFormats({ SOUNDBRIDGE_PROBE_FORMATS: " lv2,VST3,lv2 " })]) ===
+      JSON.stringify(["lv2", "vst3"]),
+    "installed plugin probe normalizes explicit format filters"
+  );
+  let badProbeFormatCode;
+  try {
+    installedProbeFormats({ SOUNDBRIDGE_PROBE_FORMATS: "vst2" });
+  } catch (error) {
+    badProbeFormatCode = error.message;
+  }
+  check(
+    badProbeFormatCode?.includes("unsupported format"),
+    "installed plugin probe rejects unsupported format filters"
+  );
+
   check(
     isKnownAudioUnitHostProfile(AUDIO_UNIT_HOST_PROFILES.REALTIME_MULTI_OUTPUT_SPLITTER) &&
       !isKnownAudioUnitHostProfile("ambient-filesystem"),
