@@ -17,6 +17,24 @@ namespace {
 constexpr const char* kLv2UridMapUri = "http://lv2plug.in/ns/ext/urid#map";
 constexpr const char* kLv2UridUnmapUri = "http://lv2plug.in/ns/ext/urid#unmap";
 constexpr const char* kLv2WorkerScheduleUri = "http://lv2plug.in/ns/ext/worker#schedule";
+constexpr std::uint32_t kMaxLv2UiDeclarations = 32;
+
+struct Lv2UiType {
+  const char* token;
+  const char* uri;
+  const char* label;
+};
+
+constexpr Lv2UiType kKnownLv2UiTypes[] = {
+    {"ui:X11UI", "http://lv2plug.in/ns/extensions/ui#X11UI", "x11"},
+    {"ui:CocoaUI", "http://lv2plug.in/ns/extensions/ui#CocoaUI", "cocoa"},
+    {"ui:WindowsUI", "http://lv2plug.in/ns/extensions/ui#WindowsUI", "windows"},
+    {"ui:GtkUI", "http://lv2plug.in/ns/extensions/ui#GtkUI", "gtk"},
+    {"ui:Gtk3UI", "http://lv2plug.in/ns/extensions/ui#Gtk3UI", "gtk3"},
+    {"ui:Qt4UI", "http://lv2plug.in/ns/extensions/ui#Qt4UI", "qt4"},
+    {"ui:Qt5UI", "http://lv2plug.in/ns/extensions/ui#Qt5UI", "qt5"},
+    {"ui:external", "http://lv2plug.in/ns/extensions/ui#external", "external"},
+    {"ui:UI", "http://lv2plug.in/ns/extensions/ui#UI", "generic"}};
 
 std::filesystem::path repositoryExampleLv2Path() {
 #ifdef SOUNDBRIDGE_SOURCE_DIR
@@ -248,6 +266,7 @@ std::map<std::string, std::string> turtlePrefixes(const std::string& text) {
       {"atom", "http://lv2plug.in/ns/ext/atom#"},
       {"midi", "http://lv2plug.in/ns/ext/midi#"},
       {"time", "http://lv2plug.in/ns/ext/time#"},
+      {"ui", "http://lv2plug.in/ns/extensions/ui#"},
   };
 
   std::size_t position = 0;
@@ -396,6 +415,61 @@ std::filesystem::path lv2BinaryPath(const std::filesystem::path& bundlePath, con
   return bundleLocalRegularFile(bundlePath, *binary);
 }
 
+std::uint32_t countOccurrences(const std::string& text, const std::string& needle) {
+  if (needle.empty()) {
+    return 0;
+  }
+  std::uint32_t count = 0;
+  std::size_t position = 0;
+  while ((position = text.find(needle, position)) != std::string::npos && count < kMaxLv2UiDeclarations) {
+    ++count;
+    position += needle.size();
+  }
+  return count;
+}
+
+bool turtleMentionsType(const std::string& text, const Lv2UiType& type) {
+  return text.find(type.token) != std::string::npos ||
+      text.find(std::string("<") + type.uri + ">") != std::string::npos;
+}
+
+std::vector<std::string> lv2UiTypes(const std::string& text) {
+  std::vector<std::string> types;
+  for (const auto& type : kKnownLv2UiTypes) {
+    if (turtleMentionsType(text, type)) {
+      types.push_back(type.label);
+    }
+    if (types.size() >= kMaxLv2UiDeclarations) {
+      break;
+    }
+  }
+  return types;
+}
+
+std::uint32_t lv2UiDeclarationCount(const std::string& text) {
+  std::uint32_t count = 0;
+  for (const auto& type : kKnownLv2UiTypes) {
+    count = std::min<std::uint32_t>(
+        kMaxLv2UiDeclarations,
+        count + countOccurrences(text, type.token) +
+            countOccurrences(text, std::string("<") + type.uri + ">"));
+  }
+  return count;
+}
+
+std::uint32_t lv2UiBinaryCount(const std::filesystem::path& bundlePath, const std::string& text) {
+  std::uint32_t count = 0;
+  for (const auto& binary : angleValuesAfter(text, "ui:binary")) {
+    if (!bundleLocalRegularFile(bundlePath, binary).empty()) {
+      ++count;
+    }
+    if (count >= kMaxLv2UiDeclarations) {
+      break;
+    }
+  }
+  return count;
+}
+
 bool parseNumberAfter(const std::string& text, const std::string& key, double& out) {
   const auto keyPosition = text.find(key);
   if (keyPosition == std::string::npos) {
@@ -524,6 +598,11 @@ void applyLv2TurtleMetadata(
   }
   info.unsupportedRequiredFeatureCount = unsupportedRequiredFeatures;
   info.hasUnsupportedRequiredFeatures = unsupportedRequiredFeatures > 0;
+  info.lv2UiTypes = lv2UiTypes(turtle);
+  info.lv2UiCount = std::max<std::uint32_t>(
+      static_cast<std::uint32_t>(info.lv2UiTypes.size()),
+      lv2UiDeclarationCount(turtle));
+  info.lv2UiBinaryCount = info.lv2UiCount > 0 ? lv2UiBinaryCount(bundlePath, turtle) : 0;
 
   std::uint32_t inputs = 0;
   std::uint32_t outputs = 0;

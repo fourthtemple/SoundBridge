@@ -31,8 +31,11 @@ struct NativePluginInfo {
   std::string componentSubType;
   std::string componentManufacturer;
   std::string lv2Uri;
+  std::vector<std::string> lv2UiTypes;
   std::uint32_t inputs = 0;
   std::uint32_t outputs = 0;
+  std::uint32_t lv2UiCount = 0;
+  std::uint32_t lv2UiBinaryCount = 0;
   bool isExample = false;
   bool isRegistry = false;
   bool hasContents = false;

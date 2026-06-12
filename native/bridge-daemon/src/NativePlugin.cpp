@@ -5,6 +5,21 @@
 
 namespace soundbridge {
 
+namespace {
+
+std::string joinStrings(const std::vector<std::string>& values, const char* delimiter) {
+  std::ostringstream output;
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    if (index > 0) {
+      output << delimiter;
+    }
+    output << values[index];
+  }
+  return output.str();
+}
+
+} // namespace
+
 std::string pluginFormatToString(PluginFormat format) {
   switch (format) {
     case PluginFormat::Vst3:
@@ -91,6 +106,11 @@ std::string nativePluginInfoToJson(const NativePluginInfo& info) {
   writeMetadataString("componentSubType", info.componentSubType);
   writeMetadataString("componentManufacturer", info.componentManufacturer);
   writeMetadataString("lv2Uri", info.lv2Uri);
+  if (info.lv2UiCount > 0) {
+    writeMetadataString("lv2UiTypes", joinStrings(info.lv2UiTypes, ","));
+    writeMetadataString("lv2UiCount", std::to_string(info.lv2UiCount));
+    writeMetadataString("lv2UiBinaryCount", std::to_string(info.lv2UiBinaryCount));
+  }
   output << "},";
   output << "\"diagnostics\":{";
   output << "\"bundlePath\":\"" << jsonEscape(info.bundlePath) << "\",";
@@ -101,7 +121,10 @@ std::string nativePluginInfoToJson(const NativePluginInfo& info) {
   output << "\"hasExecutable\":" << (info.hasExecutable ? "true" : "false") << ",";
   output << "\"hasManifest\":" << (info.hasManifest ? "true" : "false") << ",";
   output << "\"hasUnsupportedRequiredFeatures\":" << (info.hasUnsupportedRequiredFeatures ? "true" : "false") << ",";
-  output << "\"unsupportedRequiredFeatureCount\":" << info.unsupportedRequiredFeatureCount;
+  output << "\"unsupportedRequiredFeatureCount\":" << info.unsupportedRequiredFeatureCount << ",";
+  output << "\"hasLv2Ui\":" << (info.lv2UiCount > 0 ? "true" : "false") << ",";
+  output << "\"lv2UiCount\":" << info.lv2UiCount << ",";
+  output << "\"lv2UiBinaryCount\":" << info.lv2UiBinaryCount;
   if (!info.componentType.empty()) {
     output << ",\"componentType\":\"" << jsonEscape(info.componentType) << "\"";
   }

@@ -330,49 +330,14 @@ public:
   }
 
   std::string programDataToJson(Steinberg::Vst::ProgramListID programListId, Steinberg::int32 programIndex) const {
-    if (!programListData_) {
-      throw std::runtime_error("program_data_not_supported");
-    }
-    if (!programDataSupported(programListId) || !knownProgram(programListId, programIndex)) {
-      throw std::runtime_error("program_data_not_supported");
-    }
-
-    Steinberg::MemoryStream stream;
-    checkResult(
-        programListData_->getProgramData(programListId, programIndex, &stream),
-        "IProgramListData::getProgramData");
-    const auto rawSize = stream.getSize();
-    const auto size = rawSize > 0 ? static_cast<std::size_t>(rawSize) : 0;
-    std::ostringstream output;
-    output << "{\"programData\":{"
-           << "\"format\":\"vst3\""
-           << ",\"programListId\":" << programListId
-           << ",\"programIndex\":" << programIndex
-           << ",\"size\":" << size
-           << ",\"data\":\"" << streamToBase64(stream, kMaxWorkerProgramDataBytes, "program_data_too_large") << "\""
-           << "}}";
-    return output.str();
+    return vst3_worker::programDataToJson(unitInfo_, programListData_, programListId, programIndex);
   }
 
   std::string setProgramData(
       Steinberg::Vst::ProgramListID programListId,
       Steinberg::int32 programIndex,
       const std::string& dataText) {
-    if (!programListData_) {
-      throw std::runtime_error("program_data_not_supported");
-    }
-    if (!programDataSupported(programListId) || !knownProgram(programListId, programIndex)) {
-      throw std::runtime_error("program_data_not_supported");
-    }
-
-    auto data = dataText == "-"
-        ? std::vector<std::uint8_t> {}
-        : base64Decode(dataText, kMaxWorkerProgramDataBytes);
-    Steinberg::MemoryStream stream(data.data(), static_cast<Steinberg::TSize>(data.size()));
-    checkResult(
-        programListData_->setProgramData(programListId, programIndex, &stream),
-        "IProgramListData::setProgramData");
-    return "{\"ok\":true}";
+    return vst3_worker::setProgramData(unitInfo_, programListData_, programListId, programIndex, dataText);
   }
 
   std::string setParameter(Steinberg::Vst::ParamID id, double value, std::uint32_t sampleOffset) {
@@ -639,33 +604,6 @@ private:
     }
     const auto* data = reinterpret_cast<const std::uint8_t*>(stream.getData());
     return base64Encode(data, static_cast<std::size_t>(size));
-  }
-
-  bool programDataSupported(Steinberg::Vst::ProgramListID programListId) const {
-    return programListData_ != nullptr &&
-        programListData_->programDataSupported(programListId) == Steinberg::kResultTrue;
-  }
-
-  bool knownProgram(Steinberg::Vst::ProgramListID programListId, Steinberg::int32 programIndex) const {
-    if (unitInfo_ == nullptr || programIndex < 0) {
-      return false;
-    }
-    const auto listCount = std::clamp<Steinberg::int32>(
-        unitInfo_->getProgramListCount(),
-        0,
-        kMaxWorkerProgramLists);
-    for (Steinberg::int32 listIndex = 0; listIndex < listCount; ++listIndex) {
-      Steinberg::Vst::ProgramListInfo info {};
-      if (unitInfo_->getProgramListInfo(listIndex, info) != Steinberg::kResultOk || info.id != programListId) {
-        continue;
-      }
-      const auto programCount = std::clamp<Steinberg::int32>(
-          info.programCount,
-          0,
-          kMaxWorkerProgramsPerParameter);
-      return programIndex < programCount;
-    }
-    return false;
   }
 
   std::uint32_t defaultBusChannels(Steinberg::Vst::BusDirection direction, Steinberg::int32 index, std::uint32_t fallback) const {

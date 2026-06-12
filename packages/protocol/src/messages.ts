@@ -177,6 +177,9 @@ export interface PluginClassMetadata {
   componentSubType?: string;
   componentManufacturer?: string;
   lv2Uri?: string;
+  lv2UiTypes?: string;
+  lv2UiCount?: string;
+  lv2UiBinaryCount?: string;
 }
 
 export interface PluginBusLayout {

@@ -399,7 +399,10 @@
         "componentType": { "type": "string", "maxLength": 16 },
         "componentSubType": { "type": "string", "maxLength": 16 },
         "componentManufacturer": { "type": "string", "maxLength": 16 },
-        "lv2Uri": { "type": "string", "maxLength": 256 }
+        "lv2Uri": { "type": "string", "maxLength": 256 },
+        "lv2UiTypes": { "type": "string", "maxLength": 256 },
+        "lv2UiCount": { "type": "string", "maxLength": 16 },
+        "lv2UiBinaryCount": { "type": "string", "maxLength": 16 }
       }
     },
     "pluginLayout": {

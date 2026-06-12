@@ -115,6 +115,17 @@ bool makeVst3Event(const PendingMidiEvent& pending, std::uint32_t frames, Steinb
 std::string programListsToJson(
     Steinberg::Vst::IUnitInfo* unitInfo,
     Steinberg::Vst::IProgramListData* programListData);
+std::string programDataToJson(
+    Steinberg::Vst::IUnitInfo* unitInfo,
+    Steinberg::Vst::IProgramListData* programListData,
+    Steinberg::Vst::ProgramListID programListId,
+    Steinberg::int32 programIndex);
+std::string setProgramData(
+    Steinberg::Vst::IUnitInfo* unitInfo,
+    Steinberg::Vst::IProgramListData* programListData,
+    Steinberg::Vst::ProgramListID programListId,
+    Steinberg::int32 programIndex,
+    const std::string& dataText);
 std::string noteExpressionsToJson(Steinberg::Vst::INoteExpressionController* noteExpressionController);
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels);
 std::string renderedAudioToJson(const RenderedAudio& rendered);

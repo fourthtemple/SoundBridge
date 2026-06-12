@@ -123,6 +123,13 @@ assert(
   lv2Scan.plugins.some((plugin) => plugin.pluginId === "lv2:soundbridge-unsupported-required.lv2" && plugin.hostable === false),
   "scanPlugins preserves unsupported-required LV2 bundles as discovery-only"
 );
+const lv2GainMetadata = lv2Scan.plugins.find((plugin) => plugin.pluginId === "lv2:soundbridge-example-gain.lv2")?.metadata;
+assert(
+  lv2GainMetadata?.lv2UiTypes === "x11" &&
+    lv2GainMetadata.lv2UiCount === "1" &&
+    lv2GainMetadata.lv2UiBinaryCount === "0",
+  "scanPlugins exposes bounded path-free LV2 UI declaration metadata"
+);
 
 await request(
   socket,

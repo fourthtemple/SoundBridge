@@ -183,7 +183,7 @@ Returns plugin metadata:
 
 `format` is required and is one of `vst3`, `au`, `lv2`, `mock`, or `unknown`. `pluginId` must be stable within that format namespace; native daemons should prefix or otherwise scope ids so a VST3 and AU from the same vendor do not collide.
 
-`metadata` is optional bounded public class metadata for host caching and plugin browsers. It must not contain local filesystem paths. Current fields include `stableId`, `bundleIdentifier`, `version`, AudioComponent `componentType` / `componentSubType` / `componentManufacturer`, and `lv2Uri`. Installed VST3 plugin listings may also use a short-lived brokered factory probe to refine public `name`, `vendor`, `category`, and `kind` values from SDK class metadata without exposing the bundle path to the browser.
+`metadata` is optional bounded public class metadata for host caching and plugin browsers. It must not contain local filesystem paths. Current fields include `stableId`, `bundleIdentifier`, `version`, AudioComponent `componentType` / `componentSubType` / `componentManufacturer`, `lv2Uri`, and path-free LV2 UI declaration fields (`lv2UiTypes`, `lv2UiCount`, `lv2UiBinaryCount`). Installed VST3 plugin listings may also use a short-lived brokered factory probe to refine public `name`, `vendor`, `category`, and `kind` values from SDK class metadata without exposing the bundle path to the browser.
 
 `presets` is optional bounded host-display metadata. Preset ids are capped at 64 bytes, names at 160 bytes, and the daemon exposes at most 256 presets per plugin. These presets are parameter snapshots; arbitrary preset files, sample locations, and licensing data require a separate brokered file-access path.
 

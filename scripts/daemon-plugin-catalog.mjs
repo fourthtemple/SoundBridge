@@ -674,6 +674,9 @@ export function createPluginCatalogSupport({
     add("componentSubType", 16);
     add("componentManufacturer", 16);
     add("lv2Uri");
+    add("lv2UiTypes");
+    add("lv2UiCount", 16);
+    add("lv2UiBinaryCount", 16);
 
     if (!metadata.stableId) {
       if (metadata.componentManufacturer && metadata.componentType && metadata.componentSubType) {
