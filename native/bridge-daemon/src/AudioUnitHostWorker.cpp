@@ -10,18 +10,16 @@
 #endif
 
 #include <algorithm>
-#include <cerrno>
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <limits>
 #include <memory>
-#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace soundbridge {
@@ -31,163 +29,6 @@ namespace {
 #ifdef SOUNDBRIDGE_MACOS
 
 using namespace audio_unit_worker;
-
-// Hard limits applied to every value crossing the worker's stdin/argv boundary.
-// The parent daemon enforces its own caps, but the worker must not trust it.
-constexpr std::uint32_t kMaxWorkerFrames = 8192;
-constexpr std::uint32_t kMaxWorkerChannels = 32;
-constexpr std::size_t kMaxWorkerMidiEvents = 4096;
-constexpr std::size_t kMaxWorkerParameters = 1024;
-constexpr std::size_t kMaxWorkerParameterStringBytes = 160;
-constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
-constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
-constexpr std::uint32_t kMaxWorkerTailSamples = 1'048'576;
-constexpr std::size_t kMaxWorkerLineBytes = 16 * 1024 * 1024;
-constexpr double kMinWorkerSampleRate = 8000.0;
-constexpr double kMaxWorkerSampleRate = 384000.0;
-constexpr double kMaxWorkerTransportTempoBpm = 960.0;
-constexpr double kMaxWorkerTransportPositionMusic = 1'000'000'000.0;
-constexpr long long kMaxWorkerTransportSamplePosition = 9'007'199'254'740'991LL;
-// Some AU effects return this for MusicDeviceMIDIEvent instead of a named AudioUnit error.
-constexpr OSStatus kAudioUnitUnimplementedStatus = -4;
-
-float sanitizeSample(const std::string& text) {
-  char* end = nullptr;
-  const double value = std::strtod(text.c_str(), &end);
-  if (end == text.c_str() || !std::isfinite(value)) {
-    return 0.0F;
-  }
-  return static_cast<float>(std::clamp(value, -16.0, 16.0));
-}
-
-bool parseUint32Arg(const char* text, std::uint32_t minValue, std::uint32_t maxValue, std::uint32_t& out) {
-  if (text == nullptr || *text == '\0') {
-    return false;
-  }
-  char* end = nullptr;
-  const unsigned long value = std::strtoul(text, &end, 10);
-  if (end == text || *end != '\0' || value < minValue || value > maxValue) {
-    return false;
-  }
-  out = static_cast<std::uint32_t>(value);
-  return true;
-}
-
-bool parseDoubleArg(const char* text, double minValue, double maxValue, double& out) {
-  if (text == nullptr || *text == '\0') {
-    return false;
-  }
-  char* end = nullptr;
-  const double value = std::strtod(text, &end);
-  if (end == text || *end != '\0' || !std::isfinite(value) ||
-      value < minValue || value > maxValue) {
-    return false;
-  }
-  out = value;
-  return true;
-}
-
-bool parseSampleRateArg(const char* text, double& out) {
-  if (text == nullptr || *text == '\0') {
-    return false;
-  }
-  char* end = nullptr;
-  const double value = std::strtod(text, &end);
-  if (end == text || *end != '\0' || !std::isfinite(value) ||
-      value < kMinWorkerSampleRate || value > kMaxWorkerSampleRate) {
-    return false;
-  }
-  out = value;
-  return true;
-}
-
-std::string cappedString(std::string value, std::size_t maxBytes = kMaxWorkerParameterStringBytes) {
-  if (value.size() > maxBytes) {
-    value.resize(maxBytes);
-  }
-  return value;
-}
-
-std::string cfStringToUtf8(CFStringRef value) {
-  if (value == nullptr) {
-    return "";
-  }
-  char buffer[512] {};
-  if (CFStringGetCString(value, buffer, sizeof(buffer), kCFStringEncodingUTF8)) {
-    return cappedString(buffer);
-  }
-  const auto length = CFStringGetLength(value);
-  const auto maxSize = CFStringGetMaximumSizeForEncoding(length, kCFStringEncodingUTF8) + 1;
-  std::string output(static_cast<std::size_t>(std::max<CFIndex>(0, maxSize)), '\0');
-  if (CFStringGetCString(value, output.data(), maxSize, kCFStringEncodingUTF8)) {
-    output.resize(std::strlen(output.c_str()));
-    return cappedString(output);
-  }
-  return "";
-}
-
-OSType fourCharCodeFromString(const std::string& value) {
-  std::string padded = value;
-  std::replace(padded.begin(), padded.end(), '_', ' ');
-  while (padded.size() < 4) {
-    padded.push_back(' ');
-  }
-  return (static_cast<OSType>(static_cast<unsigned char>(padded[0])) << 24) |
-      (static_cast<OSType>(static_cast<unsigned char>(padded[1])) << 16) |
-      (static_cast<OSType>(static_cast<unsigned char>(padded[2])) << 8) |
-      static_cast<OSType>(static_cast<unsigned char>(padded[3]));
-}
-
-std::string osStatusText(OSStatus status) {
-  if (status == noErr) {
-    return "noErr";
-  }
-
-  std::string code(4, '\0');
-  code[0] = static_cast<char>((status >> 24) & 0xFF);
-  code[1] = static_cast<char>((status >> 16) & 0xFF);
-  code[2] = static_cast<char>((status >> 8) & 0xFF);
-  code[3] = static_cast<char>(status & 0xFF);
-  const bool printable = std::all_of(code.begin(), code.end(), [](unsigned char character) {
-    return character >= 32 && character <= 126;
-  });
-
-  std::ostringstream output;
-  output << status;
-  if (printable) {
-    output << " ('" << code << "')";
-  }
-  return output.str();
-}
-
-void checkStatus(OSStatus status, const std::string& operation) {
-  if (status != noErr) {
-    throw std::runtime_error(operation + " failed with OSStatus " + osStatusText(status));
-  }
-}
-
-bool isUnsupportedMidiStatus(OSStatus status) {
-  return status == kAudioUnitErr_InvalidProperty ||
-      status == kAudioUnitErr_InvalidParameter ||
-      status == kAudioUnitErr_InvalidElement ||
-      status == kAudioUnitErr_InvalidPropertyValue ||
-      status == kAudioUnitErr_InvalidParameterValue ||
-      status == kAudioUnitUnimplementedStatus;
-}
-
-AudioStreamBasicDescription streamDescription(double sampleRate, std::uint32_t channels) {
-  AudioStreamBasicDescription description {};
-  description.mSampleRate = sampleRate;
-  description.mFormatID = kAudioFormatLinearPCM;
-  description.mFormatFlags =
-      kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved;
-  description.mBytesPerPacket = sizeof(Float32);
-  description.mFramesPerPacket = 1;
-  description.mBytesPerFrame = sizeof(Float32);
-  description.mChannelsPerFrame = channels;
-  description.mBitsPerChannel = 8 * sizeof(Float32);
-  return description;
-}
 
 class HostedAudioUnit {
 public:
