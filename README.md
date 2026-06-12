@@ -235,6 +235,7 @@ npm run check
 
 - [Protocol](docs/protocol.md)
 - [Security](docs/security.md)
+- [Native editor broker](docs/native-editor-broker.md)
 - [Why browser plugin bridges need an open standard](docs/open-standard.md)
 - [Architecture](docs/architecture.md)
 - [Web DAW integration](docs/daw-integration.md)

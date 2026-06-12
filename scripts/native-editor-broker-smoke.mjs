@@ -55,6 +55,40 @@ const configured = createConfiguredNativeEditorBroker({
 });
 assert(configured?.available === true, "configured broker is available");
 assert(createConfiguredNativeEditorBroker({ env: {} }) === undefined, "missing broker configuration keeps native editors disabled");
+assertThrows(
+  () => createConfiguredNativeEditorBroker({ env: { SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: "relative-broker" } }),
+  "relative broker paths are rejected"
+);
+assertThrows(
+  () =>
+    createConfiguredNativeEditorBroker({
+      env: {
+        SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: process.execPath,
+        SOUNDBRIDGE_NATIVE_EDITOR_BROKER_ARGS: "{"
+      }
+    }),
+  "malformed broker args are rejected"
+);
+assertThrows(
+  () =>
+    createConfiguredNativeEditorBroker({
+      env: {
+        SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: process.execPath,
+        SOUNDBRIDGE_NATIVE_EDITOR_BROKER_ARGS: JSON.stringify({ arg: fixturePath })
+      }
+    }),
+  "non-array broker args are rejected"
+);
+assertThrows(
+  () =>
+    createConfiguredNativeEditorBroker({
+      env: {
+        SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: process.execPath,
+        SOUNDBRIDGE_NATIVE_EDITOR_BROKER_ARGS: JSON.stringify(["x".repeat(4097)])
+      }
+    }),
+  "oversized broker args are rejected"
+);
 
 const editors = new Map();
 const session = {
@@ -141,4 +175,14 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertThrows(callback, message) {
+  let threw = false;
+  try {
+    callback();
+  } catch {
+    threw = true;
+  }
+  assert(threw, message);
 }
