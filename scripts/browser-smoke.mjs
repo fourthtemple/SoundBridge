@@ -70,8 +70,10 @@ try {
 
     await page.locator("#pluginSelect").selectOption(option.value);
     await assertFileGrantControls(page, option, `${format} example instrument`);
+    await assertProgramDataControls(page, { expectInstanceTargets: false, label: `${format} before instance` });
     await page.getByRole("button", { name: "Create Instance" }).click();
     await page.waitForFunction(() => document.querySelector("#engineStatus")?.textContent === "Engine running");
+    await assertProgramDataControls(page, { expectInstanceTargets: format === "vst3", label: `${format} instance` });
     await assertPresetApply(page, format);
     await assertParameterStateRoundTrip(page, format);
 
@@ -117,6 +119,27 @@ async function assertFileGrantControls(page, option, label) {
     const disabled = await page.locator(selector).evaluate((button) => button.disabled);
     assert(disabled === !operations.has(operation), `${label} ${operation} grant action is gated by plugin metadata.`);
   }
+}
+
+async function assertProgramDataControls(page, { expectInstanceTargets, label }) {
+  const optionCount = await page.locator("#programDataSelect option").count();
+  const selectDisabled = await page.locator("#programDataSelect").evaluate((select) => select.disabled);
+  const exportDisabled = await page.locator("#exportProgramDataButton").evaluate((button) => button.disabled);
+  const restoreDisabled = await page.locator("#restoreProgramDataButton").evaluate((button) => button.disabled);
+  const textDisabled = await page.locator("#programDataText").evaluate((textarea) => textarea.disabled);
+
+  if (expectInstanceTargets && optionCount > 0) {
+    assert(selectDisabled === false, `${label} exposes selectable VST3 program-data targets.`);
+    assert(exportDisabled === false, `${label} can export daemon-listed VST3 program data.`);
+    assert(restoreDisabled === true, `${label} keeps VST3 program restore disabled until an envelope exists.`);
+    assert(textDisabled === false, `${label} keeps the VST3 program envelope field available.`);
+    return;
+  }
+
+  assert(selectDisabled === true, `${label} keeps VST3 program target selection disabled.`);
+  assert(exportDisabled === true, `${label} keeps VST3 program export disabled.`);
+  assert(restoreDisabled === true, `${label} keeps VST3 program restore disabled.`);
+  assert(textDisabled === true, `${label} keeps the VST3 program envelope field disabled.`);
 }
 
 async function assertParameterStateRoundTrip(page, format) {

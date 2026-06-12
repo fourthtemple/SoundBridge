@@ -125,7 +125,7 @@ With `npm run bridge` running in one terminal:
 npm run demo
 ```
 
-Open <http://127.0.0.1:5173>. The demo can select installed VST3/AU/LV2 plugins that match the current host adapters, create an instance, process microphone or file input through the local bridge, apply daemon-listed presets, and run brokered state/preset file grants when the selected plugin advertises them.
+Open <http://127.0.0.1:5173>. The demo can select installed VST3/AU/LV2 plugins that match the current host adapters, create an instance, process microphone or file input through the local bridge, apply daemon-listed presets, export/restore bounded VST3 program data when a plugin advertises it, and run brokered state/preset file grants when the selected plugin advertises them.
 
 ## What Works Now
 

@@ -3,6 +3,8 @@ import {
   SoundBridgeClient,
   renderParameterControls
 } from "/packages/web-client/dist/soundbridge-client.js";
+import { createFileGrantActions } from "./file-grant-actions.js";
+import { createVst3ProgramDataControls } from "./vst3-program-data-controls.js";
 
 const elements = {
   daemonUrl: document.querySelector("#daemonUrl"),
@@ -22,6 +24,10 @@ const elements = {
   grantRestoreStateButton: document.querySelector("#grantRestoreStateButton"),
   grantLoadPresetButton: document.querySelector("#grantLoadPresetButton"),
   grantSaveStateButton: document.querySelector("#grantSaveStateButton"),
+  programDataSelect: document.querySelector("#programDataSelect"),
+  exportProgramDataButton: document.querySelector("#exportProgramDataButton"),
+  restoreProgramDataButton: document.querySelector("#restoreProgramDataButton"),
+  programDataText: document.querySelector("#programDataText"),
   latencyButton: document.querySelector("#latencyButton"),
   parameterControls: document.querySelector("#parameterControls"),
   stateText: document.querySelector("#stateText"),
@@ -47,11 +53,51 @@ let currentStream;
 let animationFrame = 0;
 let selectedInstanceId;
 let activePluginId;
+let activeInstancePlugin;
 let bridgeStartupPromise;
 let controlsEnabled = false;
 const pluginMetadataById = new Map();
 const activeNotes = new Set();
 const keyToNote = new Map();
+const fileGrantActions = createFileGrantActions({
+  client: () => {
+    if (!client) {
+      throw new Error("Connect to the daemon first.");
+    }
+    return client;
+  },
+  ensureInstance: () => ensureBridgeInstance(),
+  getInstanceId: () => selectedInstanceId,
+  refreshParameters,
+  log,
+  logError
+});
+const vst3ProgramDataControls = createVst3ProgramDataControls({
+  elements: {
+    select: elements.programDataSelect,
+    exportButton: elements.exportProgramDataButton,
+    restoreButton: elements.restoreProgramDataButton,
+    text: elements.programDataText
+  },
+  client: () => {
+    if (!client) {
+      throw new Error("Connect to the daemon first.");
+    }
+    return client;
+  },
+  getInstanceId: () => selectedInstanceId,
+  getPlugin: () => activeInstancePlugin,
+  controlsEnabled: () => controlsEnabled,
+  refreshParameters: async (parameters) => {
+    if (Array.isArray(parameters)) {
+      renderCurrentParameterControls(parameters);
+      return;
+    }
+    await refreshParameters();
+  },
+  log,
+  logError
+});
 
 setControlsEnabled(false);
 drawIdleScope();
@@ -74,9 +120,12 @@ elements.createInstanceButton.addEventListener("click", () => {
 });
 
 elements.pluginSelect.addEventListener("change", () => {
+  activeInstancePlugin = undefined;
+  vst3ProgramDataControls.clearEnvelope();
   updatePluginStatus();
   updatePresetControls();
   updateFileGrantControls();
+  vst3ProgramDataControls.update();
   if (bridge) {
     void ensureBridgeInstance(true).catch(logError);
   }
@@ -110,15 +159,21 @@ elements.restoreStateButton.addEventListener("click", () => {
 });
 
 elements.grantRestoreStateButton.addEventListener("click", () => {
-  void restoreStateFromGrant();
+  if (hasFileGrantOperation("restoreState")) {
+    void fileGrantActions.restoreState();
+  }
 });
 
 elements.grantLoadPresetButton.addEventListener("click", () => {
-  void loadPresetFromGrant();
+  if (hasFileGrantOperation("loadPreset")) {
+    void fileGrantActions.loadPreset();
+  }
 });
 
 elements.grantSaveStateButton.addEventListener("click", () => {
-  void saveStateToGrant();
+  if (hasFileGrantOperation("saveStateDirectory")) {
+    void fileGrantActions.saveStateDirectory();
+  }
 });
 
 elements.latencyButton.addEventListener("click", () => {
@@ -224,6 +279,8 @@ async function doEnsureBridgeInstance(recreate = false) {
     bridge = undefined;
     selectedInstanceId = undefined;
     activePluginId = undefined;
+    activeInstancePlugin = undefined;
+    vst3ProgramDataControls.clearEnvelope();
   }
 
   const AudioContextConstructor = window.AudioContext ?? window.webkitAudioContext;
@@ -256,6 +313,7 @@ async function doEnsureBridgeInstance(recreate = false) {
 
   selectedInstanceId = instanceId;
   activePluginId = pluginId;
+  activeInstancePlugin = created.plugin ?? selectedPluginMetadata();
   elements.renderEngine.textContent = "Waiting";
   bridge = await SoundBridgeAudioNode.create(audioContext, client, {
     instanceId,
@@ -284,15 +342,11 @@ async function doEnsureBridgeInstance(recreate = false) {
   });
 
   const { parameters } = await client.getParameters(instanceId);
-  renderParameterControls({
-    container: elements.parameterControls,
-    client,
-    instanceId,
-    parameters
-  });
+  renderCurrentParameterControls(parameters);
 
   setStatus(elements.engineStatus, "Engine running", "ready");
   updateFileGrantControls();
+  vst3ProgramDataControls.update();
   await refreshLatency();
   startScope();
   if (pluginKind === "instrument") {
@@ -390,96 +444,10 @@ async function restoreState() {
   }
   try {
     const { parameters } = await client.setState(selectedInstanceId, elements.stateText.value.trim());
-    renderParameterControls({
-      container: elements.parameterControls,
-      client,
-      instanceId: selectedInstanceId,
-      parameters
-    });
+    renderCurrentParameterControls(parameters);
     log("Plugin state restored.");
   } catch (error) {
     logError(error);
-  }
-}
-
-async function restoreStateFromGrant() {
-  if (!client || !hasFileGrantOperation("restoreState")) {
-    return;
-  }
-  try {
-    const result = await useAttachedFileGrant({
-      access: "read",
-      kind: "file",
-      operation: "restoreState",
-      purpose: "state"
-    });
-    const { parameters } = await client.getParameters(selectedInstanceId);
-    renderParameterControls({
-      container: elements.parameterControls,
-      client,
-      instanceId: selectedInstanceId,
-      parameters
-    });
-    log(`State grant restored: ${formatFileGrantResult(result)}`);
-  } catch (error) {
-    logError(error);
-  }
-}
-
-async function loadPresetFromGrant() {
-  if (!client || !hasFileGrantOperation("loadPreset")) {
-    return;
-  }
-  try {
-    const result = await useAttachedFileGrant({
-      access: "read",
-      kind: "file",
-      operation: "loadPreset",
-      purpose: "preset"
-    });
-    const { parameters } = await client.getParameters(selectedInstanceId);
-    renderParameterControls({
-      container: elements.parameterControls,
-      client,
-      instanceId: selectedInstanceId,
-      parameters
-    });
-    log(`Preset grant loaded: ${formatFileGrantResult(result)}`);
-  } catch (error) {
-    logError(error);
-  }
-}
-
-async function saveStateToGrant() {
-  if (!client || !hasFileGrantOperation("saveStateDirectory")) {
-    return;
-  }
-  try {
-    const result = await useAttachedFileGrant({
-      access: "readWrite",
-      kind: "directory",
-      operation: "saveStateDirectory",
-      purpose: "state"
-    });
-    log(`State grant saved: ${formatFileGrantResult(result)}`);
-  } catch (error) {
-    logError(error);
-  }
-}
-
-async function useAttachedFileGrant({ access, kind, operation, purpose }) {
-  await ensureBridgeInstance();
-  const grant = await client.createFileGrant({ access, kind, purpose });
-  let attached = false;
-  try {
-    await client.attachFileGrant(selectedInstanceId, grant.grantId, { access, kind, purpose });
-    attached = true;
-    return await client.useFileGrant(selectedInstanceId, grant.grantId, { operation });
-  } finally {
-    if (attached) {
-      await client.detachFileGrant(selectedInstanceId, grant.grantId).catch(() => undefined);
-    }
-    await client.revokeFileGrant(grant.grantId).catch(() => undefined);
   }
 }
 
@@ -578,6 +546,7 @@ function renderPluginOptions(plugins) {
   updatePluginStatus();
   updatePresetControls();
   updateFileGrantControls();
+  vst3ProgramDataControls.update();
 }
 
 function updatePresetControls() {
@@ -662,16 +631,29 @@ async function applySelectedPreset() {
     await ensureBridgeInstance();
     const applied = await client.setPreset(selectedInstanceId, preset.id);
     const { parameters } = await client.getParameters(selectedInstanceId);
-    renderParameterControls({
-      container: elements.parameterControls,
-      client,
-      instanceId: selectedInstanceId,
-      parameters
-    });
+    renderCurrentParameterControls(parameters);
     log(`Preset applied: ${preset.name} (${applied.parameterCount} parameter${applied.parameterCount === 1 ? "" : "s"})`);
   } catch (error) {
     logError(error);
   }
+}
+
+async function refreshParameters() {
+  if (!client || !selectedInstanceId) {
+    return;
+  }
+
+  const { parameters } = await client.getParameters(selectedInstanceId);
+  renderCurrentParameterControls(parameters);
+}
+
+function renderCurrentParameterControls(parameters) {
+  renderParameterControls({
+    container: elements.parameterControls,
+    client,
+    instanceId: selectedInstanceId,
+    parameters
+  });
 }
 
 function formatPluginFormat(format) {
@@ -740,6 +722,10 @@ function setControlsEnabled(enabled) {
     elements.grantRestoreStateButton,
     elements.grantLoadPresetButton,
     elements.grantSaveStateButton,
+    elements.programDataSelect,
+    elements.exportProgramDataButton,
+    elements.restoreProgramDataButton,
+    elements.programDataText,
     elements.latencyButton,
     ...elements.keyboard.querySelectorAll("button")
   ]) {
@@ -747,6 +733,7 @@ function setControlsEnabled(enabled) {
   }
   updatePresetControls();
   updateFileGrantControls();
+  vst3ProgramDataControls.update();
 }
 
 async function noteOn(note, button) {
@@ -839,11 +826,6 @@ function logError(error) {
   const message = error?.message ?? String(error);
   elements.log.value = message;
   console.error(error);
-}
-
-function formatFileGrantResult(result) {
-  const status = result.workerStatus ? ` (${result.workerStatus})` : "";
-  return `${result.grant?.displayName ?? result.operation}${status}`;
 }
 
 function withTimeout(promise, timeoutMs, message) {
