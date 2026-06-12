@@ -326,6 +326,18 @@ export function createSecurityFileGrantCases({
       );
       check(missingOperationUse.code === "invalid_argument", "useFileGrant requires an explicit operation");
 
+      const unconstrainedOtherUse = await request(
+        owner,
+        "useFileGrant",
+        { instanceId: instance.instanceId, grantId: grant.grantId, operation: "other" },
+        true,
+        ownerPair.sessionToken
+      ).then(
+        () => ({ ok: true }),
+        (error) => ({ code: error.code })
+      );
+      check(unconstrainedOtherUse.code === "invalid_argument", "useFileGrant rejects unconstrained other operations before worker dispatch");
+
       const purposeMismatch = await request(
         owner,
         "attachFileGrant",
