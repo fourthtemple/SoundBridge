@@ -1,3 +1,5 @@
+import { applyNativeParameterSnapshot } from "./daemon-parameter-snapshots.mjs";
+
 export function createDaemonVst3ProgramData({
   getInstance,
   limits,
@@ -11,6 +13,7 @@ export function createDaemonVst3ProgramData({
   } = normalizers;
   const {
     maxPluginProgramDataEnvelopeBytes,
+    maxPluginParameters = 1024,
     maxPluginPrograms
   } = limits;
 
@@ -46,17 +49,14 @@ export function createDaemonVst3ProgramData({
     assertListedProgramData(instance, programData.programListId, programData.programIndex);
 
     await instance.worker.setVst3ProgramData(programData.programListId, programData.programIndex, programData.data);
-    const nativeParameters = await instance.worker.getParameters();
-    if (nativeParameters.length > 0) {
-      instance.parameters = nativeParameters;
-      instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
-    }
+    applyNativeParameterSnapshot(instance, await instance.worker.getParameters(), maxPluginParameters);
     return {
       restored: true,
       instanceId,
       format: "vst3",
       programListId: programData.programListId,
       programIndex: programData.programIndex,
+      ...(instance.parameterMetadataAtLimit ? { parameterMetadataAtLimit: true } : {}),
       parameters: instance.parameters.map((parameter) => ({ ...parameter }))
     };
   }

@@ -11,6 +11,7 @@ import { createDaemonLv2BlockProfileSupport } from "./daemon-lv2-block-profiles.
 import { createMockInstrumentSupport } from "./daemon-mock-instruments.mjs";
 import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { createDaemonPairing } from "./daemon-pairing.mjs";
+import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createPluginCatalogSupport, loadNativeHostStatus, resolveNativeRenderer } from "./daemon-plugin-catalog.mjs";
 import { createDaemonRuntimePayloads } from "./daemon-runtime-payloads.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
@@ -338,6 +339,7 @@ const {
   getInstance,
   limits: {
     maxPluginProgramDataEnvelopeBytes: MAX_PLUGIN_PROGRAM_DATA_ENVELOPE_BYTES,
+    maxPluginParameters: MAX_PLUGIN_PARAMETERS,
     maxPluginPrograms: MAX_PLUGIN_PROGRAMS
   },
   normalizers,
@@ -452,9 +454,7 @@ async function dispatchCommand(envelope, context) {
       return destroyInstance(payload.instanceId, session);
 
     case "getParameters":
-      return {
-        parameters: getInstance(payload.instanceId, session).parameters.map((parameter) => ({ ...parameter }))
-      };
+      return parameterSnapshotResponse(getInstance(payload.instanceId, session), MAX_PLUGIN_PARAMETERS);
 
     case "setParameter":
       return setParameter(payload.instanceId, payload.parameterId, payload.normalizedValue, session);
@@ -630,11 +630,7 @@ async function createInstance(payload, session) {
     instance.renderEngine = instance.worker.renderEngine;
     try {
       await instance.worker.ready;
-      const nativeParameters = await instance.worker.getParameters();
-      if (nativeParameters.length > 0) {
-        instance.parameters = nativeParameters;
-        instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
-      }
+      applyNativeParameterSnapshot(instance, await instance.worker.getParameters(), MAX_PLUGIN_PARAMETERS);
       if (plugin.nativeHost.format === "vst3") {
         instance.vst3ProgramLists = await instance.worker.getVst3ProgramLists();
         instance.vst3NoteExpressions = await instance.worker.getVst3NoteExpressions();
@@ -926,11 +922,7 @@ async function setState(instanceId, state, session) {
   const nativeState = normalizeNativeState(parsed.nativeState, instance.format);
   if (nativeState && instance.worker && typeof instance.worker.setState === "function") {
     await instance.worker.setState(nativeState);
-    const nativeParameters = await instance.worker.getParameters();
-    if (nativeParameters.length > 0) {
-      instance.parameters = nativeParameters;
-      instance.nativeParameterIds = new Set(nativeParameters.map((parameter) => parameter.id));
-    }
+      applyNativeParameterSnapshot(instance, await instance.worker.getParameters(), MAX_PLUGIN_PARAMETERS);
   } else {
     for (const [parameterIndex, parameter] of instance.parameters.entries()) {
       if (parsed.parameters && Object.hasOwn(parsed.parameters, parameter.id)) {
@@ -944,6 +936,7 @@ async function setState(instanceId, state, session) {
   }
   return {
     restored: true,
+    ...(instance.parameterMetadataAtLimit ? { parameterMetadataAtLimit: true } : {}),
     parameters: instance.parameters.map((parameter) => ({ ...parameter }))
   };
 }

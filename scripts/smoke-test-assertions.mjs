@@ -110,6 +110,9 @@ export function assertPublicPluginMetadata(plugin, message) {
       `${message}: fileGrantOperations are bounded known operations`
     );
   }
+  if (plugin.parameterMetadataAtLimit != null) {
+    assert(plugin.parameterMetadataAtLimit === true, `${message}: parameterMetadataAtLimit is an explicit true flag`);
+  }
   const parameters = Array.isArray(plugin.parameters) ? plugin.parameters : [];
   for (const [index, parameter] of parameters.entries()) {
     if (parameter.displayValue != null) {

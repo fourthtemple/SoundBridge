@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { exerciseDaemonFileGrantOperation } from "./daemon-file-grant-operations-smoke.mjs";
 import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
+import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
@@ -27,6 +28,20 @@ function protocolError(code, message, details) {
 }
 
 try {
+  const cappedParameterResponse = parameterSnapshotResponse({ parameters: [{ id: "a" }, { id: "b" }] }, 2);
+  check(
+    cappedParameterResponse.parameterMetadataAtLimit === true &&
+      cappedParameterResponse.parameters.length === 2,
+    "daemon parameter snapshots report metadata at the configured cap"
+  );
+  const refreshedInstance = { parameters: [], nativeParameterIds: new Set() };
+  applyNativeParameterSnapshot(refreshedInstance, [{ id: "native-param" }], 1);
+  check(
+    refreshedInstance.parameterMetadataAtLimit === true &&
+      refreshedInstance.nativeParameterIds.has("native-param"),
+    "daemon parameter snapshots refresh native ids and cap status"
+  );
+
   const unitNormalizers = createDaemonNormalizers({ maxPluginParameterTextBytes: 8 });
   const unitParameter = unitNormalizers.normalizeWorkerParameter({
     id: "unit-param",

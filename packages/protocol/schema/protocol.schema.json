@@ -429,6 +429,7 @@
           "maxItems": 1024,
           "items": { "$ref": "#/$defs/pluginParameter" }
         },
+        "parameterMetadataAtLimit": { "type": "boolean" },
         "editorKinds": {
           "type": "array",
           "maxItems": 2,

@@ -663,6 +663,7 @@ export function createPluginCatalogSupport({
       outputs: plugin.outputs,
       metadata: clonePluginClassMetadata(plugin.metadata),
       parameters: plugin.parameters.map((parameter) => ({ ...parameter })),
+      parameterMetadataAtLimit: plugin.parameterMetadataAtLimit === true || plugin.parameters.length >= maxPluginParameters || undefined,
       presets: (plugin.presets ?? [])
         .slice(0, maxPluginPresets)
         .map((preset, index) => normalizePresetSnapshot(preset, index))

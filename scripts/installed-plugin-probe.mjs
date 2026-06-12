@@ -125,6 +125,7 @@ async function probePlugin(socket, session, plugin) {
     result.renderEngine = created.renderEngine;
     result.layout = boundedLayoutSummary(created.layout);
     result.parameterCount = Array.isArray(created.plugin?.parameters) ? created.plugin.parameters.length : 0;
+    result.parameterMetadataAtLimit = created.plugin?.parameterMetadataAtLimit === true || undefined;
 
     if (PROBE_NATIVE_EDITOR_BROKER && isNativePluginFormat(plugin.format)) {
       await probeNativeEditorBroker(socket, session, plugin, instanceId, result);
@@ -134,6 +135,7 @@ async function probePlugin(socket, session, plugin) {
       request(socket, "getParameters", { instanceId }, true, session)
     );
     result.parameterCount = Array.isArray(parameters.parameters) ? parameters.parameters.length : result.parameterCount;
+    result.parameterMetadataAtLimit = parameters.parameterMetadataAtLimit === true || result.parameterMetadataAtLimit || undefined;
     result.displayValueCount = assertParameterDisplayMetadata(plugin, parameters.parameters);
 
     const writableParameter = parameters.parameters?.find((parameter) => parameter.automatable && !parameter.readOnly);

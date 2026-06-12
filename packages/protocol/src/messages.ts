@@ -249,6 +249,7 @@ export interface PluginMetadata {
   outputs: number;
   metadata?: PluginClassMetadata;
   parameters: PluginParameter[];
+  parameterMetadataAtLimit?: boolean;
   editorKinds?: PluginEditorKind[];
   fileGrantOperations?: FileGrantOperation[];
   vst3ProgramLists?: PluginProgramList[];
@@ -295,6 +296,15 @@ export interface CreateInstanceResponse {
   latencySamples: number;
   tailSamples?: number;
   infiniteTail?: boolean;
+}
+
+export interface GetParametersRequest {
+  instanceId: string;
+}
+
+export interface GetParametersResponse {
+  parameters: PluginParameter[];
+  parameterMetadataAtLimit?: boolean;
 }
 
 export type PluginEditorKind = "generic-parameters" | "native-window";
@@ -488,6 +498,7 @@ export interface SetStateRequest {
 export interface SetStateResponse {
   restored: boolean;
   parameters: PluginParameter[];
+  parameterMetadataAtLimit?: boolean;
 }
 
 export interface SetParameterRequest {
@@ -545,6 +556,7 @@ export interface SetVst3ProgramDataResponse {
   format: "vst3";
   programListId: number;
   programIndex: number;
+  parameterMetadataAtLimit?: boolean;
   parameters: PluginParameter[];
 }
 
