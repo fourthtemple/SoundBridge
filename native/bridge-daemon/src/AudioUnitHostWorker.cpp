@@ -143,7 +143,7 @@ public:
             value,
             std::min<std::uint32_t>(sampleOffset, maxBlockSize_ - 1)),
         "AudioUnitSetParameter");
-    return std::string("{\"parameter\":") + parameterInfoToJson(parameterId, info) + "}";
+    return std::string("{\"parameter\":") + parameterInfoToJson(unit_, parameterId, info) + "}";
   }
 
   std::string setParameterDisplayValue(AudioUnitParameterID parameterId, const std::string& displayValue) {
@@ -499,84 +499,9 @@ private:
               &infoSize) != noErr) {
         continue;
       }
-      parameters.push_back(parameterInfoToJson(parameterId, info));
+      parameters.push_back(parameterInfoToJson(unit_, parameterId, info));
     }
     return parameters;
-  }
-
-  AudioUnitParameterValue plainValueForNormalized(const AudioUnitParameterInfo& info, double normalizedValue) const {
-    const auto clamped = std::clamp(normalizedValue, 0.0, 1.0);
-    const auto minValue = std::isfinite(info.minValue) ? info.minValue : 0.0F;
-    const auto maxValue = std::isfinite(info.maxValue) ? info.maxValue : 1.0F;
-    return static_cast<AudioUnitParameterValue>(minValue + (maxValue - minValue) * clamped);
-  }
-
-  double normalizedValueForPlain(const AudioUnitParameterInfo& info, AudioUnitParameterValue value) const {
-    const auto minValue = std::isfinite(info.minValue) ? info.minValue : 0.0F;
-    const auto maxValue = std::isfinite(info.maxValue) ? info.maxValue : 1.0F;
-    if (std::abs(maxValue - minValue) < 0.000001F) {
-      return 0.0;
-    }
-    return std::clamp((static_cast<double>(value) - minValue) / (maxValue - minValue), 0.0, 1.0);
-  }
-
-  std::string displayValueForParameter(AudioUnitParameterID parameterId, AudioUnitParameterValue plainValue) const {
-    AudioUnitParameterStringFromValue request {};
-    request.inParamID = parameterId;
-    request.inValue = &plainValue;
-    UInt32 size = sizeof(request);
-    const auto status = AudioUnitGetProperty(
-        unit_,
-        kAudioUnitProperty_ParameterStringFromValue,
-        kAudioUnitScope_Global,
-        0,
-        &request,
-        &size);
-    if (status != noErr || request.outString == nullptr) {
-      return {};
-    }
-    const auto text = cappedString(cfStringToUtf8(request.outString));
-    CFRelease(request.outString);
-    return text;
-  }
-
-  std::string parameterInfoToJson(AudioUnitParameterID parameterId, const AudioUnitParameterInfo& info) const {
-    AudioUnitParameterValue plainValue = info.defaultValue;
-    if (AudioUnitGetParameter(unit_, parameterId, kAudioUnitScope_Global, 0, &plainValue) != noErr) {
-      plainValue = info.defaultValue;
-    }
-
-    auto name = info.cfNameString != nullptr ? cfStringToUtf8(info.cfNameString) : cappedString(info.name);
-    if ((info.flags & kAudioUnitParameterFlag_CFNameRelease) != 0 && info.cfNameString != nullptr) {
-      CFRelease(info.cfNameString);
-    }
-    if (name.empty()) {
-      name = std::to_string(parameterId);
-    }
-    const auto unit = cfStringToUtf8(info.unitName);
-    const auto readOnly = (info.flags & kAudioUnitParameterFlag_MeterReadOnly) != 0 ||
-        ((info.flags & kAudioUnitParameterFlag_IsWritable) == 0 && (info.flags & kAudioUnitParameterFlag_IsReadable) != 0);
-    const auto displayValue = displayValueForParameter(parameterId, plainValue);
-
-    std::ostringstream output;
-    output << "{\"id\":\"" << parameterId << "\""
-           << ",\"name\":\"" << jsonEscape(name) << "\""
-           << ",\"normalizedValue\":" << normalizedValueForPlain(info, plainValue)
-           << ",\"defaultNormalizedValue\":" << normalizedValueForPlain(info, info.defaultValue)
-           << ",\"plainValue\":" << (std::isfinite(plainValue) ? plainValue : info.defaultValue)
-           << ",\"minPlain\":" << (std::isfinite(info.minValue) ? info.minValue : 0.0F)
-           << ",\"maxPlain\":" << (std::isfinite(info.maxValue) ? info.maxValue : 1.0F)
-           << ",\"automatable\":" << (readOnly ? "false" : "true");
-    if (!displayValue.empty()) {
-      output << ",\"displayValue\":\"" << jsonEscape(displayValue) << "\"";
-    }
-    if (!unit.empty()) {
-      output << ",\"unit\":\"" << jsonEscape(cappedString(unit, 64)) << "\"";
-    }
-    output << ",\"stepCount\":0"
-           << ",\"readOnly\":" << (readOnly ? "true" : "false")
-           << "}";
-    return output.str();
   }
 
   static OSStatus inputCallback(

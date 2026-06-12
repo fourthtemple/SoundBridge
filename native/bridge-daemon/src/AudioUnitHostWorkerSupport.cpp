@@ -2,6 +2,8 @@
 
 #ifdef SOUNDBRIDGE_MACOS
 
+#include "SoundBridge/NativePlugin.h"
+
 #include <CoreFoundation/CoreFoundation.h>
 
 #include <algorithm>
@@ -403,6 +405,86 @@ bool isUnsupportedMidiStatus(OSStatus status) {
       status == kAudioUnitErr_InvalidPropertyValue ||
       status == kAudioUnitErr_InvalidParameterValue ||
       status == kAudioUnitUnimplementedStatus;
+}
+
+AudioUnitParameterValue plainValueForNormalized(const AudioUnitParameterInfo& info, double normalizedValue) {
+  const auto clamped = std::clamp(normalizedValue, 0.0, 1.0);
+  const auto minValue = std::isfinite(info.minValue) ? info.minValue : 0.0F;
+  const auto maxValue = std::isfinite(info.maxValue) ? info.maxValue : 1.0F;
+  return static_cast<AudioUnitParameterValue>(minValue + (maxValue - minValue) * clamped);
+}
+
+double normalizedValueForPlain(const AudioUnitParameterInfo& info, AudioUnitParameterValue value) {
+  const auto minValue = std::isfinite(info.minValue) ? info.minValue : 0.0F;
+  const auto maxValue = std::isfinite(info.maxValue) ? info.maxValue : 1.0F;
+  if (std::abs(maxValue - minValue) < 0.000001F) {
+    return 0.0;
+  }
+  return std::clamp((static_cast<double>(value) - minValue) / (maxValue - minValue), 0.0, 1.0);
+}
+
+std::string displayValueForParameter(AudioUnit unit, AudioUnitParameterID parameterId, AudioUnitParameterValue plainValue) {
+  if (unit == nullptr) {
+    return {};
+  }
+
+  AudioUnitParameterStringFromValue request {};
+  request.inParamID = parameterId;
+  request.inValue = &plainValue;
+  UInt32 size = sizeof(request);
+  const auto status = AudioUnitGetProperty(
+      unit,
+      kAudioUnitProperty_ParameterStringFromValue,
+      kAudioUnitScope_Global,
+      0,
+      &request,
+      &size);
+  if (status != noErr || request.outString == nullptr) {
+    return {};
+  }
+  const auto text = cappedString(cfStringToUtf8(request.outString));
+  CFRelease(request.outString);
+  return text;
+}
+
+std::string parameterInfoToJson(AudioUnit unit, AudioUnitParameterID parameterId, AudioUnitParameterInfo& info) {
+  AudioUnitParameterValue plainValue = info.defaultValue;
+  if (unit == nullptr || AudioUnitGetParameter(unit, parameterId, kAudioUnitScope_Global, 0, &plainValue) != noErr) {
+    plainValue = info.defaultValue;
+  }
+
+  auto name = info.cfNameString != nullptr ? cfStringToUtf8(info.cfNameString) : cappedString(info.name);
+  if ((info.flags & kAudioUnitParameterFlag_CFNameRelease) != 0 && info.cfNameString != nullptr) {
+    CFRelease(info.cfNameString);
+    info.cfNameString = nullptr;
+  }
+  if (name.empty()) {
+    name = std::to_string(parameterId);
+  }
+  const auto unitName = cfStringToUtf8(info.unitName);
+  const auto readOnly = (info.flags & kAudioUnitParameterFlag_MeterReadOnly) != 0 ||
+      ((info.flags & kAudioUnitParameterFlag_IsWritable) == 0 && (info.flags & kAudioUnitParameterFlag_IsReadable) != 0);
+  const auto displayValue = displayValueForParameter(unit, parameterId, plainValue);
+
+  std::ostringstream output;
+  output << "{\"id\":\"" << parameterId << "\""
+         << ",\"name\":\"" << jsonEscape(name) << "\""
+         << ",\"normalizedValue\":" << normalizedValueForPlain(info, plainValue)
+         << ",\"defaultNormalizedValue\":" << normalizedValueForPlain(info, info.defaultValue)
+         << ",\"plainValue\":" << (std::isfinite(plainValue) ? plainValue : info.defaultValue)
+         << ",\"minPlain\":" << (std::isfinite(info.minValue) ? info.minValue : 0.0F)
+         << ",\"maxPlain\":" << (std::isfinite(info.maxValue) ? info.maxValue : 1.0F)
+         << ",\"automatable\":" << (readOnly ? "false" : "true");
+  if (!displayValue.empty()) {
+    output << ",\"displayValue\":\"" << jsonEscape(displayValue) << "\"";
+  }
+  if (!unitName.empty()) {
+    output << ",\"unit\":\"" << jsonEscape(cappedString(unitName, 64)) << "\"";
+  }
+  output << ",\"stepCount\":0"
+         << ",\"readOnly\":" << (readOnly ? "true" : "false")
+         << "}";
+  return output.str();
 }
 
 AudioStreamBasicDescription streamDescription(double sampleRate, std::uint32_t channels) {
