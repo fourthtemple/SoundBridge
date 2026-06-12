@@ -23,6 +23,7 @@ add_executable(soundbridge-daemon
   src/NativePlugin.cpp
   src/NativeFileGrantSupport.cpp
   src/PluginCatalog.cpp
+  src/Vst3BusLayoutSupport.cpp
   src/Vst3Scanner.cpp
   src/Vst3Host.cpp
   src/Vst3HostedEffect.cpp
