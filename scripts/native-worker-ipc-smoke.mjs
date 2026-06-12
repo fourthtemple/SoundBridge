@@ -9,6 +9,7 @@ const MAX_TEST_STDERR_LINE_BYTES = 128;
 const MAX_TEST_STDERR_BYTES = 64;
 const MAX_TEST_PENDING_COMMANDS = 8;
 const TEST_READY_TIMEOUT_MS = 500;
+const TEST_TERMINATION_GRACE_MS = 50;
 const TEST_COMMAND_TIMEOUT_MS = 500;
 
 let passed = 0;
@@ -147,6 +148,23 @@ setTimeout(() => {}, 30000);
   const hangingNativeCommandWorkerPath = writeExecutable(
     "hanging-native-command-worker.mjs",
     `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
+process.stdin.resume();
+setTimeout(() => {}, 30000);
+`
+  );
+  const stubbornExampleCommandWorkerPath = writeExecutable(
+    "stubborn-example-command-worker.mjs",
+    `#!/usr/bin/env node
+process.on("SIGTERM", () => {});
+process.stdin.resume();
+setTimeout(() => {}, 30000);
+`
+  );
+  const stubbornNativeCommandWorkerPath = writeExecutable(
+    "stubborn-native-command-worker.mjs",
+    `#!/usr/bin/env node
+process.on("SIGTERM", () => {});
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.resume();
 setTimeout(() => {}, 30000);
@@ -358,6 +376,33 @@ setTimeout(() => {}, 30000);
   );
   check(hangingNativeCommandWorker.process?.killed === true, "timed-out native host worker process is killed");
   hangingNativeCommandWorker.destroy();
+
+  const stubbornWorkers = createTestWorkers(stubbornNativeCommandWorkerPath, {
+    workerTerminationGraceMs: TEST_TERMINATION_GRACE_MS
+  });
+  const stubbornExampleCommandWorker = new stubbornWorkers.ExampleInstrumentWorker(stubbornExampleCommandWorkerPath);
+  await expectRejected(
+    () => stubbornExampleCommandWorker.render({ frames: 1, sampleRate: 48000, gain: 0.5, tone: 0.5, detune: 0.5 }),
+    "worker_command_timeout",
+    "example instrument workers time out stubborn commands"
+  );
+  await waitForExitSignal(stubbornExampleCommandWorker, "SIGKILL");
+  check(stubbornExampleCommandWorker.process?.signalCode === "SIGKILL", "stubborn example worker escalates to SIGKILL");
+  stubbornExampleCommandWorker.destroy();
+
+  const stubbornNativeCommandWorker = new stubbornWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await stubbornNativeCommandWorker.ready;
+  await expectRejected(
+    () => stubbornNativeCommandWorker.getParameters(),
+    "worker_command_timeout",
+    "native host workers time out stubborn commands"
+  );
+  await waitForExitSignal(stubbornNativeCommandWorker, "SIGKILL");
+  check(stubbornNativeCommandWorker.process?.signalCode === "SIGKILL", "stubborn native worker escalates to SIGKILL");
+  stubbornNativeCommandWorker.destroy();
 } finally {
   fs.rmSync(tempDir, { force: true, recursive: true });
 }
@@ -371,6 +416,7 @@ function createTestWorkers(nativeRenderer, options = {}) {
     maxWorkerStderrBytes: MAX_TEST_STDERR_BYTES,
     maxWorkerPendingCommands: options.maxWorkerPendingCommands ?? MAX_TEST_PENDING_COMMANDS,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
+    workerTerminationGraceMs: options.workerTerminationGraceMs ?? TEST_TERMINATION_GRACE_MS,
     exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
     nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
   });
@@ -432,6 +478,15 @@ async function expectRejected(operation, expectedText, message) {
 async function waitForKilled(worker) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (worker.process?.killed === true) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+async function waitForExitSignal(worker, signal) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (worker.process?.signalCode === signal) {
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 10));

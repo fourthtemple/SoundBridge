@@ -192,6 +192,10 @@ async function run() {
     "paired hello advertises bounded native worker startup"
   );
   check(
+    pairedHello.capabilities?.security?.workerTerminationGraceMs >= 0,
+    "paired hello advertises bounded worker termination grace"
+  );
+  check(
     pairedHello.capabilities?.security?.exampleWorkerCommandTimeoutMs > 0 &&
       pairedHello.capabilities?.security?.nativeWorkerCommandTimeoutMs > 0,
     "paired hello advertises bounded worker commands"

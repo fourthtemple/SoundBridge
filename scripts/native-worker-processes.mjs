@@ -5,6 +5,7 @@ export const DEFAULT_MAX_WORKER_STDERR_LINE_BYTES = 1024 * 1024;
 export const DEFAULT_MAX_WORKER_STDERR_BYTES = 4 * 1024 * 1024;
 export const DEFAULT_MAX_WORKER_PENDING_COMMANDS = 64;
 export const DEFAULT_WORKER_READY_TIMEOUT_MS = 5000;
+export const DEFAULT_WORKER_TERMINATION_GRACE_MS = 250;
 export const DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS = 1500;
 export const DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS = 5000;
 
@@ -16,6 +17,7 @@ export function createNativeWorkerProcesses({
   maxWorkerStderrBytes = DEFAULT_MAX_WORKER_STDERR_BYTES,
   maxWorkerPendingCommands = DEFAULT_MAX_WORKER_PENDING_COMMANDS,
   workerReadyTimeoutMs = DEFAULT_WORKER_READY_TIMEOUT_MS,
+  workerTerminationGraceMs = DEFAULT_WORKER_TERMINATION_GRACE_MS,
   exampleWorkerCommandTimeoutMs = DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS,
   nativeWorkerCommandTimeoutMs = DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS
 }) {
@@ -37,6 +39,7 @@ export function createNativeWorkerProcesses({
   const workerStderrBudget = normalizeWorkerStderrBudget(maxWorkerStderrBytes);
   const workerPendingCommandLimit = normalizeWorkerPendingCommandLimit(maxWorkerPendingCommands);
   const workerReadyTimeout = normalizeWorkerReadyTimeout(workerReadyTimeoutMs);
+  const workerTerminationGrace = normalizeWorkerTerminationGrace(workerTerminationGraceMs);
   const exampleCommandTimeout = normalizeWorkerCommandTimeout(
     exampleWorkerCommandTimeoutMs,
     DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS
@@ -58,6 +61,7 @@ export function createNativeWorkerProcesses({
       this.maxStderrLineBytes = workerStderrLineLimit;
       this.maxStderrBytes = workerStderrBudget;
       this.maxPendingCommands = workerPendingCommandLimit;
+      this.workerTerminationGraceMs = workerTerminationGrace;
       this.commandTimeoutMs = exampleCommandTimeout;
       this.process = spawn(executablePath, ["--worker"], {
         stdio: ["pipe", "pipe", "pipe"]
@@ -176,7 +180,7 @@ export function createNativeWorkerProcesses({
       this.stderrBuffer = "";
       this.stderrBytes = 0;
       this.rejectAll(error);
-      killWorkerProcess(this.process);
+      terminateWorkerProcess(this.process, this.workerTerminationGraceMs);
     }
 
     rejectAll(error) {
@@ -195,9 +199,7 @@ export function createNativeWorkerProcesses({
         this.process.stdin.end();
       } catch {}
       setTimeout(() => {
-        if (this.process && !this.process.killed) {
-          this.process.kill();
-        }
+        terminateWorkerProcess(this.process, this.workerTerminationGraceMs);
       }, 250).unref?.();
     }
   }
@@ -215,6 +217,7 @@ export function createNativeWorkerProcesses({
       this.maxStderrLineBytes = workerStderrLineLimit;
       this.maxStderrBytes = workerStderrBudget;
       this.maxPendingCommands = workerPendingCommandLimit;
+      this.workerTerminationGraceMs = workerTerminationGrace;
       this.commandTimeoutMs = nativeCommandTimeout;
       this.readySettled = false;
       this.ready = new Promise((resolve, reject) => {
@@ -436,7 +439,7 @@ export function createNativeWorkerProcesses({
       this.stderrBuffer = "";
       this.stderrBytes = 0;
       this.rejectAll(error);
-      killWorkerProcess(this.process);
+      terminateWorkerProcess(this.process, this.workerTerminationGraceMs);
     }
 
     setReadyOk(payload) {
@@ -474,9 +477,7 @@ export function createNativeWorkerProcesses({
         this.process.stdin.end();
       } catch {}
       setTimeout(() => {
-        if (this.process && !this.process.killed) {
-          this.process.kill();
-        }
+        terminateWorkerProcess(this.process, this.workerTerminationGraceMs);
       }, 250).unref?.();
     }
   }
@@ -551,6 +552,14 @@ function normalizeWorkerReadyTimeout(value) {
   const number = Math.floor(Number(value));
   if (!Number.isFinite(number) || number <= 0) {
     return DEFAULT_WORKER_READY_TIMEOUT_MS;
+  }
+  return number;
+}
+
+function normalizeWorkerTerminationGrace(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number < 0) {
+    return DEFAULT_WORKER_TERMINATION_GRACE_MS;
   }
   return number;
 }
@@ -643,10 +652,26 @@ function workerCommandTimeoutError(timeoutMs) {
   return new Error(`worker_command_timeout: worker command timed out after ${timeoutMs}ms`);
 }
 
-function killWorkerProcess(process) {
-  if (process && !process.killed) {
-    process.kill();
+function terminateWorkerProcess(process, graceMs) {
+  if (!process || workerProcessExited(process)) {
+    return;
   }
+  try {
+    process.kill();
+  } catch {
+    return;
+  }
+  setTimeout(() => {
+    if (!workerProcessExited(process)) {
+      try {
+        process.kill("SIGKILL");
+      } catch {}
+    }
+  }, graceMs).unref?.();
+}
+
+function workerProcessExited(process) {
+  return process.exitCode !== null || process.signalCode !== null;
 }
 
 function encodeTransportState(transport) {
