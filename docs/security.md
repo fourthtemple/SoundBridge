@@ -37,7 +37,7 @@ Non-goals for the MVP:
 - Enforce per-session and daemon-wide plugin instance limits.
 - Cap WebSocket message size before pairing.
 - Prompt natively for new origins in the production daemon.
-- Do not expose arbitrary filesystem access.
+- Do not expose arbitrary filesystem access; use explicit, session-owned file grants for preset, sample, cache, license, or state paths.
 - Do not expose plugin paths unless diagnostics are explicitly enabled.
 - Treat plugin state as opaque bytes and pass it only to the plugin instance that produced it.
 - Run plugin DSP in a worker process where practical.
@@ -72,7 +72,7 @@ Full VST3/AU/LV2 hosting adds more than audio rendering. MIDI and note-expressio
 | AU host profiles | The AU registry includes offline effects and system format-converter/splitter units that are not safe to treat as ordinary realtime main-bus effects. | Keep incompatible AU profiles discovery-only until each one has a dedicated bounded host profile; reject `createInstance` before spawning workers for units outside the current realtime main-bus profile. |
 | LV2 extensions | UI and other extension features require host-provided feature data and callbacks; even supported worker scheduling can become an unsafe callback path if left unbounded. | Keep unsupported extensions and required options disabled; expose LV2 UI declarations only as bounded path-free scanner metadata for now, support LV2 bounded-block options and worker scheduling only through explicit bounded host data/callbacks, and enable each additional extension only with explicit feature structs, bounded data, ownership checks, file-broker rules where needed, and worker containment. |
 | Plugin editor/UI hosting | Native editor code can open windows, dialogs, clipboard, drag/drop, and platform UI surfaces. | Support bounded generic parameter editor sessions now; enable native editor windows only through an explicit separate UI broker process spawned without a shell, keep broker IPC bounded by worker limits, and preserve web/local host ownership checks. |
-| Preset files, samples, caches, licensing | Plugins may expect broad filesystem or network access. | Keep in-protocol presets to bounded listed parameter snapshots; broker narrow user-approved file access for real files, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
+| Preset files, samples, caches, licensing | Plugins may expect broad filesystem or network access. | Keep in-protocol presets to bounded listed parameter snapshots; broker narrow user-approved file access for real files with opaque session-owned grants, reject paths outside configured roots and symlink escapes, avoid ambient filesystem access, and deny network access where the OS sandbox permits it. |
 
 ## DNS Rebinding And Host Headers
 
@@ -103,6 +103,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Plugin presets | 256 presets, 64-byte ids, 160-byte names, 1024 bounded parameter values per preset | `listPlugins`, `scanPlugins`, `setPreset.presetId` |
 | VST3 unit/program metadata | 1024 units, 256 lists, 256 programs per parameter, 160-byte names | `getParameters`, `createInstance.plugin.parameters` |
 | Editor sessions | 8 per session / 32 total / 10-minute TTL; native broker disabled unless explicitly configured | `openEditor`, `closeEditor` |
+| File grants | Disabled unless explicit broker roots are configured; 8 per session / 64 total / 10-minute TTL; paths capped at 4096 bytes, display names capped at 160 bytes | `createFileGrant`, `listFileGrants`, `revokeFileGrant` |
 | Native plugin state bytes / state envelope | 384 KiB / 1 MiB | `getState`, `setState` |
 | LV2 file-backed state | 64 files, 64 KiB per file, 192 KiB total, 256-byte relative paths | LV2 `state:mapPath` / `state:makePath` |
 | Plugin/transport latency samples | 0–1048576 | `getLatency`, `processAudioBlock.latencySamples` |

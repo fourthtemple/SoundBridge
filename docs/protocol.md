@@ -651,6 +651,35 @@ The response includes an `editorId`, the owning `instanceId`, `kind`, `transport
 
 `closeEditor` takes `{ "editorId": "editor-..." }` and requires the same session that opened the editor. Native editor sessions, when enabled, use `kind: "native-window"` and `transport: "native-broker"` and are opened only through a separate broker process spawned without a shell. The reference daemon enables this only when `SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH` names an absolute executable path; optional broker arguments must be supplied as a bounded JSON string array in `SOUNDBRIDGE_NATIVE_EDITOR_BROKER_ARGS`. Broker stdout, stderr, command size, readiness, command timeouts, and cleanup share the daemon's worker limits. Native editor broker responses still return only path-free plugin snapshots to the browser; local bundle paths and AudioComponent launch details stay inside daemon-to-broker IPC. See [Native Editor Broker](native-editor-broker.md) for the broker line protocol.
 
+### `createFileGrant` / `listFileGrants` / `revokeFileGrant`
+
+File grants are the protocol foundation for preset files, samples, caches, licenses, and other plugin files that cannot safely be represented as small in-protocol preset snapshots. The reference daemon keeps this disabled unless it is started with explicit broker roots in `SOUNDBRIDGE_FILE_GRANT_ROOTS`.
+
+```json
+{
+  "path": "/absolute/user-approved/path/Kick.wav",
+  "purpose": "sample",
+  "access": "read",
+  "kind": "file"
+}
+```
+
+When enabled, `createFileGrant` resolves the requested absolute path through the configured roots, rejects paths outside those roots, rejects symlink escapes after `realpath`, enforces per-session and total grant caps, and returns only a path-free grant:
+
+```json
+{
+  "grantId": "filegrant-...",
+  "purpose": "sample",
+  "access": "read",
+  "kind": "file",
+  "displayName": "Kick.wav",
+  "createdAt": 1710000000000,
+  "expiresAt": 1710000600000
+}
+```
+
+`listFileGrants` returns only grants owned by the paired session. `revokeFileGrant` takes `{ "grantId": "filegrant-..." }` and requires the same session that created the grant. Browser-facing grant responses must not include absolute paths, configured root paths, scanner diagnostics, or native launch details. Future worker and UI-broker integrations should pass opaque grant ids through SoundBridge IPC rather than granting ambient filesystem access.
+
 ### `heartbeat`
 
 Measures liveness and rough round-trip time.

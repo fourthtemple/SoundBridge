@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { createDaemonControlEvents } from "./daemon-control-events.mjs";
 import { createDaemonEditors } from "./daemon-editors.mjs";
+import { createDaemonFileGrants } from "./daemon-file-grants.mjs";
 import { createDaemonInstrumentRendering } from "./daemon-instrument-rendering.mjs";
 import { createDaemonLifecycle } from "./daemon-lifecycle.mjs";
 import { createMockInstrumentSupport } from "./daemon-mock-instruments.mjs";
@@ -56,6 +57,14 @@ const MAX_AUTOMATION_LANE_POINTS = Math.min(
 const MAX_EDITORS_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_EDITORS_PER_SESSION", 8);
 const MAX_TOTAL_EDITORS = envInteger("SOUNDBRIDGE_MAX_TOTAL_EDITORS", 32);
 const EDITOR_SESSION_TTL_MS = envInteger("SOUNDBRIDGE_EDITOR_SESSION_TTL_MS", 10 * 60 * 1000);
+const MAX_FILE_GRANTS_PER_SESSION = envInteger("SOUNDBRIDGE_MAX_FILE_GRANTS_PER_SESSION", 8);
+const MAX_TOTAL_FILE_GRANTS = envInteger("SOUNDBRIDGE_MAX_TOTAL_FILE_GRANTS", 64);
+const FILE_GRANT_TTL_MS = envInteger("SOUNDBRIDGE_FILE_GRANT_TTL_MS", 10 * 60 * 1000);
+const MAX_FILE_GRANT_PATH_BYTES = Math.min(envInteger("SOUNDBRIDGE_MAX_FILE_GRANT_PATH_BYTES", 4096), 4096);
+const MAX_FILE_GRANT_DISPLAY_NAME_BYTES = Math.min(
+  envInteger("SOUNDBRIDGE_MAX_FILE_GRANT_DISPLAY_NAME_BYTES", 160),
+  256
+);
 const MAX_PLUGIN_PARAMETERS = envInteger("SOUNDBRIDGE_MAX_PLUGIN_PARAMETERS", 1024);
 const MAX_PLUGIN_PRESETS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PRESETS", 256), 256);
 const MAX_PLUGIN_PROGRAM_LISTS = Math.min(envInteger("SOUNDBRIDGE_MAX_PLUGIN_PROGRAM_LISTS", 256), 256);
@@ -79,6 +88,7 @@ const MAX_PAIR_ATTEMPTS_PER_CONNECTION = envInteger("SOUNDBRIDGE_MAX_PAIR_ATTEMP
 const MIN_SAMPLE_RATE = 8000;
 const MAX_SAMPLE_RATE = 384000;
 const ALLOWED_ORIGINS = envList("SOUNDBRIDGE_ALLOWED_ORIGINS");
+const FILE_GRANT_ROOTS = envList("SOUNDBRIDGE_FILE_GRANT_ROOTS");
 const validators = createDaemonValidators({
   minSampleRate: MIN_SAMPLE_RATE,
   maxSampleRate: MAX_SAMPLE_RATE,
@@ -215,6 +225,20 @@ const nativeEditorBroker = createConfiguredNativeEditorBroker({
 const sessions = new Map();
 const instances = new Map();
 const editors = new Map();
+const fileGrants = new Map();
+const fileGrantSupport = createDaemonFileGrants({
+  fileGrants,
+  sessions,
+  roots: FILE_GRANT_ROOTS,
+  limits: {
+    fileGrantTtlMs: FILE_GRANT_TTL_MS,
+    maxFileGrantDisplayNameBytes: MAX_FILE_GRANT_DISPLAY_NAME_BYTES,
+    maxFileGrantPathBytes: MAX_FILE_GRANT_PATH_BYTES,
+    maxFileGrantsPerSession: MAX_FILE_GRANTS_PER_SESSION,
+    maxTotalFileGrants: MAX_TOTAL_FILE_GRANTS
+  },
+  makeProtocolError: protocolError
+});
 const {
   assertPaired,
   cleanupConnection,
@@ -227,6 +251,8 @@ const {
   sessions,
   instances,
   editors,
+  fileGrants,
+  destroyFileGrantRecord: fileGrantSupport.destroyFileGrantRecord,
   makeProtocolError: protocolError
 });
 const { openEditor, closeEditor } = createDaemonEditors({
@@ -416,6 +442,15 @@ async function dispatchCommand(envelope, context) {
     case "closeEditor":
       return closeEditor(payload.editorId, session);
 
+    case "createFileGrant":
+      return fileGrantSupport.createFileGrant(payload, session);
+
+    case "listFileGrants":
+      return fileGrantSupport.listFileGrants(payload, session);
+
+    case "revokeFileGrant":
+      return fileGrantSupport.revokeFileGrant(payload.grantId, session);
+
     case "heartbeat":
       return {
         now: Date.now(),
@@ -455,6 +490,7 @@ function helloResponse(paired) {
             automation: true,
             transport: true,
             genericEditor: true,
+            fileAccess: fileGrantSupport.available(),
             nativeExampleRenderer: Boolean(NATIVE_RENDERER),
             nativeEditor: Boolean(nativeEditorBroker?.available)
           }
@@ -466,12 +502,18 @@ function helloResponse(paired) {
         instanceOwnership: true,
         cleanupOnDisconnect: true,
         hostHeaderValidation: true,
+        fileBroker: fileGrantSupport.available(),
         nativeEditorBroker: Boolean(nativeEditorBroker?.available),
         maxInstancesPerSession: MAX_INSTANCES_PER_SESSION,
         maxTotalInstances: MAX_TOTAL_INSTANCES,
         maxEditorsPerSession: MAX_EDITORS_PER_SESSION,
         maxTotalEditors: MAX_TOTAL_EDITORS,
         maxEditorSessionTtlMs: EDITOR_SESSION_TTL_MS,
+        maxFileGrantsPerSession: MAX_FILE_GRANTS_PER_SESSION,
+        maxTotalFileGrants: MAX_TOTAL_FILE_GRANTS,
+        maxFileGrantTtlMs: FILE_GRANT_TTL_MS,
+        maxFileGrantPathBytes: MAX_FILE_GRANT_PATH_BYTES,
+        maxFileGrantDisplayNameBytes: MAX_FILE_GRANT_DISPLAY_NAME_BYTES,
         maxTotalSessions: MAX_TOTAL_SESSIONS,
         maxAudioChannels: MAX_AUDIO_CHANNELS,
         maxBlockSize: MAX_BLOCK_SIZE,
@@ -543,6 +585,7 @@ function pair(payload, context) {
     expiresAt,
     instances: new Set(),
     editors: new Set(),
+    fileGrants: new Set(),
     createdAt: Date.now(),
     lastSeenAt: Date.now()
   });

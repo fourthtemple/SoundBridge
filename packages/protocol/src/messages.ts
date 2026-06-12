@@ -23,6 +23,9 @@ export type ProtocolCommand =
   | "getLayout"
   | "openEditor"
   | "closeEditor"
+  | "createFileGrant"
+  | "listFileGrants"
+  | "revokeFileGrant"
   | "heartbeat";
 
 export type PluginFormat = "vst3" | "au" | "lv2" | "mock" | "unknown";
@@ -55,6 +58,7 @@ export interface HelloResponse {
     automation?: boolean;
     transport?: boolean;
     genericEditor?: boolean;
+    fileAccess?: boolean;
     nativeExampleRenderer?: boolean;
     nativeEditor?: boolean;
     security?: {
@@ -68,6 +72,12 @@ export interface HelloResponse {
       maxEditorsPerSession?: number;
       maxTotalEditors?: number;
       maxEditorSessionTtlMs?: number;
+      fileBroker?: boolean;
+      maxFileGrantsPerSession?: number;
+      maxTotalFileGrants?: number;
+      maxFileGrantTtlMs?: number;
+      maxFileGrantPathBytes?: number;
+      maxFileGrantDisplayNameBytes?: number;
       maxParameterEventsPerRequest?: number;
       maxAutomationCurvePoints?: number;
       maxAutomationLanesPerInstance?: number;
@@ -300,6 +310,40 @@ export interface CloseEditorRequest {
 export interface CloseEditorResponse {
   closed: boolean;
   editorId: string;
+}
+
+export type FileGrantPurpose = "preset" | "sample" | "cache" | "license" | "state" | "other";
+export type FileGrantAccess = "read" | "write" | "readWrite";
+export type FileGrantKind = "file" | "directory";
+
+export interface CreateFileGrantRequest {
+  path: string;
+  purpose?: FileGrantPurpose;
+  access?: FileGrantAccess;
+  kind?: FileGrantKind;
+}
+
+export interface FileGrant {
+  grantId: string;
+  purpose: FileGrantPurpose;
+  access: FileGrantAccess;
+  kind: FileGrantKind;
+  displayName: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface ListFileGrantsResponse {
+  grants: FileGrant[];
+}
+
+export interface RevokeFileGrantRequest {
+  grantId: string;
+}
+
+export interface RevokeFileGrantResponse {
+  revoked: boolean;
+  grantId: string;
 }
 
 export interface AudioBusBlock {

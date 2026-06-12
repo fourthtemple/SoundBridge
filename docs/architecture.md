@@ -1,6 +1,6 @@
 # Architecture
 
-SoundBridge splits browser audio hosting from native plugin hosting. The browser never loads VST3, Audio Unit, or LV2 code. It captures or generates Web Audio blocks, moves them to an `AudioWorklet`, and exchanges audio/control messages with a local daemon that owns native plugin discovery, instantiation, DSP, state, latency/tail reporting, and crash containment.
+SoundBridge splits browser audio hosting from native plugin hosting. The browser never loads VST3, Audio Unit, or LV2 code. It captures or generates Web Audio blocks, moves them to an `AudioWorklet`, and exchanges audio/control messages with a local daemon that owns native plugin discovery, instantiation, DSP, state, latency/tail reporting, root-limited file grants, and crash containment.
 
 ## Components
 
@@ -8,7 +8,7 @@ SoundBridge splits browser audio hosting from native plugin hosting. The browser
 
 The SDK is a small TypeScript package that gives Web DAWs:
 
-- a `SoundBridgeClient` for pairing, scanning, plugin instantiation, parameter changes, state, latency, and tail time
+- a `SoundBridgeClient` for pairing, scanning, plugin instantiation, parameter changes, state, latency, tail time, editor sessions, and opaque file grants
 - a `SoundBridgeAudioNode` wrapper around `AudioWorkletNode`
 - bounded generic parameter editor sessions for hosts that do not have their own plugin UI
 - protocol message types shared with daemon implementations

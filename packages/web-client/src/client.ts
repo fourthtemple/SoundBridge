@@ -3,6 +3,8 @@ import type {
   AudioBlockResponse,
   AutomationLanePoint,
   ClearAutomationLaneResponse,
+  CreateFileGrantRequest,
+  FileGrant,
   CreateInstanceRequest,
   CreateInstanceResponse,
   CloseEditorResponse,
@@ -244,6 +246,18 @@ export class SoundBridgeClient extends EventTarget {
 
   closeEditor(editorId: string): Promise<CloseEditorResponse> {
     return this.request("closeEditor", { editorId });
+  }
+
+  createFileGrant(request: CreateFileGrantRequest): Promise<FileGrant> {
+    return this.request("createFileGrant", request);
+  }
+
+  listFileGrants(): Promise<{ grants: FileGrant[] }> {
+    return this.request("listFileGrants", {});
+  }
+
+  revokeFileGrant(grantId: string): Promise<{ revoked: boolean; grantId: string }> {
+    return this.request("revokeFileGrant", { grantId });
   }
 
   heartbeat(): Promise<{ now: number }> {

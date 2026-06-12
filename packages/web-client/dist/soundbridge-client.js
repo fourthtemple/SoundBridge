@@ -140,6 +140,18 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("closeEditor", { editorId });
   }
 
+  createFileGrant(request) {
+    return this.request("createFileGrant", request);
+  }
+
+  listFileGrants() {
+    return this.request("listFileGrants", {});
+  }
+
+  revokeFileGrant(grantId) {
+    return this.request("revokeFileGrant", { grantId });
+  }
+
   heartbeat() {
     return this.request("heartbeat", { now: Date.now() });
   }

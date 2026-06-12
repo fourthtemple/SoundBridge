@@ -1,4 +1,11 @@
-export function createDaemonLifecycle({ sessions, instances, editors, makeProtocolError }) {
+export function createDaemonLifecycle({
+  sessions,
+  instances,
+  editors,
+  fileGrants,
+  destroyFileGrantRecord,
+  makeProtocolError
+}) {
   function assertPaired(sessionToken, command, context) {
     const session = sessions.get(sessionToken);
     if (!session) {
@@ -43,6 +50,12 @@ export function createDaemonLifecycle({ sessions, instances, editors, makeProtoc
       const editor = editors.get(editorId);
       if (editor) {
         destroyEditorRecord(editor);
+      }
+    }
+    for (const grantId of Array.from(session.fileGrants ?? [])) {
+      const grant = fileGrants?.get(grantId);
+      if (grant) {
+        destroyFileGrantRecord?.(grant);
       }
     }
     for (const instanceId of Array.from(session.instances)) {

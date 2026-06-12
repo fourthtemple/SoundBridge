@@ -36,6 +36,9 @@
         "getLayout",
         "openEditor",
         "closeEditor",
+        "createFileGrant",
+        "listFileGrants",
+        "revokeFileGrant",
         "heartbeat"
       ]
     },
@@ -92,6 +95,7 @@
                 "unknown": { "$ref": "#/$defs/pluginFormatCapability" }
               }
             },
+            "fileAccess": { "type": "boolean" },
             "security": {
               "type": "object",
               "additionalProperties": true,
@@ -106,6 +110,12 @@
                 "maxEditorsPerSession": { "type": "number" },
                 "maxTotalEditors": { "type": "number" },
                 "maxEditorSessionTtlMs": { "type": "number" },
+                "fileBroker": { "type": "boolean" },
+                "maxFileGrantsPerSession": { "type": "number" },
+                "maxTotalFileGrants": { "type": "number" },
+                "maxFileGrantTtlMs": { "type": "number" },
+                "maxFileGrantPathBytes": { "type": "number" },
+                "maxFileGrantDisplayNameBytes": { "type": "number" },
                 "maxParameterEventsPerRequest": { "type": "number" },
                 "maxAutomationCurvePoints": { "type": "number" },
                 "maxAutomationLanesPerInstance": { "type": "number" },
@@ -228,6 +238,18 @@
         {
           "if": { "properties": { "command": { "const": "closeEditor" } }, "required": ["command"] },
           "then": { "properties": { "payload": { "$ref": "#/$defs/closeEditorRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "createFileGrant" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/createFileGrantRequest" } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "listFileGrants" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "type": "object", "additionalProperties": true } } }
+        },
+        {
+          "if": { "properties": { "command": { "const": "revokeFileGrant" } }, "required": ["command"] },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/revokeFileGrantRequest" } } }
         }
       ]
     },
@@ -860,6 +882,25 @@
       "additionalProperties": true,
       "properties": {
         "editorId": { "type": "string", "minLength": 1, "maxLength": 80 }
+      }
+    },
+    "createFileGrantRequest": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": true,
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "purpose": { "type": "string", "enum": ["preset", "sample", "cache", "license", "state", "other"] },
+        "access": { "type": "string", "enum": ["read", "write", "readWrite"] },
+        "kind": { "type": "string", "enum": ["file", "directory"] }
+      }
+    },
+    "revokeFileGrantRequest": {
+      "type": "object",
+      "required": ["grantId"],
+      "additionalProperties": true,
+      "properties": {
+        "grantId": { "type": "string", "minLength": 1, "maxLength": 80 }
       }
     }
   }

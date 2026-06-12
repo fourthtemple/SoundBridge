@@ -9,6 +9,7 @@ import {
 } from "./security-smoke-client.mjs";
 import { createSecurityDaemonCases, waitForListen } from "./security-smoke-daemon-cases.mjs";
 import { createSecurityEditorCases } from "./security-smoke-editor-cases.mjs";
+import { createSecurityFileGrantCases } from "./security-smoke-file-grant-cases.mjs";
 import { createSecurityMidiCases } from "./security-smoke-midi-cases.mjs";
 
 const HOST = "127.0.0.1";
@@ -40,6 +41,14 @@ const daemonCases = createSecurityDaemonCases({
   token: TOKEN
 });
 const editorCases = createSecurityEditorCases({ check, request });
+const fileGrantCases = createSecurityFileGrantCases({
+  check,
+  host: HOST,
+  origin: ORIGIN,
+  port: PORT,
+  request,
+  token: TOKEN
+});
 const midiCases = createSecurityMidiCases({ check, request });
 
 const daemon = spawn("node", ["scripts/mock-daemon.mjs"], {
@@ -117,7 +126,10 @@ async function run() {
     "getTailTime",
     "getLayout",
     "openEditor",
-    "closeEditor"
+    "closeEditor",
+    "createFileGrant",
+    "listFileGrants",
+    "revokeFileGrant"
   ]) {
     const blocked = await request(main, command, {}, false).then(
       () => ({ ok: true }),
@@ -242,6 +254,15 @@ async function run() {
       pairedHello.capabilities?.security?.maxEditorsPerSession > 0,
     "paired hello advertises bounded generic editor brokering"
   );
+  check(
+    pairedHello.capabilities?.fileAccess === false &&
+      pairedHello.capabilities?.security?.fileBroker === false &&
+      pairedHello.capabilities?.security?.maxFileGrantsPerSession > 0 &&
+      pairedHello.capabilities?.security?.maxFileGrantPathBytes <= 4096,
+    "paired hello advertises file brokering as disabled by default"
+  );
+  await fileGrantCases.checkDefaultFileBrokerClosed(main, session);
+  await fileGrantCases.checkConfiguredFileBroker();
   const listed = await request(main, "listPlugins", {}, true, session);
   check(publicPluginsArePathFree(listed.plugins), "listPlugins returns path-free public plugin metadata");
   const scanned = await request(main, "scanPlugins", {}, true, session);
