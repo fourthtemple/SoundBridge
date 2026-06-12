@@ -3,7 +3,9 @@ import {
   SoundBridgeClient,
   renderParameterControls
 } from "/packages/web-client/dist/soundbridge-client.js";
+import { setCapabilityStatus } from "./capability-status.js";
 import { createFileGrantActions } from "./file-grant-actions.js";
+import { createPluginBrowser } from "./plugin-browser.js";
 import { createVst3ProgramDataControls } from "./vst3-program-data-controls.js";
 
 const elements = {
@@ -56,7 +58,6 @@ let activePluginId;
 let activeInstancePlugin;
 let bridgeStartupPromise;
 let controlsEnabled = false;
-const pluginMetadataById = new Map();
 const activeNotes = new Set();
 const keyToNote = new Map();
 const fileGrantActions = createFileGrantActions({
@@ -69,6 +70,30 @@ const fileGrantActions = createFileGrantActions({
   ensureInstance: () => ensureBridgeInstance(),
   getInstanceId: () => selectedInstanceId,
   refreshParameters,
+  log,
+  logError
+});
+const pluginBrowser = createPluginBrowser({
+  elements: {
+    pluginSelect: elements.pluginSelect,
+    pluginStatus: elements.pluginStatus,
+    presetSelect: elements.presetSelect,
+    applyPresetButton: elements.applyPresetButton,
+    grantRestoreStateButton: elements.grantRestoreStateButton,
+    grantLoadPresetButton: elements.grantLoadPresetButton,
+    grantSaveStateButton: elements.grantSaveStateButton
+  },
+  client: () => client,
+  controlsEnabled: () => controlsEnabled,
+  ensureInstance: () => ensureBridgeInstance(),
+  getInstanceId: () => selectedInstanceId,
+  refreshParameters: async (parameters) => {
+    if (Array.isArray(parameters)) {
+      renderCurrentParameterControls(parameters);
+      return;
+    }
+    await refreshParameters();
+  },
   log,
   logError
 });
@@ -122,9 +147,7 @@ elements.createInstanceButton.addEventListener("click", () => {
 elements.pluginSelect.addEventListener("change", () => {
   activeInstancePlugin = undefined;
   vst3ProgramDataControls.clearEnvelope();
-  updatePluginStatus();
-  updatePresetControls();
-  updateFileGrantControls();
+  pluginBrowser.updateAll();
   vst3ProgramDataControls.update();
   if (bridge) {
     void ensureBridgeInstance(true).catch(logError);
@@ -132,7 +155,7 @@ elements.pluginSelect.addEventListener("change", () => {
 });
 
 elements.applyPresetButton.addEventListener("click", () => {
-  void applySelectedPreset();
+  void pluginBrowser.applySelectedPreset();
 });
 
 elements.fileInput.addEventListener("change", () => {
@@ -159,19 +182,19 @@ elements.restoreStateButton.addEventListener("click", () => {
 });
 
 elements.grantRestoreStateButton.addEventListener("click", () => {
-  if (hasFileGrantOperation("restoreState")) {
+  if (pluginBrowser.hasFileGrantOperation("restoreState")) {
     void fileGrantActions.restoreState();
   }
 });
 
 elements.grantLoadPresetButton.addEventListener("click", () => {
-  if (hasFileGrantOperation("loadPreset")) {
+  if (pluginBrowser.hasFileGrantOperation("loadPreset")) {
     void fileGrantActions.loadPreset();
   }
 });
 
 elements.grantSaveStateButton.addEventListener("click", () => {
-  if (hasFileGrantOperation("saveStateDirectory")) {
+  if (pluginBrowser.hasFileGrantOperation("saveStateDirectory")) {
     void fileGrantActions.saveStateDirectory();
   }
 });
@@ -238,9 +261,10 @@ async function connectToDaemon() {
     }
     await client.pair(pairingToken);
     const hello = await client.hello();
-    setCapabilityStatus(hello?.capabilities);
+    setCapabilityStatus(elements.capabilityStatus, hello?.capabilities);
     const { plugins } = await client.scanPlugins();
-    renderPluginOptions(plugins);
+    pluginBrowser.renderOptions(plugins);
+    vst3ProgramDataControls.update();
 
     setControlsEnabled(true);
     setStatus(elements.connectionStatus, "Paired", "ready");
@@ -313,7 +337,7 @@ async function doEnsureBridgeInstance(recreate = false) {
 
   selectedInstanceId = instanceId;
   activePluginId = pluginId;
-  activeInstancePlugin = created.plugin ?? selectedPluginMetadata();
+  activeInstancePlugin = created.plugin ?? pluginBrowser.selectedPlugin();
   elements.renderEngine.textContent = "Waiting";
   bridge = await SoundBridgeAudioNode.create(audioContext, client, {
     instanceId,
@@ -345,7 +369,7 @@ async function doEnsureBridgeInstance(recreate = false) {
   renderCurrentParameterControls(parameters);
 
   setStatus(elements.engineStatus, "Engine running", "ready");
-  updateFileGrantControls();
+  pluginBrowser.updateFileGrantControls();
   vst3ProgramDataControls.update();
   await refreshLatency();
   startScope();
@@ -464,180 +488,6 @@ async function refreshLatency() {
   }
 }
 
-function setCapabilityStatus(capabilities) {
-  const formats = capabilities?.pluginFormats ?? {};
-  const vst3 = formats.vst3 ?? {};
-  const au = formats.au ?? {};
-  const lv2 = formats.lv2 ?? {};
-  const fullNativeHost = vst3.host === true && au.host === true && lv2.host === true;
-  const nativeExampleHost = vst3.exampleHost === true && au.exampleHost === true && lv2.exampleHost === true;
-  const playableExamples =
-    nativeExampleHost ||
-    (vst3.mockExamples === true && au.mockExamples === true && lv2.mockExamples === true);
-  elements.capabilityStatus.title = [vst3.notes, au.notes, lv2.notes].filter(Boolean).join(" ");
-
-  if (fullNativeHost) {
-    setStatus(elements.capabilityStatus, "AU/VST/LV2 host ready", "ready");
-    return;
-  }
-
-  if (vst3.host === true && au.host === true && nativeExampleHost) {
-    setStatus(elements.capabilityStatus, "AU/VST3 host + examples", "ready");
-    return;
-  }
-
-  if (au.host === true && nativeExampleHost) {
-    setStatus(elements.capabilityStatus, "AU host + examples", "ready");
-    return;
-  }
-
-  if (nativeExampleHost) {
-    setStatus(elements.capabilityStatus, "AU/VST/LV2 bundle examples", "ready");
-    return;
-  }
-
-  if (playableExamples) {
-    setStatus(elements.capabilityStatus, "AU/VST/LV2 examples ready", "ready");
-    return;
-  }
-
-  if (vst3.scan === true || au.scan === true || lv2.scan === true) {
-    setStatus(elements.capabilityStatus, "AU/VST/LV2 scan only", "warn");
-    return;
-  }
-
-  setStatus(elements.capabilityStatus, "Host unavailable", "");
-}
-
-function renderPluginOptions(plugins) {
-  elements.pluginSelect.replaceChildren();
-  pluginMetadataById.clear();
-  const summary = {
-    total: plugins.length,
-    hostable: 0,
-    scanOnly: 0
-  };
-
-  for (const plugin of plugins) {
-    pluginMetadataById.set(plugin.pluginId, plugin);
-    const option = document.createElement("option");
-    option.value = plugin.pluginId;
-    option.dataset.format = plugin.format ?? "unknown";
-    option.dataset.kind = plugin.kind ?? "unknown";
-    option.dataset.source = plugin.source ?? "unknown";
-    option.dataset.hostable = String(plugin.hostable !== false);
-    option.dataset.hostUnavailableReason = plugin.hostUnavailableReason ?? "";
-    option.dataset.fileGrantOperations = Array.isArray(plugin.fileGrantOperations) ? plugin.fileGrantOperations.join(",") : "";
-    option.disabled = plugin.hostable === false;
-    if (plugin.hostUnavailableReason) {
-      option.title = plugin.hostUnavailableReason;
-    }
-    if (plugin.hostable === false) {
-      summary.scanOnly += 1;
-    } else {
-      summary.hostable += 1;
-    }
-    option.textContent = `[${formatPluginFormat(plugin.format)}] ${plugin.vendor} ${plugin.name}${formatPluginSource(plugin)}`;
-    elements.pluginSelect.append(option);
-  }
-  elements.pluginSelect.dataset.totalCount = String(summary.total);
-  elements.pluginSelect.dataset.hostableCount = String(summary.hostable);
-  elements.pluginSelect.dataset.scanOnlyCount = String(summary.scanOnly);
-  updatePluginStatus();
-  updatePresetControls();
-  updateFileGrantControls();
-  vst3ProgramDataControls.update();
-}
-
-function updatePresetControls() {
-  const plugin = selectedPluginMetadata();
-  const presets = Array.isArray(plugin?.presets) ? plugin.presets : [];
-  elements.presetSelect.replaceChildren();
-
-  for (const preset of presets) {
-    const option = document.createElement("option");
-    option.value = preset.id;
-    option.textContent = preset.name;
-    elements.presetSelect.append(option);
-  }
-
-  const enabled = controlsEnabled && presets.length > 0 && plugin?.hostable !== false;
-  elements.presetSelect.disabled = !enabled;
-  elements.applyPresetButton.disabled = !enabled;
-}
-
-function updateFileGrantControls() {
-  const plugin = selectedPluginMetadata();
-  const enabled = controlsEnabled && plugin?.hostable !== false;
-  elements.grantRestoreStateButton.disabled = !(enabled && hasFileGrantOperation("restoreState"));
-  elements.grantLoadPresetButton.disabled = !(enabled && hasFileGrantOperation("loadPreset"));
-  elements.grantSaveStateButton.disabled = !(enabled && hasFileGrantOperation("saveStateDirectory"));
-}
-
-function selectedPluginMetadata() {
-  return pluginMetadataById.get(elements.pluginSelect.value);
-}
-
-function hasFileGrantOperation(operation) {
-  const plugin = selectedPluginMetadata();
-  return Array.isArray(plugin?.fileGrantOperations) && plugin.fileGrantOperations.includes(operation);
-}
-
-function updatePluginStatus() {
-  const selected = elements.pluginSelect.selectedOptions[0];
-  const total = Number(elements.pluginSelect.dataset.totalCount ?? 0);
-  const hostable = Number(elements.pluginSelect.dataset.hostableCount ?? 0);
-  const scanOnly = Number(elements.pluginSelect.dataset.scanOnlyCount ?? 0);
-
-  if (!selected || total === 0) {
-    elements.pluginStatus.textContent = "No plugins scanned";
-    return;
-  }
-
-  const selectedState =
-    selected.dataset.hostable === "false"
-      ? "scan only"
-      : formatPluginSourceLabel(selected.dataset.source);
-  elements.pluginStatus.textContent = `${hostable} playable · ${scanOnly} scan only · selected ${selectedState}`;
-}
-
-function formatPluginSourceLabel(source) {
-  switch (source) {
-    case "example-bundle":
-      return "example bundle";
-    case "builtin-example":
-      return "built-in example";
-    case "mock":
-      return "mock";
-    case "scan":
-      return "installed";
-    default:
-      return "plugin";
-  }
-}
-
-async function applySelectedPreset() {
-  if (!client) {
-    return;
-  }
-
-  const plugin = selectedPluginMetadata();
-  const preset = plugin?.presets?.find((candidate) => candidate.id === elements.presetSelect.value);
-  if (!preset) {
-    return;
-  }
-
-  try {
-    await ensureBridgeInstance();
-    const applied = await client.setPreset(selectedInstanceId, preset.id);
-    const { parameters } = await client.getParameters(selectedInstanceId);
-    renderCurrentParameterControls(parameters);
-    log(`Preset applied: ${preset.name} (${applied.parameterCount} parameter${applied.parameterCount === 1 ? "" : "s"})`);
-  } catch (error) {
-    logError(error);
-  }
-}
-
 async function refreshParameters() {
   if (!client || !selectedInstanceId) {
     return;
@@ -654,38 +504,6 @@ function renderCurrentParameterControls(parameters) {
     instanceId: selectedInstanceId,
     parameters
   });
-}
-
-function formatPluginFormat(format) {
-  switch (format) {
-    case "vst3":
-      return "VST3";
-    case "au":
-      return "AU";
-    case "lv2":
-      return "LV2";
-    case "mock":
-      return "Mock";
-    default:
-      return "Unknown";
-  }
-}
-
-function formatPluginSource(plugin) {
-  if (plugin.hostable === false) {
-    return " · scan only";
-  }
-
-  switch (plugin.source) {
-    case "example-bundle":
-      return " · example bundle";
-    case "builtin-example":
-      return " · built-in example";
-    case "scan":
-      return " · installed";
-    default:
-      return "";
-  }
 }
 
 function formatRenderEngine(renderEngine) {
@@ -731,8 +549,8 @@ function setControlsEnabled(enabled) {
   ]) {
     control.disabled = !enabled;
   }
-  updatePresetControls();
-  updateFileGrantControls();
+  pluginBrowser.updatePresetControls();
+  pluginBrowser.updateFileGrantControls();
   vst3ProgramDataControls.update();
 }
 
