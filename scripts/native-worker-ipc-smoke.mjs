@@ -9,6 +9,7 @@ import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemo
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
 import { assertNoNativeLaunchData, nativeStateFileText } from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
+import { firstListedPreset, firstVst3ProgramDataTarget } from "./installed-plugin-probe-programs.mjs";
 import { writeNativeWorkerIpcFixtures } from "./native-worker-ipc-fixtures.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
@@ -89,6 +90,23 @@ try {
   check(
     nativeLaunchLeakCode === "native_editor_launch_data_leak",
     "installed plugin probe rejects native launch data leaks"
+  );
+  check(
+    firstListedPreset({ presets: [{ id: "init", name: "Init" }] })?.id === "init" &&
+      firstListedPreset({ presets: [{ id: "x".repeat(65) }] }) === undefined,
+    "installed plugin probe selects bounded listed presets"
+  );
+  const programTarget = firstVst3ProgramDataTarget({
+    vst3ProgramLists: [
+      { id: 1, programDataSupported: false, programs: [{ index: 0 }] },
+      { id: 2, programDataSupported: true, programs: [{ index: 3 }] }
+    ]
+  });
+  check(
+    programTarget?.programListId === 2 &&
+      programTarget.programIndex === 3 &&
+      firstVst3ProgramDataTarget({ vst3ProgramLists: [{ id: 4, programDataSupported: true, programs: [] }] }) === undefined,
+    "installed plugin probe selects bounded VST3 program-data targets"
   );
 
   check(

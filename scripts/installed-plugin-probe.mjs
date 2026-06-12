@@ -13,6 +13,7 @@ import {
   probeFileGrantStateSave
 } from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
+import { probeListedPreset, probeVst3ProgramData } from "./installed-plugin-probe-programs.mjs";
 import { createInstalledProbeReporter, installedProbeReportMode } from "./installed-plugin-probe-reporting.mjs";
 
 const HOST = process.env.SOUNDBRIDGE_HOST ?? "127.0.0.1";
@@ -126,6 +127,28 @@ async function probePlugin(socket, session, plugin) {
     result.layout = boundedLayoutSummary(created.layout);
     result.parameterCount = Array.isArray(created.plugin?.parameters) ? created.plugin.parameters.length : 0;
     result.parameterMetadataAtLimit = created.plugin?.parameterMetadataAtLimit === true || undefined;
+    await probeListedPreset({
+      assertProbe,
+      createdPlugin: created.plugin,
+      instanceId,
+      phase,
+      plugin,
+      request,
+      result,
+      session,
+      socket
+    });
+    await probeVst3ProgramData({
+      assertProbe,
+      createdPlugin: created.plugin,
+      instanceId,
+      phase,
+      plugin,
+      request,
+      result,
+      session,
+      socket
+    });
 
     if (PROBE_NATIVE_EDITOR_BROKER && isNativePluginFormat(plugin.format)) {
       await probeNativeEditorBroker(socket, session, plugin, instanceId, result);
