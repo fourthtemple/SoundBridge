@@ -26,7 +26,7 @@ export function createDaemonFileGrantOperations({
   async function useFileGrant(payload, session) {
     const request = payload && typeof payload === "object" ? payload : {};
     const instance = getInstance(request.instanceId, session);
-    const operation = requireOperation(request.operation ?? "other");
+    const operation = requireOperation(request.operation);
     if (!instanceAdvertisesOperation(instance, operation)) {
       throw makeProtocolError("unsupported_file_grant_operation", "This plugin did not advertise support for this file grant operation.");
     }
@@ -81,6 +81,9 @@ export function createDaemonFileGrantOperations({
   }
 
   function requireOperation(value) {
+    if (value == null) {
+      throw makeProtocolError("invalid_argument", "File grant operation is required.");
+    }
     const operation = String(value ?? "");
     if (!FILE_GRANT_OPERATIONS.has(operation)) {
       throw makeProtocolError("invalid_argument", "Unsupported file grant operation.", {

@@ -436,7 +436,7 @@ export type FileGrantOperation =
 export interface UseFileGrantRequest {
   instanceId: string;
   grantId: string;
-  operation?: FileGrantOperation;
+  operation: FileGrantOperation;
   purpose?: FileGrantPurpose;
   access?: FileGrantAccess;
   kind?: FileGrantKind;

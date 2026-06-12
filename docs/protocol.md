@@ -747,7 +747,7 @@ Plugin instances can hold path-free references to session-owned file grants. Thi
 
 ### `useFileGrant`
 
-`useFileGrant` asks a compatible native worker to consume an already attached grant for a known operation. The browser supplies only the instance id, grant id, operation name, and optional constraints:
+`useFileGrant` asks a compatible native worker to consume an already attached grant for a known operation. The browser supplies only the instance id, grant id, required operation name, and optional constraints:
 
 ```json
 {

@@ -314,6 +314,18 @@ export function createSecurityFileGrantCases({
         "useFileGrant requires an explicit worker implementation"
       );
 
+      const missingOperationUse = await request(
+        owner,
+        "useFileGrant",
+        { instanceId: instance.instanceId, grantId: grant.grantId },
+        true,
+        ownerPair.sessionToken
+      ).then(
+        () => ({ ok: true }),
+        (error) => ({ code: error.code })
+      );
+      check(missingOperationUse.code === "invalid_argument", "useFileGrant requires an explicit operation");
+
       const purposeMismatch = await request(
         owner,
         "attachFileGrant",

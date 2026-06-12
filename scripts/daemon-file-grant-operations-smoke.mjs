@@ -80,6 +80,17 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   }
   check(missingAttachmentCode === "file_grant_not_attached", "daemon file grant operations require instance attachment");
 
+  let missingOperationCode;
+  try {
+    await operations.useFileGrant({
+      instanceId: instance.instanceId,
+      grantId: grant.grantId
+    }, session);
+  } catch (error) {
+    missingOperationCode = error.code;
+  }
+  check(missingOperationCode === "invalid_argument", "daemon file grant operations require an explicit operation");
+
   let invalidOperationCode;
   try {
     await operations.useFileGrant({
