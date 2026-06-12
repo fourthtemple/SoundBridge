@@ -5,6 +5,7 @@ import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
 const MAX_TEST_STDOUT_LINE_BYTES = 128;
+const MAX_TEST_STDERR_LINE_BYTES = 128;
 const TEST_READY_TIMEOUT_MS = 500;
 const TEST_COMMAND_TIMEOUT_MS = 500;
 
@@ -31,6 +32,27 @@ process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
 process.stdin.on("data", () => {
   process.stdout.write("y".repeat(2048));
+});
+setTimeout(() => {}, 30000);
+`
+  );
+  const exampleStderrWorkerPath = writeExecutable(
+    "oversized-example-stderr-worker.mjs",
+    `#!/usr/bin/env node
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", () => {
+  process.stderr.write("e".repeat(2048));
+});
+setTimeout(() => {}, 30000);
+`
+  );
+  const nativeStderrWorkerPath = writeExecutable(
+    "oversized-native-stderr-worker.mjs",
+    `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", () => {
+  process.stderr.write("n".repeat(2048));
 });
 setTimeout(() => {}, 30000);
 `
@@ -62,6 +84,7 @@ setTimeout(() => {}, 30000);
     nativeRenderer: nativeWorkerPath,
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
+    maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
     exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
     nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
@@ -87,10 +110,42 @@ setTimeout(() => {}, 30000);
   );
   nativeWorker.destroy();
 
+  const stderrWorkers = createNativeWorkerProcesses({
+    nativeRenderer: nativeStderrWorkerPath,
+    normalizers: createDaemonNormalizers(),
+    maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
+    maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
+    workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
+    exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
+    nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS
+  });
+  const exampleStderrWorker = new stderrWorkers.ExampleInstrumentWorker(exampleStderrWorkerPath);
+  await expectRejected(
+    () => exampleStderrWorker.render({ frames: 1, sampleRate: 48000, gain: 0.5, tone: 0.5, detune: 0.5 }),
+    "worker_stderr_too_large",
+    "example instrument workers reject oversized stderr lines"
+  );
+  check(exampleStderrWorker.process?.killed === true, "oversized-stderr example instrument worker process is killed");
+  exampleStderrWorker.destroy();
+
+  const nativeStderrWorker = new stderrWorkers.NativeHostWorker(
+    { format: "lv2", bundlePath: tempDir, renderEngine: "native-lv2" },
+    nativeWorkerInstance()
+  );
+  await nativeStderrWorker.ready;
+  await expectRejected(
+    () => nativeStderrWorker.getParameters(),
+    "worker_stderr_too_large",
+    "native host workers reject oversized stderr lines"
+  );
+  check(nativeStderrWorker.process?.killed === true, "oversized-stderr native host worker process is killed");
+  nativeStderrWorker.destroy();
+
   const hangingWorkers = createNativeWorkerProcesses({
     nativeRenderer: hangingNativeWorkerPath,
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
+    maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS
   });
   const hangingWorker = new hangingWorkers.NativeHostWorker(
@@ -108,6 +163,7 @@ setTimeout(() => {}, 30000);
     nativeRenderer: hangingNativeCommandWorkerPath,
     normalizers: createDaemonNormalizers(),
     maxWorkerStdoutLineBytes: MAX_TEST_STDOUT_LINE_BYTES,
+    maxWorkerStderrLineBytes: MAX_TEST_STDERR_LINE_BYTES,
     workerReadyTimeoutMs: TEST_READY_TIMEOUT_MS,
     exampleWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS,
     nativeWorkerCommandTimeoutMs: TEST_COMMAND_TIMEOUT_MS

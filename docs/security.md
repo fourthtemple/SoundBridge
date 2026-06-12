@@ -114,8 +114,9 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Native worker ready timeout | 5 seconds, then the worker is rejected and terminated | VST3/AU/LV2 worker startup |
 | Native worker command timeout | 5 seconds for VST3/AU/LV2, 1.5 seconds for repo-local example workers; then the worker is rejected and terminated | worker IPC commands |
 | Native worker stdout line size | 16 MiB, then the worker is rejected and terminated | VST3/AU/LV2/example worker IPC responses |
+| Native worker stderr line size | 1 MiB, then the worker is rejected and terminated | VST3/AU/LV2/example worker diagnostics |
 
-Out-of-range `createInstance` values fail with `invalid_argument`. Native host workers independently clamp block size and channel counts before allocating, so a misbehaving daemon layer cannot drive a worker into an oversized allocation. The daemon also caps worker startup, command execution, and stdout response lines before JSON parsing; a missing ready handshake, timed-out command, oversized response, or unterminated response rejects pending commands and terminates that worker process instead of stranding requests or growing daemon memory. `packages/protocol/schema/protocol.schema.json` encodes the browser-facing command bounds so other implementations can validate against the same contract.
+Out-of-range `createInstance` values fail with `invalid_argument`. Native host workers independently clamp block size and channel counts before allocating, so a misbehaving daemon layer cannot drive a worker into an oversized allocation. The daemon also caps worker startup, command execution, stdout response lines before JSON parsing, and stderr diagnostic lines before logging; a missing ready handshake, timed-out command, oversized response, unterminated response, or oversized diagnostic line rejects pending commands and terminates that worker process instead of stranding requests or growing daemon memory/logs. `packages/protocol/schema/protocol.schema.json` encodes the browser-facing command bounds so other implementations can validate against the same contract.
 
 ## Development Token
 

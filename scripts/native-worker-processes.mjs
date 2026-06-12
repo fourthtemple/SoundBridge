@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 
 export const DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES = 16 * 1024 * 1024;
+export const DEFAULT_MAX_WORKER_STDERR_LINE_BYTES = 1024 * 1024;
 export const DEFAULT_WORKER_READY_TIMEOUT_MS = 5000;
 export const DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS = 1500;
 export const DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS = 5000;
@@ -9,6 +10,7 @@ export function createNativeWorkerProcesses({
   nativeRenderer,
   normalizers,
   maxWorkerStdoutLineBytes = DEFAULT_MAX_WORKER_STDOUT_LINE_BYTES,
+  maxWorkerStderrLineBytes = DEFAULT_MAX_WORKER_STDERR_LINE_BYTES,
   workerReadyTimeoutMs = DEFAULT_WORKER_READY_TIMEOUT_MS,
   exampleWorkerCommandTimeoutMs = DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS,
   nativeWorkerCommandTimeoutMs = DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS
@@ -27,6 +29,7 @@ export function createNativeWorkerProcesses({
     normalizeWorkerState
   } = normalizers;
   const workerStdoutLineLimit = normalizeWorkerStdoutLineLimit(maxWorkerStdoutLineBytes);
+  const workerStderrLineLimit = normalizeWorkerStderrLineLimit(maxWorkerStderrLineBytes);
   const workerReadyTimeout = normalizeWorkerReadyTimeout(workerReadyTimeoutMs);
   const exampleCommandTimeout = normalizeWorkerCommandTimeout(
     exampleWorkerCommandTimeoutMs,
@@ -43,7 +46,9 @@ export function createNativeWorkerProcesses({
       this.renderEngine = "bundle-worker";
       this.pending = [];
       this.stdoutBuffer = "";
+      this.stderrBuffer = "";
       this.maxStdoutLineBytes = workerStdoutLineLimit;
+      this.maxStderrLineBytes = workerStderrLineLimit;
       this.commandTimeoutMs = exampleCommandTimeout;
       this.process = spawn(executablePath, ["--worker"], {
         stdio: ["pipe", "pipe", "pipe"]
@@ -51,12 +56,8 @@ export function createNativeWorkerProcesses({
 
       this.process.stdout.setEncoding("utf8");
       this.process.stdout.on("data", (chunk) => this.handleStdout(chunk));
-      this.process.stderr.on("data", (chunk) => {
-        const message = String(chunk).trim();
-        if (message) {
-          console.warn(`Example instrument worker stderr: ${message}`);
-        }
-      });
+      this.process.stderr.setEncoding("utf8");
+      this.process.stderr.on("data", (chunk) => handleWorkerStderr(this, chunk, "Example instrument worker"));
       this.process.on("error", (error) => this.rejectAll(error));
       this.process.on("exit", (code, signal) => {
         if (this.pending.length > 0) {
@@ -122,7 +123,7 @@ export function createNativeWorkerProcesses({
       while (true) {
         const newline = this.stdoutBuffer.indexOf("\n");
         if (newline < 0) {
-          if (workerStdoutLineTooLarge(this.stdoutBuffer, this.maxStdoutLineBytes)) {
+          if (workerLineTooLarge(this.stdoutBuffer, this.maxStdoutLineBytes)) {
             this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
           }
           return;
@@ -130,7 +131,7 @@ export function createNativeWorkerProcesses({
 
         const rawLine = this.stdoutBuffer.slice(0, newline);
         this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1);
-        if (workerStdoutLineTooLarge(rawLine, this.maxStdoutLineBytes)) {
+        if (workerLineTooLarge(rawLine, this.maxStdoutLineBytes)) {
           this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
           return;
         }
@@ -156,6 +157,7 @@ export function createNativeWorkerProcesses({
 
     abortWorker(error) {
       this.stdoutBuffer = "";
+      this.stderrBuffer = "";
       this.rejectAll(error);
       killWorkerProcess(this.process);
     }
@@ -190,7 +192,9 @@ export function createNativeWorkerProcesses({
       this.renderEngine = nativeHost.renderEngine;
       this.pending = [];
       this.stdoutBuffer = "";
+      this.stderrBuffer = "";
       this.maxStdoutLineBytes = workerStdoutLineLimit;
+      this.maxStderrLineBytes = workerStderrLineLimit;
       this.commandTimeoutMs = nativeCommandTimeout;
       this.readySettled = false;
       this.ready = new Promise((resolve, reject) => {
@@ -208,12 +212,8 @@ export function createNativeWorkerProcesses({
 
       this.process.stdout.setEncoding("utf8");
       this.process.stdout.on("data", (chunk) => this.handleStdout(chunk));
-      this.process.stderr.on("data", (chunk) => {
-        const message = String(chunk).trim();
-        if (message) {
-          console.warn(`Native host worker stderr: ${message}`);
-        }
-      });
+      this.process.stderr.setEncoding("utf8");
+      this.process.stderr.on("data", (chunk) => handleWorkerStderr(this, chunk, "Native host worker"));
       this.process.on("error", (error) => this.rejectAll(error));
       this.process.on("exit", (code, signal) => {
         const error = new Error(`worker exited code=${code ?? "none"} signal=${signal ?? "none"}`);
@@ -356,7 +356,7 @@ export function createNativeWorkerProcesses({
       while (true) {
         const newline = this.stdoutBuffer.indexOf("\n");
         if (newline < 0) {
-          if (workerStdoutLineTooLarge(this.stdoutBuffer, this.maxStdoutLineBytes)) {
+          if (workerLineTooLarge(this.stdoutBuffer, this.maxStdoutLineBytes)) {
             this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
           }
           return;
@@ -364,7 +364,7 @@ export function createNativeWorkerProcesses({
 
         const rawLine = this.stdoutBuffer.slice(0, newline);
         this.stdoutBuffer = this.stdoutBuffer.slice(newline + 1);
-        if (workerStdoutLineTooLarge(rawLine, this.maxStdoutLineBytes)) {
+        if (workerLineTooLarge(rawLine, this.maxStdoutLineBytes)) {
           this.abortWorker(workerStdoutLineError(this.maxStdoutLineBytes));
           return;
         }
@@ -407,6 +407,7 @@ export function createNativeWorkerProcesses({
 
     abortWorker(error) {
       this.stdoutBuffer = "";
+      this.stderrBuffer = "";
       this.rejectAll(error);
       killWorkerProcess(this.process);
     }
@@ -495,6 +496,14 @@ function normalizeWorkerStdoutLineLimit(value) {
   return number;
 }
 
+function normalizeWorkerStderrLineLimit(value) {
+  const number = Math.floor(Number(value));
+  if (!Number.isFinite(number) || number <= 0) {
+    return DEFAULT_MAX_WORKER_STDERR_LINE_BYTES;
+  }
+  return number;
+}
+
 function normalizeWorkerReadyTimeout(value) {
   const number = Math.floor(Number(value));
   if (!Number.isFinite(number) || number <= 0) {
@@ -514,12 +523,41 @@ function normalizeWorkerCommandTimeout(value, fallback) {
   return number;
 }
 
-function workerStdoutLineTooLarge(line, maxBytes) {
+function workerLineTooLarge(line, maxBytes) {
   return Buffer.byteLength(line, "utf8") > maxBytes;
+}
+
+function handleWorkerStderr(worker, chunk, label) {
+  worker.stderrBuffer += chunk;
+  while (true) {
+    const newline = worker.stderrBuffer.indexOf("\n");
+    if (newline < 0) {
+      if (workerLineTooLarge(worker.stderrBuffer, worker.maxStderrLineBytes)) {
+        worker.abortWorker(workerStderrLineError(worker.maxStderrLineBytes));
+      }
+      return;
+    }
+
+    const rawLine = worker.stderrBuffer.slice(0, newline);
+    worker.stderrBuffer = worker.stderrBuffer.slice(newline + 1);
+    if (workerLineTooLarge(rawLine, worker.maxStderrLineBytes)) {
+      worker.abortWorker(workerStderrLineError(worker.maxStderrLineBytes));
+      return;
+    }
+
+    const message = rawLine.trim();
+    if (message) {
+      console.warn(`${label} stderr: ${message}`);
+    }
+  }
 }
 
 function workerStdoutLineError(maxBytes) {
   return new Error(`worker_stdout_too_large: worker stdout line exceeded ${maxBytes} bytes`);
+}
+
+function workerStderrLineError(maxBytes) {
+  return new Error(`worker_stderr_too_large: worker stderr line exceeded ${maxBytes} bytes`);
 }
 
 function workerReadyTimeoutError(timeoutMs) {
