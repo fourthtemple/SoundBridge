@@ -643,82 +643,12 @@ export interface ClearAutomationLaneResponse {
   laneCount: number;
 }
 
-export type MidiEvent =
-  | {
-      type: "noteOn";
-      note: number;
-      velocity: number;
-      time?: number;
-      channel?: number;
-      noteId?: number;
-    }
-  | {
-      type: "noteOff";
-      note: number;
-      velocity?: number;
-      time?: number;
-      channel?: number;
-      noteId?: number;
-    }
-  | {
-      type: "controlChange";
-      controller: number;
-      value: number;
-      time?: number;
-      channel?: number;
-    }
-  | {
-      type: "pitchBend";
-      value: number;
-      time?: number;
-      channel?: number;
-    }
-  | {
-      type: "channelPressure";
-      pressure: number;
-      time?: number;
-      channel?: number;
-    }
-  | {
-      type: "polyPressure";
-      note: number;
-      pressure: number;
-      time?: number;
-      channel?: number;
-      noteId?: number;
-    }
-  | {
-      type: "programChange";
-      program: number;
-      time?: number;
-      channel?: number;
-    }
-  | {
-      type: "noteExpression";
-      typeId: number;
-      noteId: number;
-      value: number;
-      time?: number;
-      channel?: number;
-    }
-  | {
-      type: "noteExpressionText";
-      typeId: number;
-      noteId: number;
-      text: string;
-      time?: number;
-      channel?: number;
-    };
-
-export interface SendMidiEventsRequest {
-  instanceId: string;
-  events: MidiEvent[];
-}
-
-export interface SendMidiEventsResponse {
-  accepted: boolean;
-  eventCount: number;
-}
+export type {
+  MidiEvent,
+  SendMidiEventsRequest,
+  SendMidiEventsResponse,
+  Vst3EventBusIndex
+} from "./midi-events";
 
 export interface GetLatencyRequest {
   instanceId: string;
