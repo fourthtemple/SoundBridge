@@ -140,6 +140,35 @@ export async function exerciseVst3MultiBusNativeWorker({
   }
 }
 
+export async function exerciseVst3MidiControllerMappingNativeWorker({
+  check,
+  createTestWorkers,
+  tempDir,
+  workerPath
+}) {
+  const midiWorkers = createTestWorkers(workerPath, {
+    maxWorkerCommandBytes: 4096,
+    maxWorkerPendingCommandBytes: 4096,
+    maxWorkerStdoutLineBytes: 2048
+  });
+  const midiWorker = new midiWorkers.NativeHostWorker(
+    { format: "vst3", bundlePath: tempDir, renderEngine: "native-vst3" },
+    vst3MidiControllerMappingInstance()
+  );
+
+  try {
+    await midiWorker.ready;
+    await midiWorker.sendMidiEvents([
+      { type: "controlChange", controller: 74, value: 0.25, channel: 2, time: 3 },
+      { type: "pitchBend", value: -0.5, channel: 2, time: 4 },
+      { type: "channelPressure", pressure: 0.75, channel: 2, time: 5 }
+    ]);
+    check(true, "native VST3 workers encode mapped MIDI-controller parameter events");
+  } finally {
+    midiWorker.destroy();
+  }
+}
+
 export function writeNativeWorkerIpcFixtures({ tempDir, fixtureGrantPath }) {
   return {
     exampleWorkerPath: writeExecutable(
@@ -331,7 +360,40 @@ setTimeout(() => {}, 30000);
 `
     ),
     grantAwareNativeWorkerPath: writeGrantAwareNativeWorker(tempDir, fixtureGrantPath),
+    midiControllerMappingNativeWorkerPath: writeVst3MidiControllerMappingNativeWorker(tempDir),
     multiBusNativeWorkerPath: writeVst3MultiBusNativeWorker(tempDir)
+  };
+}
+
+function vst3MidiControllerMappingInstance() {
+  return {
+    sampleRate: 48000,
+    maxBlockSize: 8,
+    inputChannels: 0,
+    outputChannels: 1,
+    kind: "instrument",
+    layout: {
+      requestedInputChannels: 0,
+      requestedOutputChannels: 1,
+      inputChannels: 0,
+      outputChannels: 1,
+      inputBuses: 0,
+      outputBuses: 1,
+      inputBusLayouts: [],
+      outputBusLayouts: [
+        {
+          index: 0,
+          direction: "output",
+          mediaType: "audio",
+          name: "Main Output",
+          type: "main",
+          channels: 1,
+          active: true
+        }
+      ],
+      sampleRate: 48000,
+      maxBlockSize: 8
+    }
   };
 }
 
@@ -472,6 +534,40 @@ process.stdin.on("data", (chunk) => {
       applied: sampleApplied || stateDirectoryApplied,
       status: stateDirectoryApplied ? "state-dir-ok" : "grant-ok"
     }) + "\\n");
+  }
+});
+setTimeout(() => {}, 30000);
+`
+  );
+}
+
+function writeVst3MidiControllerMappingNativeWorker(tempDir) {
+  return writeExecutable(
+    tempDir,
+    "vst3-midi-controller-mapping-native-worker.mjs",
+    `#!/usr/bin/env node
+const expectedCommand = "midi cc:74:0.25:2:3;bend:-0.5:2:4;pressure:0.75:2:5";
+process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
+process.stdin.setEncoding("utf8");
+let buffer = "";
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (true) {
+    const newline = buffer.indexOf("\\n");
+    if (newline < 0) {
+      return;
+    }
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (line === "quit") {
+      process.exit(0);
+    }
+    process.stdout.write(JSON.stringify(
+      line === expectedCommand
+        ? { ok: true, eventCount: 3 }
+        : { error: "bad_mapped_midi_controller_events" }
+    ) + "\\n");
   }
 });
 setTimeout(() => {}, 30000);

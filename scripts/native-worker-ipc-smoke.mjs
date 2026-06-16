@@ -9,6 +9,7 @@ import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemo
 import { exerciseInstalledProbeSupport } from "./native-worker-ipc-installed-probe-cases.mjs";
 import {
   exerciseGrantAwareNativeWorker,
+  exerciseVst3MidiControllerMappingNativeWorker,
   exerciseVst3MultiBusNativeWorker,
   writeNativeWorkerIpcFixtures
 } from "./native-worker-ipc-fixtures.mjs";
@@ -80,6 +81,7 @@ try {
     stubbornExampleCommandWorkerPath,
     stubbornNativeCommandWorkerPath,
     grantAwareNativeWorkerPath,
+    midiControllerMappingNativeWorkerPath,
     multiBusNativeWorkerPath
   } = writeNativeWorkerIpcFixtures({ tempDir, fixtureGrantPath });
 
@@ -99,6 +101,13 @@ try {
     createTestWorkers,
     tempDir,
     workerPath: multiBusNativeWorkerPath
+  });
+
+  await exerciseVst3MidiControllerMappingNativeWorker({
+    check,
+    createTestWorkers,
+    tempDir,
+    workerPath: midiControllerMappingNativeWorkerPath
   });
 
   const fileGrantOperation = await exerciseDaemonFileGrantOperation({

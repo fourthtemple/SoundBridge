@@ -177,6 +177,17 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     ) === "on:60:0.8:0:0:42;expr:0:0.5:42:0:1;exprText:6:YWg=:42:0:2",
     "daemon normalizers encode VST3 note-expression worker events"
   );
+  check(
+    unitNormalizers.encodeMidiEvents(
+      [
+        { type: "controlChange", controller: 74, value: 0.25, channel: 2, time: 3 },
+        { type: "pitchBend", value: -0.5, channel: 2, time: 4 },
+        { type: "channelPressure", pressure: 0.75, channel: 2, time: 5 }
+      ],
+      "vst3"
+    ) === "cc:74:0.25:2:3;bend:-0.5:2:4;pressure:0.75:2:5",
+    "daemon normalizers encode VST3 MIDI-controller mapping events"
+  );
 }
 
 function createProgramDataSupport({
