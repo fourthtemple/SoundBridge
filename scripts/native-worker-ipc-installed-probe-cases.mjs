@@ -2,6 +2,7 @@ import { assertNoNativeLaunchData, nativeStateFileText } from "./installed-plugi
 import { summarizeProbeVst3Events } from "./installed-plugin-probe-events.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
+import { midiEventsForBlock } from "./installed-plugin-probe-midi.mjs";
 import { firstListedPreset, firstVst3ProgramDataTarget } from "./installed-plugin-probe-programs.mjs";
 import {
   createInstalledProbeReporter,
@@ -145,6 +146,13 @@ export function exerciseInstalledProbeSupport({ check }) {
       vst3EventProfile.flags.includes("text-expression") &&
       vst3EventProfile.flags.includes("associated-parameter"),
     "installed plugin probe classifies VST3 event metadata coverage"
+  );
+  const vst3MidiEvents = midiEventsForBlock("vst3", 64, 64);
+  check(
+    vst3MidiEvents.some((event) => event.type === "noteExpression" && event.noteId === 77) &&
+      vst3MidiEvents.some((event) => event.type === "noteExpressionText" && event.text === "probe" && event.noteId === 77) &&
+      midiEventsForBlock("au", 64, 64).every((event) => !event.type.startsWith("noteExpression")),
+    "installed plugin probe sends VST3 note-expression value and text coverage"
   );
 
   const vst3ProbeState = nativeStateEnvelope({

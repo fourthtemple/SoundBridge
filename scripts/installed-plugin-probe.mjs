@@ -14,6 +14,7 @@ import {
 import { summarizeProbeVst3Events } from "./installed-plugin-probe-events.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
+import { midiEventsForBlock } from "./installed-plugin-probe-midi.mjs";
 import { probeListedPreset, probeVst3ProgramData } from "./installed-plugin-probe-programs.mjs";
 import { createInstalledProbeReporter, installedProbeReportMode } from "./installed-plugin-probe-reporting.mjs";
 import {
@@ -260,7 +261,7 @@ async function probePlugin(socket, session, plugin) {
       result.automationLaneSkipped = "no-writable-parameter";
     }
 
-    const midiEvents = midiEventsForBlock(plugin.format, layoutBlockSize(result.layout));
+    const midiEvents = midiEventsForBlock(plugin.format, layoutBlockSize(result.layout), MAX_BLOCK_SIZE);
     const midiAccepted = await phase(result, "sendMidiEvents", () =>
       request(socket, "sendMidiEvents", { instanceId, events: midiEvents }, true, session)
     );
@@ -462,23 +463,6 @@ function renderPayloadForLayout(instanceId, layout) {
     channels: Array.from({ length: inputChannels }, () => Array(frames).fill(0)),
     inputBuses
   };
-}
-
-function midiEventsForBlock(format, frames = MAX_BLOCK_SIZE) {
-  const boundedFrames = clampInt(frames, 1, MAX_BLOCK_SIZE, MAX_BLOCK_SIZE);
-  const offset = (fraction) => Math.min(boundedFrames - 1, Math.max(0, Math.floor(boundedFrames * fraction)));
-  const noteId = 77;
-  const events = [
-    { type: "noteOn", note: 60, velocity: 0.7, channel: 0, time: 0, ...(format === "vst3" ? { noteId } : {}) },
-    { type: "polyPressure", note: 60, pressure: 0.35, channel: 0, time: offset(0.125), ...(format === "vst3" ? { noteId } : {}) },
-    { type: "controlChange", controller: 1, value: 0.4, channel: 0, time: offset(0.25) },
-    { type: "pitchBend", value: 0.1, channel: 0, time: offset(0.375) },
-    { type: "channelPressure", pressure: 0.3, channel: 0, time: offset(0.5) }
-  ];
-  if (format === "vst3") {
-    events.splice(2, 0, { type: "noteExpression", typeId: 0, value: 0.5, noteId, channel: 0, time: offset(0.1875) });
-  }
-  return events;
 }
 
 function isNativePluginFormat(format) {
