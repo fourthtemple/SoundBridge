@@ -43,6 +43,11 @@ Open:
   "kind": "effect",
   "sampleRate": 48000,
   "maxBlockSize": 128,
+  "capabilityPolicy": {
+    "fileDialogs": false,
+    "clipboard": false,
+    "dragAndDrop": false
+  },
   "fileGrants": [
     {
       "grantId": "filegrant-...",
@@ -62,7 +67,7 @@ Open:
 }
 ```
 
-The `nativeHost` object and `fileGrants[].absolutePath` are daemon-to-broker data only. The daemon includes only grants already attached to the owning plugin instance and only after session ownership checks. Browser responses must remain path-free.
+The `capabilityPolicy` object is the daemon's effective allow/deny policy for privileged UI surfaces. Brokers must treat omitted or `false` policy fields as denied, even if the native platform windowing layer could expose the feature. The `nativeHost` object and `fileGrants[].absolutePath` are daemon-to-broker data only. The daemon includes only grants already attached to the owning plugin instance and only after session ownership checks. Browser responses must remain path-free.
 
 Open response:
 

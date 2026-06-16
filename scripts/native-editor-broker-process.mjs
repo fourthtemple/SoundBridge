@@ -61,6 +61,7 @@ export class NativeEditorBroker {
         kind: instance.kind,
         sampleRate: instance.sampleRate,
         maxBlockSize: instance.maxBlockSize,
+        capabilityPolicy: { ...this.policy },
         fileGrants: normalizeBrokerFileGrants(fileGrants),
         nativeHost: instance.nativeHost
       });

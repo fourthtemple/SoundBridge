@@ -54,6 +54,14 @@ process.stdin.on("data", (chunk) => {
         process.stdout.write(`${JSON.stringify({ ok: true, brokerSessionId: "x".repeat(81) })}\n`);
         continue;
       }
+      if (mode === "require-default-policy" && !matchesPolicy(message.capabilityPolicy, false)) {
+        process.stdout.write(`${JSON.stringify({ error: "bad_capability_policy" })}\n`);
+        continue;
+      }
+      if (mode === "require-allowed-policy" && !matchesPolicy(message.capabilityPolicy, true)) {
+        process.stdout.write(`${JSON.stringify({ error: "bad_capability_policy" })}\n`);
+        continue;
+      }
       if (mode === "require-file-grants") {
         const grant = Array.isArray(message.fileGrants) ? message.fileGrants[0] : undefined;
         if (
@@ -104,3 +112,10 @@ process.stdin.on("data", (chunk) => {
     }
   }
 });
+
+function matchesPolicy(policy, expected) {
+  return policy &&
+    policy.fileDialogs === expected &&
+    policy.clipboard === expected &&
+    policy.dragAndDrop === expected;
+}

@@ -111,6 +111,27 @@ assert(privilegedAllowed.capabilities.clipboard === true, "daemon policy can all
 assert(privilegedAllowed.capabilities.dragAndDrop === true, "daemon policy can allow broker drag/drop");
 await privilegedAllowed.brokerSession.close("editor-00000000-0000-4000-8000-000000000001");
 
+const defaultPolicyBroker = new NativeEditorBroker({
+  executablePath: process.execPath,
+  args: [fixturePath, "require-default-policy"],
+  limits: {
+    maxWorkerStdoutLineBytes: 64 * 1024,
+    maxWorkerCommandBytes: 64 * 1024,
+    maxWorkerStderrLineBytes: 16 * 1024,
+    maxWorkerStderrBytes: 64 * 1024,
+    maxWorkerDiagnosticLogChars: 1024,
+    workerReadyTimeoutMs: 1000,
+    nativeWorkerCommandTimeoutMs: 1000,
+    workerTerminationGraceMs: 50
+  }
+});
+const defaultPolicyOpened = await defaultPolicyBroker.openEditor({
+  editor: fixtureEditor,
+  instance: fixtureInstance
+});
+assert(defaultPolicyOpened.brokerSessionId.startsWith("fixture-editor-"), "broker receives default deny policy");
+await defaultPolicyOpened.brokerSession.close("editor-00000000-0000-4000-8000-000000000001");
+
 const grantAwareBroker = new NativeEditorBroker({
   executablePath: process.execPath,
   args: [fixturePath, "require-file-grants", fixtureFileGrantPath],
@@ -156,6 +177,21 @@ assert(
     configuredWithPolicy.capabilityPolicy.dragAndDrop === true,
   "configured broker exposes explicit native editor capability policy"
 );
+const configuredPolicyBroker = createConfiguredNativeEditorBroker({
+  env: {
+    SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: process.execPath,
+    SOUNDBRIDGE_NATIVE_EDITOR_BROKER_ARGS: JSON.stringify([fixturePath, "require-allowed-policy"]),
+    SOUNDBRIDGE_NATIVE_EDITOR_ALLOW_FILE_DIALOGS: "1",
+    SOUNDBRIDGE_NATIVE_EDITOR_ALLOW_CLIPBOARD: "1",
+    SOUNDBRIDGE_NATIVE_EDITOR_ALLOW_DRAG_DROP: "1"
+  }
+});
+const configuredPolicyOpened = await configuredPolicyBroker.openEditor({
+  editor: fixtureEditor,
+  instance: fixtureInstance
+});
+assert(configuredPolicyOpened.brokerSessionId.startsWith("fixture-editor-"), "configured broker sends allowed policy");
+await configuredPolicyOpened.brokerSession.close("editor-00000000-0000-4000-8000-000000000001");
 const grantAwareConfigured = createConfiguredNativeEditorBroker({
   env: {
     SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: process.execPath,
