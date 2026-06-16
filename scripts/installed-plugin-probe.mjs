@@ -12,6 +12,7 @@ import {
   probeFileGrantStateSave
 } from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
+import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
 import { probeListedPreset, probeVst3ProgramData } from "./installed-plugin-probe-programs.mjs";
 import { createInstalledProbeReporter, installedProbeReportMode } from "./installed-plugin-probe-reporting.mjs";
 import {
@@ -130,6 +131,7 @@ async function probePlugin(socket, session, plugin) {
     instanceId = created.instanceId;
     result.renderEngine = created.renderEngine;
     result.layout = boundedLayoutSummary(created.layout);
+    result.busProfile = summarizeProbeBusLayout(plugin, result.layout);
     result.parameterCount = Array.isArray(created.plugin?.parameters) ? created.plugin.parameters.length : 0;
     result.parameterMetadataAtLimit = created.plugin?.parameterMetadataAtLimit === true || undefined;
     await probeListedPreset({
@@ -545,6 +547,7 @@ function boundedLayoutSummary(layout) {
     ? value.map((bus) => ({
         index: clampInt(bus?.index, 0, 31, 0),
         channels: clampInt(bus?.channels, 0, 32, 0),
+        type: bus?.type === "main" || bus?.type === "aux" || bus?.type === "unknown" ? bus.type : "unknown",
         active: bus?.active === true
       }))
     : [];

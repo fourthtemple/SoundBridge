@@ -82,6 +82,7 @@ function summarizeFeatureCoverage(results, options) {
     fileGrantPresetLoad: countStatuses(results, "fileGrantPresetLoad"),
     fileGrantStateSave: countStatuses(results, "fileGrantStateSave"),
     fileGrantSavedStateRestore: countStatuses(results, "fileGrantSavedStateRestore"),
+    busLayouts: countBusLayouts(results),
     automationLanes: countAutomationLanes(results),
     nativeEditor: countNativeEditor(results, options)
   };
@@ -109,6 +110,22 @@ function countAutomationLanes(results) {
   return counts;
 }
 
+function countBusLayouts(results) {
+  const counts = {};
+  for (const result of results) {
+    const category = result.busProfile?.category ? String(result.busProfile.category) : "missing";
+    counts[category] = (counts[category] ?? 0) + 1;
+    for (const flag of result.busProfile?.flags ?? []) {
+      if (flag === "main-bus") {
+        continue;
+      }
+      const key = `flag:${flag}`;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
 function countNativeEditor(results, options) {
   if (!options.nativeEditorBroker) {
     return results.length > 0 ? { "not-requested": results.length } : {};
@@ -131,6 +148,7 @@ function printFeatureCoverage(coverage, stream) {
     ["file grant preset load", coverage.fileGrantPresetLoad],
     ["file grant state save", coverage.fileGrantStateSave],
     ["file grant saved-state restore", coverage.fileGrantSavedStateRestore],
+    ["bus layouts", coverage.busLayouts],
     ["automation lanes", coverage.automationLanes],
     ["native editor broker", coverage.nativeEditor]
   ]) {

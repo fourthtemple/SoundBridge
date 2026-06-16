@@ -1,5 +1,6 @@
 import { assertNoNativeLaunchData, nativeStateFileText } from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
+import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
 import { firstListedPreset, firstVst3ProgramDataTarget } from "./installed-plugin-probe-programs.mjs";
 import {
   createInstalledProbeReporter,
@@ -39,6 +40,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       fileGrantPresetLoad: "applied",
       fileGrantStateSave: "applied",
       fileGrantSavedStateRestore: "applied",
+      busProfile: { category: "sidechain", flags: ["sidechain-input", "multi-input"] },
       automationLanePointCount: 2,
       nativeEditor: { transport: "native-broker" }
     },
@@ -47,6 +49,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       listedPreset: "skipped",
       vst3ProgramData: "skipped-format",
       parameterDisplayInput: "skipped",
+      busProfile: { category: "multi-output-instrument", flags: ["multi-output", "multi-output-instrument"] },
       automationLaneSkipped: "lv2-block-size-profile"
     }
   ];
@@ -54,6 +57,8 @@ export function exerciseInstalledProbeSupport({ check }) {
   check(
     coverageSummary.coverage.listedPresets.applied === 1 &&
       coverageSummary.coverage.vst3ProgramData.restored === 1 &&
+      coverageSummary.coverage.busLayouts.sidechain === 1 &&
+      coverageSummary.coverage.busLayouts["flag:multi-output-instrument"] === 1 &&
       coverageSummary.coverage.automationLanes.applied === 1 &&
       coverageSummary.coverage.nativeEditor.opened === 1,
     "installed plugin probe summarizes feature coverage"
@@ -73,8 +78,44 @@ export function exerciseInstalledProbeSupport({ check }) {
   }).printSummary(coverageResults);
   check(
     coverageLines.some((line) => line === "Feature coverage:") &&
-      coverageLines.some((line) => line.includes("VST3 program data: 1 restored, 1 skipped-format")),
+      coverageLines.some((line) => line.includes("VST3 program data: 1 restored, 1 skipped-format")) &&
+      coverageLines.some((line) => line.includes("bus layouts:")),
     "installed plugin probe summary prints feature coverage"
+  );
+
+  const sidechainProfile = summarizeProbeBusLayout(
+    { kind: "effect" },
+    {
+      inputChannels: 2,
+      outputChannels: 2,
+      inputBuses: 2,
+      outputBuses: 1,
+      inputBusLayouts: [
+        { index: 0, channels: 2, type: "main", active: true },
+        { index: 1, channels: 1, type: "aux", active: true }
+      ],
+      outputBusLayouts: [{ index: 0, channels: 2, type: "main", active: true }]
+    }
+  );
+  const multiOutputInstrumentProfile = summarizeProbeBusLayout(
+    { kind: "instrument" },
+    {
+      inputChannels: 0,
+      outputChannels: 2,
+      inputBuses: 0,
+      outputBuses: 2,
+      outputBusLayouts: [
+        { index: 0, channels: 2, type: "main", active: true },
+        { index: 1, channels: 2, type: "aux", active: true }
+      ]
+    }
+  );
+  check(
+    sidechainProfile.category === "sidechain" &&
+      sidechainProfile.flags.includes("sidechain-input") &&
+      multiOutputInstrumentProfile.category === "multi-output-instrument" &&
+      multiOutputInstrumentProfile.flags.includes("multi-output-instrument"),
+    "installed plugin probe classifies bus-layout coverage"
   );
 
   const vst3ProbeState = nativeStateEnvelope({

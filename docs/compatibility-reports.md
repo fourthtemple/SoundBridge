@@ -68,6 +68,8 @@ In the GitHub issue, include:
 - whether scanning, instantiation, rendering, parameters, presets, state, MIDI, bus layouts, editor, or file grants failed
 - the JSON probe report or the relevant sanitized failure section
 
+JSON reports include a path-free `busProfile` for each probed plugin. Use it to call out coverage such as `effect-main`, `instrument-main`, `sidechain`, `multi-output`, and `multi-output-instrument`, plus flags for non-main-bus routing such as `sidechain-input`, `multi-input`, `multi-output`, and unusual bus indexes.
+
 ## Privacy And Safety
 
 Before posting, remove anything private that may appear in local output. Do not include:
