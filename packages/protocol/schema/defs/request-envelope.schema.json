@@ -1,128 +1,375 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://soundbridge.dev/schema/protocol.schema.json",
-  "title": "SoundBridge Protocol",
-  "type": "object",
-  "oneOf": [
-    { "$ref": "#/$defs/requestEnvelope" },
-    { "$ref": "#/$defs/responseEnvelope" },
-    { "$ref": "#/$defs/eventEnvelope" }
-  ],
+  "$id": "https://soundbridge.dev/schema/defs/request-envelope.schema.json",
+  "title": "SoundBridge Request Envelope Schema",
+  "$ref": "#/$defs/requestEnvelope",
   "$defs": {
-    "command": {
-      "type": "string",
-      "enum": [
-        "hello",
-        "pair",
-        "scanPlugins",
-        "listPlugins",
-        "createInstance",
-        "destroyInstance",
-        "getParameters",
-        "setParameter",
-        "setParameterDisplayValue",
-        "setPreset",
-        "getVst3ProgramData",
-        "setVst3ProgramData",
-        "setParameterEvents",
-        "setParameterCurve",
-        "setAutomationLane",
-        "clearAutomationLane",
-        "getState",
-        "setState",
-        "processAudioBlock",
-        "sendMidiEvents",
-        "getLatency",
-        "getTailTime",
-        "getLayout",
-        "openEditor",
-        "closeEditor",
-        "createFileGrant",
-        "listFileGrants",
-        "revokeFileGrant",
-        "attachFileGrant",
-        "listInstanceFileGrants",
-        "detachFileGrant",
-        "useFileGrant",
-        "heartbeat"
-      ]
-    },
+    "command": { "$ref": "../protocol.schema.json#/$defs/command" },
     "pluginFormat": { "type": "string", "enum": ["vst3", "au", "lv2", "mock", "unknown"] },
-    "pluginFormatCapability": { "$ref": "./defs/hello-response.schema.json#/$defs/pluginFormatCapability" },
-    "helloResponse": { "$ref": "./defs/hello-response.schema.json#/$defs/helloResponse" },
-    "requestEnvelope": { "$ref": "./defs/request-envelope.schema.json#/$defs/requestEnvelope" },
-    "responseEnvelope": {
+    "requestEnvelope": {
       "type": "object",
-      "required": ["type", "id", "ok"],
+      "required": ["type", "id", "command", "payload"],
       "additionalProperties": false,
       "properties": {
-        "type": { "const": "response" },
+        "type": { "const": "request" },
         "id": { "type": "string", "minLength": 1 },
-        "ok": { "type": "boolean" },
-        "payload": {  },
-        "error": { "$ref": "#/$defs/error" }
-      }
-    },
-    "eventEnvelope": {
-      "type": "object",
-      "required": ["type", "event", "payload"],
-      "additionalProperties": false,
-      "properties": {
-        "type": { "const": "event" },
-        "event": { "type": "string", "minLength": 1 },
-        "payload": {  }
-      }
-    },
-    "error": {
-      "type": "object",
-      "required": ["code", "message"],
-      "additionalProperties": true,
-      "properties": {
-        "code": { "type": "string" },
-        "message": { "type": "string" },
-        "details": {  }
-      }
-    },
-    "pluginParameter": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginParameter" },
-    "pluginVst3Unit": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginVst3Unit" },
-    "pluginProgram": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginProgram" },
-    "pluginProgramList": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginProgramList" },
-    "pluginVst3NoteExpression": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginVst3NoteExpression" },
-    "pluginMetadata": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginMetadata" },
-    "pluginClassMetadata": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginClassMetadata" },
-    "pluginEditorKind": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginEditorKind" },
-    "pluginLayout": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginLayout" },
-    "pluginBusLayout": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginBusLayout" },
-    "pluginPreset": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginPreset" },
-    "vst3EventBusIndex": { "$ref": "./defs/midi-event.schema.json#/$defs/vst3EventBusIndex" },
-    "midiEvent": { "$ref": "./defs/midi-event.schema.json#/$defs/midiEvent" },
-    "parameterAutomationEvent": {
-      "type": "object",
-      "required": ["parameterId", "normalizedValue"],
-      "additionalProperties": true,
-      "properties": {
-        "parameterId": { "type": "string", "minLength": 1, "maxLength": 64 },
-        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 },
-        "time": { "type": "integer", "minimum": 0, "maximum": 8191 }
-      }
-    },
-    "parameterAutomationPoint": {
-      "type": "object",
-      "required": ["time", "normalizedValue"],
-      "additionalProperties": true,
-      "properties": {
-        "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
-        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
-      }
-    },
-    "automationLanePoint": {
-      "type": "object",
-      "required": ["samplePosition", "normalizedValue"],
-      "additionalProperties": true,
-      "properties": {
-        "samplePosition": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
-      }
+        "command": { "$ref": "#/$defs/command" },
+        "payload": { "type": "object" },
+        "sessionToken": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "pair" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/pairRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "createInstance" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/createInstanceRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "processAudioBlock" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/processAudioBlockRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setParameter" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setParameterRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setParameterDisplayValue" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setParameterDisplayValueRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setPreset" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setPresetRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "getVst3ProgramData" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/getVst3ProgramDataRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setVst3ProgramData" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setVst3ProgramDataRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setParameterEvents" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setParameterEventsRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setParameterCurve" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setParameterCurveRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setAutomationLane" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setAutomationLaneRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "clearAutomationLane" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/clearAutomationLaneRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "getState" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/getStateRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "setState" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/setStateRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "sendMidiEvents" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/sendMidiEventsRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "getLatency" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/getLatencyRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "getTailTime" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/getTailTimeRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "getLayout" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/getLayoutRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "openEditor" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/openEditorRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "closeEditor" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/closeEditorRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "createFileGrant" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/createFileGrantRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "listFileGrants" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "revokeFileGrant" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/revokeFileGrantRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "attachFileGrant" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/attachFileGrantRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "listInstanceFileGrants" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/listInstanceFileGrantsRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "detachFileGrant" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/detachFileGrantRequest" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "command": { "const": "useFileGrant" }
+            },
+            "required": ["command"]
+          },
+          "then": {
+            "properties": {
+              "payload": { "$ref": "#/$defs/useFileGrantRequest" }
+            }
+          }
+        }
+      ]
     },
     "pairRequest": {
       "type": "object",
@@ -254,6 +501,34 @@
         "programData": { "type": "string", "minLength": 1, "maxLength": 1048576 }
       }
     },
+    "parameterAutomationEvent": {
+      "type": "object",
+      "required": ["parameterId", "normalizedValue"],
+      "additionalProperties": true,
+      "properties": {
+        "parameterId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "time": { "type": "integer", "minimum": 0, "maximum": 8191 }
+      }
+    },
+    "parameterAutomationPoint": {
+      "type": "object",
+      "required": ["time", "normalizedValue"],
+      "additionalProperties": true,
+      "properties": {
+        "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "automationLanePoint": {
+      "type": "object",
+      "required": ["samplePosition", "normalizedValue"],
+      "additionalProperties": true,
+      "properties": {
+        "samplePosition": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
     "setParameterEventsRequest": {
       "type": "object",
       "required": ["instanceId", "events"],
@@ -333,7 +608,7 @@
         "events": {
           "type": "array",
           "maxItems": 4096,
-          "items": { "$ref": "#/$defs/midiEvent" }
+          "items": { "$ref": "./midi-event.schema.json#/$defs/midiEvent" }
         }
       }
     },
@@ -378,10 +653,6 @@
       "properties": {
         "editorId": { "type": "string", "minLength": 1, "maxLength": 80 }
       }
-    },
-    "fileGrantOperation": {
-      "type": "string",
-      "enum": ["loadPreset", "loadSample", "openCacheDirectory", "loadLicense", "restoreState", "saveStateDirectory", "other"]
     },
     "createFileGrantRequest": {
       "type": "object",

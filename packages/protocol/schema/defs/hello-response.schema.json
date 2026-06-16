@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soundbridge.dev/schema/defs/hello-response.schema.json",
+  "title": "SoundBridge Hello Response Schema",
+  "$ref": "#/$defs/helloResponse",
+  "$defs": {
+    "pluginFormatCapability": {
+      "type": "object",
+      "required": ["scan", "host"],
+      "additionalProperties": true,
+      "properties": {
+        "scan": { "type": "boolean" },
+        "host": { "type": "boolean" },
+        "exampleHost": { "type": "boolean" },
+        "mockExamples": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "helloResponse": {
+      "type": "object",
+      "required": ["name", "protocolVersion", "pairingRequired", "transports", "capabilities"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "protocolVersion": { "type": "string" },
+        "pairingRequired": { "type": "boolean" },
+        "transports": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "url"],
+            "additionalProperties": true,
+            "properties": {
+              "kind": { "type": "string" },
+              "url": { "type": "string" },
+              "audioEncoding": { "type": "string" }
+            }
+          }
+        },
+        "capabilities": {
+          "type": "object",
+          "required": ["pluginFormats"],
+          "additionalProperties": true,
+          "properties": {
+            "pluginFormats": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/pluginFormatCapability" },
+              "properties": {
+                "vst3": { "$ref": "#/$defs/pluginFormatCapability" },
+                "au": { "$ref": "#/$defs/pluginFormatCapability" },
+                "lv2": { "$ref": "#/$defs/pluginFormatCapability" },
+                "mock": { "$ref": "#/$defs/pluginFormatCapability" },
+                "unknown": { "$ref": "#/$defs/pluginFormatCapability" }
+              }
+            },
+            "fileAccess": { "type": "boolean" },
+            "security": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "originAllowlist": { "type": "boolean" },
+                "sessionBoundToConnection": { "type": "boolean" },
+                "sessionBoundToOrigin": { "type": "boolean" },
+                "instanceOwnership": { "type": "boolean" },
+                "cleanupOnDisconnect": { "type": "boolean" },
+                "maxInstancesPerSession": { "type": "number" },
+                "maxTotalInstances": { "type": "number" },
+                "maxEditorsPerSession": { "type": "number" },
+                "maxTotalEditors": { "type": "number" },
+                "maxEditorSessionTtlMs": { "type": "number" },
+                "fileBroker": { "type": "boolean" },
+                "fileGrantApprovalBroker": { "type": "boolean" },
+                "browserFileGrantPaths": { "type": "boolean" },
+                "maxFileGrantsPerSession": { "type": "number" },
+                "maxFileGrantsPerInstance": { "type": "number" },
+                "maxTotalFileGrants": { "type": "number" },
+                "maxFileGrantTtlMs": { "type": "number" },
+                "maxFileGrantPathBytes": { "type": "number" },
+                "maxFileGrantDisplayNameBytes": { "type": "number" },
+                "maxParameterEventsPerRequest": { "type": "number" },
+                "maxAutomationCurvePoints": { "type": "number" },
+                "maxAutomationLanesPerInstance": { "type": "number" },
+                "maxAutomationLanePoints": { "type": "number" },
+                "maxTransportTempoBpm": { "type": "number" },
+                "maxTransportPositionMusic": { "type": "number" },
+                "maxTransportSamplePosition": { "type": "number" },
+                "maxPluginNoteExpressions": { "type": "number" },
+                "maxPluginProgramDataBytes": { "type": "number" },
+                "maxPluginProgramDataEnvelopeBytes": { "type": "number" },
+                "maxPluginProgramLists": { "type": "number" },
+                "maxPluginPrograms": { "type": "number" },
+                "maxNoteExpressionTextBytes": { "type": "number" },
+                "maxWorkerStdoutLineBytes": { "type": "number" },
+                "maxWorkerCommandBytes": { "type": "number" },
+                "maxWorkerPendingCommandBytes": { "type": "number" },
+                "maxWorkerStderrLineBytes": { "type": "number" },
+                "maxWorkerStderrBytes": { "type": "number" },
+                "maxWorkerDiagnosticLogChars": { "type": "number" },
+                "maxWorkerPendingCommands": { "type": "number" },
+                "workerReadyTimeoutMs": { "type": "number" },
+                "workerTerminationGraceMs": { "type": "number" },
+                "exampleWorkerCommandTimeoutMs": { "type": "number" },
+                "nativeWorkerCommandTimeoutMs": { "type": "number" },
+                "nativeEditorBroker": { "type": "boolean" },
+                "nativeEditorFileDialogs": { "type": "boolean" },
+                "nativeEditorClipboard": { "type": "boolean" },
+                "nativeEditorDragAndDrop": { "type": "boolean" },
+                "nativeWorkerFileGrants": { "type": "boolean" }
+              }
+            },
+            "automation": { "type": "boolean" },
+            "transport": { "type": "boolean" },
+            "genericEditor": { "type": "boolean" },
+            "nativeEditor": { "type": "boolean" },
+            "fileGrantOperations": { "type": "boolean" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -5,6 +5,7 @@
   "license": "MIT",
   "exports": {
     ".": "./src/messages.ts",
-    "./schema": "./schema/protocol.schema.json"
+    "./schema": "./schema/protocol.schema.json",
+    "./schema/defs/*": "./schema/defs/*"
   }
 }

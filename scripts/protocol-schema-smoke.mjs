@@ -16,14 +16,32 @@ const MIDI_EVENT_TYPES = new Set([
 
 const schema = JSON.parse(fs.readFileSync(SCHEMA_URL, "utf8"));
 
+const requestEnvelope = resolveRef(schema.$defs?.requestEnvelope?.$ref, SCHEMA_URL);
 assert(
-  schema.$defs?.vst3EventBusIndex?.type === "integer" &&
-    schema.$defs.vst3EventBusIndex.minimum === 0 &&
-    schema.$defs.vst3EventBusIndex.maximum === 31,
+  requestEnvelope?.properties?.command?.$ref === "#/$defs/command",
+  "protocol schema keeps request-envelope command validation anchored"
+);
+
+const helloResponse = resolveRef(schema.$defs?.helloResponse?.$ref, SCHEMA_URL);
+assert(
+  helloResponse?.required?.includes("capabilities"),
+  "protocol schema resolves split hello response definitions"
+);
+
+assert(
+  resolveRef(schema.$defs?.pluginMetadata?.$ref, SCHEMA_URL)?.properties?.vst3NoteExpressions?.maxItems === 256,
+  "protocol schema resolves split plugin metadata definitions"
+);
+
+const vst3EventBusIndex = resolveRef(schema.$defs?.vst3EventBusIndex?.$ref, SCHEMA_URL);
+assert(
+  vst3EventBusIndex?.type === "integer" &&
+    vst3EventBusIndex.minimum === 0 &&
+    vst3EventBusIndex.maximum === 31,
   "protocol schema declares bounded VST3 event-bus indexes"
 );
 
-const midiEventVariants = schema.$defs?.midiEvent?.oneOf;
+const midiEventVariants = resolveRef(schema.$defs?.midiEvent?.$ref, SCHEMA_URL)?.oneOf;
 assert(Array.isArray(midiEventVariants), "protocol schema declares MIDI event variants");
 
 const seenTypes = new Set();
@@ -55,4 +73,18 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function resolveRef(ref, baseUrl) {
+  assert(typeof ref === "string", "protocol schema references must be strings");
+  const [pathPart, fragment = ""] = ref.split("#");
+  const targetUrl = pathPart ? new URL(pathPart, baseUrl) : baseUrl;
+  const target = JSON.parse(fs.readFileSync(targetUrl, "utf8"));
+  if (!fragment) {
+    return target;
+  }
+  return fragment
+    .replace(/^\//, "")
+    .split("/")
+    .reduce((value, rawPart) => value?.[rawPart.replace(/~1/g, "/").replace(/~0/g, "~")], target);
 }

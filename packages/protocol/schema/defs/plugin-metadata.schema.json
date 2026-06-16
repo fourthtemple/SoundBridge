@@ -1,0 +1,245 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soundbridge.dev/schema/defs/plugin-metadata.schema.json",
+  "title": "SoundBridge Plugin Metadata Schema",
+  "$ref": "#/$defs/pluginMetadata",
+  "$defs": {
+    "pluginFormat": { "type": "string", "enum": ["vst3", "au", "lv2", "mock", "unknown"] },
+    "fileGrantOperation": {
+      "type": "string",
+      "enum": ["loadPreset", "loadSample", "openCacheDirectory", "loadLicense", "restoreState", "saveStateDirectory", "other"]
+    },
+    "pluginParameter": {
+      "type": "object",
+      "required": ["id", "name", "normalizedValue", "defaultNormalizedValue", "automatable"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 160 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "defaultNormalizedValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "displayValue": { "type": "string", "maxLength": 160 },
+        "unit": { "type": "string", "maxLength": 64 },
+        "minPlain": { "type": "number" },
+        "maxPlain": { "type": "number" },
+        "plainValue": { "type": "number" },
+        "automatable": { "type": "boolean" },
+        "stepCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "readOnly": { "type": "boolean" },
+        "vst3Unit": { "$ref": "#/$defs/pluginVst3Unit" },
+        "programChange": { "type": "boolean" },
+        "programList": { "$ref": "#/$defs/pluginProgramList" }
+      }
+    },
+    "pluginVst3Unit": {
+      "type": "object",
+      "required": ["id", "parentUnitId", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "parentUnitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "name": { "type": "string", "maxLength": 160 },
+        "programListId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+      }
+    },
+    "pluginProgram": {
+      "type": "object",
+      "required": ["index", "name", "normalizedValue"],
+      "additionalProperties": false,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "name": { "type": "string", "maxLength": 160 },
+        "normalizedValue": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "pluginProgramList": {
+      "type": "object",
+      "required": ["id", "name", "programs"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "name": { "type": "string", "maxLength": 160 },
+        "unitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "programDataSupported": { "type": "boolean" },
+        "programs": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginProgram" }
+        }
+      }
+    },
+    "pluginVst3NoteExpression": {
+      "type": "object",
+      "required": ["typeId", "name", "defaultValue", "minValue", "maxValue", "stepCount", "busIndex", "channel"],
+      "additionalProperties": false,
+      "properties": {
+        "typeId": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "name": { "type": "string", "maxLength": 160 },
+        "shortName": { "type": "string", "maxLength": 160 },
+        "unit": { "type": "string", "maxLength": 64 },
+        "unitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "defaultValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "minValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maxValue": { "type": "number", "minimum": 0, "maximum": 1 },
+        "stepCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "bipolar": { "type": "boolean" },
+        "oneShot": { "type": "boolean" },
+        "absolute": { "type": "boolean" },
+        "associatedParameterId": { "type": "string", "maxLength": 64 },
+        "busIndex": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "channel": { "type": "integer", "minimum": 0, "maximum": 15 }
+      }
+    },
+    "pluginMetadata": {
+      "type": "object",
+      "required": ["pluginId", "format", "name", "vendor", "category", "kind", "inputs", "outputs", "parameters"],
+      "additionalProperties": true,
+      "properties": {
+        "pluginId": { "type": "string" },
+        "format": { "$ref": "#/$defs/pluginFormat" },
+        "name": { "type": "string" },
+        "vendor": { "type": "string" },
+        "category": { "type": "string" },
+        "kind": { "type": "string", "enum": ["effect", "instrument", "midi-effect", "unknown"] },
+        "source": { "type": "string", "enum": ["scan", "example-bundle", "builtin-example", "mock", "unknown"] },
+        "hostable": { "type": "boolean" },
+        "hostUnavailableReason": { "type": "string" },
+        "inputs": { "type": "integer", "minimum": 0 },
+        "outputs": { "type": "integer", "minimum": 0 },
+        "metadata": { "$ref": "#/$defs/pluginClassMetadata" },
+        "tailSamples": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+        "infiniteTail": { "type": "boolean" },
+        "parameters": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": { "$ref": "#/$defs/pluginParameter" }
+        },
+        "parameterMetadataAtLimit": { "type": "boolean" },
+        "editorKinds": {
+          "type": "array",
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/pluginEditorKind" }
+        },
+        "fileGrantOperations": {
+          "type": "array",
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/fileGrantOperation" }
+        },
+        "vst3ProgramLists": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginProgramList" }
+        },
+        "vst3NoteExpressions": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginVst3NoteExpression" }
+        },
+        "presets": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginPreset" }
+        }
+      }
+    },
+    "pluginClassMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "stableId": { "type": "string", "maxLength": 256 },
+        "bundleIdentifier": { "type": "string", "maxLength": 256 },
+        "version": { "type": "string", "maxLength": 80 },
+        "vst3ClassId": { "type": "string", "maxLength": 64 },
+        "vst3SdkVersion": { "type": "string", "maxLength": 80 },
+        "componentType": { "type": "string", "maxLength": 16 },
+        "componentSubType": { "type": "string", "maxLength": 16 },
+        "componentManufacturer": { "type": "string", "maxLength": 16 },
+        "audioUnitHostProfile": {
+          "type": "string",
+          "enum": [
+            "realtime-main-bus",
+            "realtime-format-converter",
+            "realtime-multi-source-merger",
+            "realtime-multi-output-splitter",
+            "offline-render",
+            "multi-source-format-converter",
+            "multi-output-splitter"
+          ]
+        },
+        "lv2Uri": { "type": "string", "maxLength": 256 },
+        "lv2BlockSizeProfile": { "type": "string", "maxLength": 32 },
+        "lv2UiTypes": { "type": "string", "maxLength": 256 },
+        "lv2UiCount": { "type": "string", "maxLength": 16 },
+        "lv2UiBinaryCount": { "type": "string", "maxLength": 16 }
+      }
+    },
+    "pluginEditorKind": { "type": "string", "enum": ["generic-parameters", "native-window"] },
+    "pluginLayout": {
+      "type": "object",
+      "required": [
+        "requestedInputChannels",
+        "requestedOutputChannels",
+        "inputChannels",
+        "outputChannels",
+        "inputBuses",
+        "outputBuses",
+        "inputBusLayouts",
+        "outputBusLayouts",
+        "sampleRate",
+        "maxBlockSize"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "requestedInputChannels": { "type": "integer", "minimum": 0, "maximum": 32 },
+        "requestedOutputChannels": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "inputChannels": { "type": "integer", "minimum": 0, "maximum": 32 },
+        "outputChannels": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "inputBuses": { "type": "integer", "minimum": 0, "maximum": 32 },
+        "outputBuses": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "inputBusLayouts": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/pluginBusLayout" }
+        },
+        "outputBusLayouts": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/pluginBusLayout" }
+        },
+        "sampleRate": { "type": "number", "minimum": 8000, "maximum": 384000 },
+        "maxBlockSize": { "type": "integer", "minimum": 1, "maximum": 8192 }
+      }
+    },
+    "pluginBusLayout": {
+      "type": "object",
+      "required": ["index", "direction", "mediaType", "name", "type", "channels", "active"],
+      "additionalProperties": true,
+      "properties": {
+        "index": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "direction": { "type": "string", "enum": ["input", "output"] },
+        "mediaType": { "type": "string", "enum": ["audio"] },
+        "name": { "type": "string", "maxLength": 160 },
+        "type": { "type": "string", "enum": ["main", "aux", "unknown"] },
+        "channels": { "type": "integer", "minimum": 0, "maximum": 32 },
+        "active": { "type": "boolean" }
+      }
+    },
+    "pluginPreset": {
+      "type": "object",
+      "required": ["id", "name", "parameters"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 160 },
+        "parameters": {
+          "type": "object",
+          "maxProperties": 1024,
+          "propertyNames": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    }
+  }
+}

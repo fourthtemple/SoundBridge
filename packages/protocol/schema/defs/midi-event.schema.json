@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://soundbridge.dev/schema/defs/midi-event.schema.json",
+  "title": "SoundBridge MIDI Event Schema",
+  "$ref": "#/$defs/midiEvent",
+  "$defs": {
+    "vst3EventBusIndex": { "type": "integer", "minimum": 0, "maximum": 31 },
+    "midiEvent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "note"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "noteOn" },
+            "note": { "type": "integer", "minimum": 0, "maximum": 127 },
+            "velocity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "noteId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "note"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "noteOff" },
+            "note": { "type": "integer", "minimum": 0, "maximum": 127 },
+            "velocity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "noteId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "controller", "value"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "controlChange" },
+            "controller": { "type": "integer", "minimum": 0, "maximum": 127 },
+            "value": { "type": "number", "minimum": 0, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "value"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "pitchBend" },
+            "value": { "type": "number", "minimum": -1, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "pressure"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "channelPressure" },
+            "pressure": { "type": "number", "minimum": 0, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "note", "pressure"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "polyPressure" },
+            "note": { "type": "integer", "minimum": 0, "maximum": 127 },
+            "pressure": { "type": "number", "minimum": 0, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "noteId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "program"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "programChange" },
+            "program": { "type": "integer", "minimum": 0, "maximum": 127 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "typeId", "noteId", "value"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "noteExpression" },
+            "typeId": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+            "noteId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "value": { "type": "number", "minimum": 0, "maximum": 1 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "typeId", "noteId", "text"],
+          "additionalProperties": true,
+          "properties": {
+            "type": { "const": "noteExpressionText" },
+            "typeId": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+            "noteId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "text": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
+            "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+            "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
+          }
+        }
+      ]
+    }
+  }
+}
