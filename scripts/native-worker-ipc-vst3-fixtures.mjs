@@ -135,35 +135,6 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
   }
 }
 
-export async function exerciseVst3NoteExpressionNativeWorker({
-  check,
-  createTestWorkers,
-  tempDir,
-  workerPath
-}) {
-  const noteExpressionWorkers = createTestWorkers(workerPath, {
-    maxWorkerCommandBytes: 4096,
-    maxWorkerPendingCommandBytes: 4096,
-    maxWorkerStdoutLineBytes: 2048
-  });
-  const noteExpressionWorker = new noteExpressionWorkers.NativeHostWorker(
-    { format: "vst3", bundlePath: tempDir, renderEngine: "native-vst3" },
-    vst3InstrumentInstance()
-  );
-
-  try {
-    await noteExpressionWorker.ready;
-    await noteExpressionWorker.sendMidiEvents([
-      { type: "noteOn", note: 60, velocity: 0.8, channel: 1, time: 0, noteId: 42, busIndex: 2 },
-      { type: "noteExpression", typeId: 0, value: 0.5, noteId: 42, channel: 1, time: 2, busIndex: 2 },
-      { type: "noteExpressionText", typeId: 6, text: "bow", noteId: 42, channel: 1, time: 4, busIndex: 2 }
-    ]);
-    check(true, "native VST3 workers encode note-expression value/text event lists");
-  } finally {
-    noteExpressionWorker.destroy();
-  }
-}
-
 export async function exerciseVst3WeirdMetadataNativeWorker({
   check,
   createTestWorkers,
@@ -252,7 +223,6 @@ export function writeVst3NativeWorkerIpcFixtures({ tempDir }) {
   return {
     midiControllerMappingNativeWorkerPath: writeVst3MidiControllerMappingNativeWorker(tempDir),
     multiBusNativeWorkerPath: writeVst3MultiBusNativeWorker(tempDir),
-    noteExpressionNativeWorkerPath: writeVst3NoteExpressionNativeWorker(tempDir),
     weirdMetadataNativeWorkerPath: writeVst3WeirdMetadataNativeWorker(tempDir)
   };
 }
@@ -405,40 +375,6 @@ process.stdin.on("data", (chunk) => {
       expectedCommands.has(line)
         ? { ok: true, eventCount: 3 }
         : { error: "bad_mapped_midi_controller_events" }
-    ) + "\\n");
-  }
-});
-setTimeout(() => {}, 30000);
-`
-  );
-}
-
-function writeVst3NoteExpressionNativeWorker(tempDir) {
-  return writeExecutable(
-    tempDir,
-    "vst3-note-expression-native-worker.mjs",
-    `#!/usr/bin/env node
-const expectedCommand = "midi on:60:0.8:1:0:42:bus=2;expr:0:0.5:42:1:2:bus=2;exprText:6:Ym93:42:1:4:bus=2";
-process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
-process.stdin.setEncoding("utf8");
-let buffer = "";
-
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  while (true) {
-    const newline = buffer.indexOf("\\n");
-    if (newline < 0) {
-      return;
-    }
-    const line = buffer.slice(0, newline).trim();
-    buffer = buffer.slice(newline + 1);
-    if (line === "quit") {
-      process.exit(0);
-    }
-    process.stdout.write(JSON.stringify(
-      line === expectedCommand
-        ? { ok: true, eventCount: 3 }
-        : { error: "bad_note_expression_events" }
     ) + "\\n");
   }
 });
