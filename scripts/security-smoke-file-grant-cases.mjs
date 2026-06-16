@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { reservePort } from "./installed-plugin-probe-transport.mjs";
 import { connect, sendCloseFrame, waitForClose } from "./security-smoke-client.mjs";
 import { waitForListen } from "./security-smoke-daemon-cases.mjs";
 
@@ -13,7 +14,6 @@ export function createSecurityFileGrantCases({
   check,
   host,
   origin,
-  port,
   request,
   token
 }) {
@@ -47,7 +47,7 @@ export function createSecurityFileGrantCases({
       fs.symlinkSync(outsidePath, symlinkPath);
     } catch {}
 
-    const approvalPort = port + 4;
+    const approvalPort = await reservePort(host);
     const approvalDaemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -90,7 +90,7 @@ export function createSecurityFileGrantCases({
       approvalDaemon.kill("SIGKILL");
     }
 
-    const nativeApprovalPort = port + 5;
+    const nativeApprovalPort = await reservePort(host);
     const nativeApprovalDaemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -139,7 +139,7 @@ export function createSecurityFileGrantCases({
       nativeApprovalDaemon.kill("SIGKILL");
     }
 
-    const outsideBrokerPort = port + 6;
+    const outsideBrokerPort = await reservePort(host);
     const outsideBrokerDaemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -177,7 +177,7 @@ export function createSecurityFileGrantCases({
       outsideBrokerDaemon.kill("SIGKILL");
     }
 
-    const brokerPort = port + 7;
+    const brokerPort = await reservePort(host);
     const daemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -456,7 +456,7 @@ export function createSecurityFileGrantCases({
   }
 
   async function checkDisconnectCleansFileGrants({ root, samplePath, secondPath }) {
-    const cleanupPort = port + 8;
+    const cleanupPort = await reservePort(host);
     const daemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,

@@ -7,6 +7,7 @@ import {
   rawHandshake,
   rawHttpRequest
 } from "./security-smoke-client.mjs";
+import { reservePort } from "./installed-plugin-probe-transport.mjs";
 import { createSecurityDaemonCases, waitForListen } from "./security-smoke-daemon-cases.mjs";
 import { createSecurityEditorCases } from "./security-smoke-editor-cases.mjs";
 import { createSecurityFileGrantCases } from "./security-smoke-file-grant-cases.mjs";
@@ -16,7 +17,7 @@ import { createSecurityPairingCases } from "./security-smoke-pairing-cases.mjs";
 import { createSecuritySessionCases } from "./security-smoke-session-cases.mjs";
 
 const HOST = "127.0.0.1";
-const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? 47991);
+const PORT = Number(process.env.SOUNDBRIDGE_PORT ?? await reservePort(HOST));
 const TOKEN = "dev-token";
 const ORIGIN = "http://127.0.0.1:5173";
 const DISALLOWED_ORIGIN = "https://evil.example";
@@ -48,7 +49,6 @@ const fileGrantCases = createSecurityFileGrantCases({
   check,
   host: HOST,
   origin: ORIGIN,
-  port: PORT,
   request,
   token: TOKEN
 });

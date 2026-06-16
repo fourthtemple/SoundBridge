@@ -6,6 +6,7 @@ import {
   sendOversizedTextFrame,
   waitForClose
 } from "./security-smoke-client.mjs";
+import { reservePort } from "./installed-plugin-probe-transport.mjs";
 
 export function createSecurityDaemonCases({
   check,
@@ -17,7 +18,7 @@ export function createSecurityDaemonCases({
   token
 }) {
   async function checkOriginAllowlist() {
-    const allowlistPort = port + 1;
+    const allowlistPort = await reservePort(host);
     const allowlisted = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -59,7 +60,7 @@ export function createSecurityDaemonCases({
   }
 
   async function checkPrePairingMessageSizeCap() {
-    const cappedPort = port + 2;
+    const cappedPort = await reservePort(host);
     const capped = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -138,7 +139,7 @@ export function createSecurityDaemonCases({
   }
 
   async function checkDisconnectCleansUpInstances() {
-    const cleanupPort = port + 3;
+    const cleanupPort = await reservePort(host);
     const cleanupDaemon = spawn("node", ["scripts/mock-daemon.mjs"], {
       env: {
         ...process.env,
@@ -205,13 +206,40 @@ export function createSecurityDaemonCases({
 
 export function waitForListen(child) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("daemon did not start")), 8000);
-    child.stdout.on("data", (chunk) => {
+    const output = [];
+    const timer = setTimeout(() => fail("daemon did not start"), 8000);
+    const onStdout = (chunk) => {
+      remember("stdout", chunk);
       if (String(chunk).includes("listening")) {
-        clearTimeout(timer);
+        cleanup();
         setTimeout(resolve, 150);
       }
-    });
-    child.on("exit", (code) => reject(new Error(`daemon exited early code=${code}`)));
+    };
+    const onStderr = (chunk) => remember("stderr", chunk);
+    const onExit = (code) => fail(`daemon exited early code=${code}`);
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.stdout.off("data", onStdout);
+      child.stderr.off("data", onStderr);
+      child.off("exit", onExit);
+    };
+    const fail = (message) => {
+      cleanup();
+      const diagnostics = output.length > 0 ? `\n${output.join("\n")}` : "";
+      reject(new Error(`${message}${diagnostics}`));
+    };
+    const remember = (stream, chunk) => {
+      const text = String(chunk).trim();
+      if (!text) {
+        return;
+      }
+      output.push(`${stream}: ${text.slice(-1000)}`);
+      while (output.length > 8) {
+        output.shift();
+      }
+    };
+    child.stdout.on("data", onStdout);
+    child.stderr.on("data", onStderr);
+    child.on("exit", onExit);
   });
 }
