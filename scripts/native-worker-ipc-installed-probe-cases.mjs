@@ -4,7 +4,11 @@ import { installedProbeErrorSummary } from "./installed-plugin-probe-errors.mjs"
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
 import { midiControllerEventCount, midiEventsForBlock } from "./installed-plugin-probe-midi.mjs";
-import { firstListedPreset, firstVst3ProgramDataTarget } from "./installed-plugin-probe-programs.mjs";
+import {
+  firstListedPreset,
+  firstVst3ProgramDataTarget,
+  summarizeVst3ProgramDataProfile
+} from "./installed-plugin-probe-programs.mjs";
 import { assertProbeRenderMatchesLayout, summarizeProbeRenderSignal } from "./installed-plugin-probe-rendering.mjs";
 import {
   createInstalledProbeReporter,
@@ -75,6 +79,13 @@ export function exerciseInstalledProbeSupport({ check }) {
       vendor: "Example Vendor",
       listedPreset: "applied",
       vst3ProgramData: "restored",
+      vst3ProgramDataProfile: {
+        category: "targeted",
+        flags: ["bounded-target"],
+        programListCount: 2,
+        programDataListCount: 1,
+        candidateProgramCount: 3
+      },
       vst3ProgramListCount: 2,
       parameterCount: 1024,
       parameterMetadataAtLimit: true,
@@ -140,6 +151,8 @@ export function exerciseInstalledProbeSupport({ check }) {
   check(
     coverageSummary.coverage.listedPresets.applied === 1 &&
       coverageSummary.coverage.vst3ProgramData.restored === 1 &&
+      coverageSummary.coverage.vst3ProgramDataTargets.targeted === 1 &&
+      coverageSummary.coverage.vst3ProgramDataTargets["skipped-format"] === 1 &&
       coverageSummary.coverage.vst3ProgramLists.listed === 1 &&
       coverageSummary.coverage.parameterMetadata["at-limit"] === 1 &&
       coverageSummary.coverage.parameterMetadata.none === 1 &&
@@ -168,6 +181,11 @@ export function exerciseInstalledProbeSupport({ check }) {
     coverageSummary.matrix.length === 2 &&
       coverageSummary.matrix[0].pluginId === "vst3:neutral-effect" &&
       coverageSummary.matrix[0].renderSignal === "signal" &&
+      coverageSummary.matrix[0].vst3ProgramDataTarget === "targeted" &&
+      JSON.stringify(coverageSummary.matrix[0].vst3ProgramDataFlags) === JSON.stringify(["bounded-target"]) &&
+      coverageSummary.matrix[0].vst3ProgramDataProgramLists === 2 &&
+      coverageSummary.matrix[0].vst3ProgramDataCapableLists === 1 &&
+      coverageSummary.matrix[0].vst3ProgramDataCandidatePrograms === 3 &&
       coverageSummary.matrix[0].vst3ProgramLists === "listed" &&
       coverageSummary.matrix[0].parameterMetadata === "at-limit" &&
       coverageSummary.matrix[0].automation === "applied" &&
@@ -193,6 +211,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].featureStatus.editor === "opened" &&
       coverageSummary.matrix[1].name === "[local-path]" &&
       coverageSummary.matrix[1].vst3ProgramLists === "skipped-format" &&
+      coverageSummary.matrix[1].vst3ProgramDataTarget === "skipped-format" &&
       coverageSummary.matrix[1].vst3MidiControllerEvents === "skipped-format" &&
       coverageSummary.matrix[1].fileGrantCacheDirectoryOpen === "applied" &&
       coverageSummary.matrix[1].fileGrantLicenseLoad === "applied" &&
@@ -244,6 +263,7 @@ export function exerciseInstalledProbeSupport({ check }) {
   check(
     coverageLines.some((line) => line === "Feature coverage:") &&
       coverageLines.some((line) => line.includes("VST3 program data: 1 restored, 1 skipped-format")) &&
+      coverageLines.some((line) => line.includes("VST3 program-data targets:")) &&
       coverageLines.some((line) => line.includes("VST3 program lists:")) &&
       coverageLines.some((line) => line.includes("parameter metadata:")) &&
       coverageLines.some((line) => line.includes("file grant sample load:")) &&
@@ -461,6 +481,34 @@ export function exerciseInstalledProbeSupport({ check }) {
         vst3ProgramLists: [{ id: 5, programDataSupported: true, programs: [{ index: -1 }, { index: 256 }] }]
       }) === undefined,
     "installed plugin probe selects bounded VST3 program-data targets"
+  );
+  const targetedProgramDataProfile = summarizeVst3ProgramDataProfile({
+    format: "vst3",
+    vst3ProgramLists: [
+      { id: 1, programDataSupported: false, programs: [{ index: 0 }] },
+      { id: 2, programDataSupported: true, programs: [{ index: 3 }, { index: "bad" }] }
+    ]
+  });
+  const weirdProgramDataProfile = summarizeVst3ProgramDataProfile({
+    format: "vst3",
+    vst3ProgramLists: [
+      { id: "bad", programDataSupported: true, programs: [{ index: 0 }] },
+      { id: 4, programDataSupported: true, programs: [] },
+      { id: 5, programDataSupported: true, programs: [{ index: 256 }] }
+    ]
+  });
+  check(
+    targetedProgramDataProfile.category === "targeted" &&
+      targetedProgramDataProfile.flags.includes("program-data-unsupported") &&
+      targetedProgramDataProfile.flags.includes("bounded-target") &&
+      targetedProgramDataProfile.programListCount === 2 &&
+      targetedProgramDataProfile.programDataListCount === 1 &&
+      targetedProgramDataProfile.candidateProgramCount === 1 &&
+      weirdProgramDataProfile.category === "no-valid-programs" &&
+      weirdProgramDataProfile.flags.includes("invalid-program-list-id") &&
+      weirdProgramDataProfile.flags.includes("empty-program-list") &&
+      weirdProgramDataProfile.flags.includes("invalid-program-index"),
+    "installed plugin probe classifies VST3 program-data target edge cases"
   );
 }
 

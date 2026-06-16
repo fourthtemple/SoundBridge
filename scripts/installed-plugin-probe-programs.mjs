@@ -2,6 +2,7 @@ import { assertNoNativeLaunchData } from "./installed-plugin-probe-file-grants.m
 
 const MAX_PLUGIN_PARAMETERS = 1024;
 const MAX_PLUGIN_PROGRAMS = 256;
+const MAX_PLUGIN_PROGRAM_LISTS = 256;
 const MAX_PLUGIN_PROGRAM_DATA_BYTES = 384 * 1024;
 
 export async function probeListedPreset({
@@ -47,8 +48,15 @@ export async function probeVst3ProgramData({
     return;
   }
 
+  const profileSource = {
+    ...plugin,
+    ...createdPlugin,
+    format: plugin.format,
+    vst3ProgramLists: Array.isArray(createdPlugin?.vst3ProgramLists) ? createdPlugin.vst3ProgramLists : plugin.vst3ProgramLists
+  };
+  result.vst3ProgramDataProfile = summarizeVst3ProgramDataProfile(profileSource);
+  result.vst3ProgramListCount = result.vst3ProgramDataProfile.programListCount;
   const target = firstVst3ProgramDataTarget(createdPlugin) ?? firstVst3ProgramDataTarget(plugin);
-  result.vst3ProgramListCount = vst3ProgramLists(createdPlugin).length;
   if (!target) {
     result.vst3ProgramData = "skipped";
     return;
@@ -124,6 +132,86 @@ export function firstVst3ProgramDataTarget(plugin) {
     }
   }
   return undefined;
+}
+
+export function summarizeVst3ProgramDataProfile(plugin) {
+  if (String(plugin?.format ?? "").toLowerCase() !== "vst3") {
+    return {
+      category: "skipped-format",
+      flags: ["skipped-format"],
+      programListCount: 0,
+      programDataListCount: 0,
+      candidateProgramCount: 0
+    };
+  }
+
+  const lists = vst3ProgramLists(plugin).slice(0, MAX_PLUGIN_PROGRAM_LISTS);
+  const flags = [];
+  let programDataListCount = 0;
+  let candidateProgramCount = 0;
+
+  if (lists.length === 0) {
+    flags.push("no-program-lists");
+  }
+
+  for (const programList of lists) {
+    const programListId = boundedProgramListId(programList?.id);
+    if (programListId === undefined) {
+      flags.push("invalid-program-list-id");
+      continue;
+    }
+
+    if (programList?.programDataSupported !== true) {
+      flags.push(programList?.programDataSupported === false ? "program-data-unsupported" : "program-data-undisclosed");
+      continue;
+    }
+
+    programDataListCount += 1;
+    if (!Array.isArray(programList.programs)) {
+      flags.push("missing-programs");
+      continue;
+    }
+    if (programList.programs.length === 0) {
+      flags.push("empty-program-list");
+      continue;
+    }
+
+    const validProgramCount = programList.programs
+      .slice(0, MAX_PLUGIN_PROGRAMS)
+      .filter((program) => boundedProgramIndex(program?.index) !== undefined)
+      .length;
+    if (validProgramCount === 0) {
+      flags.push("invalid-program-index");
+      continue;
+    }
+    candidateProgramCount += validProgramCount;
+  }
+
+  if (programDataListCount === 0 && lists.length > 0) {
+    flags.push("no-program-data-support");
+  } else if (programDataListCount > 0 && candidateProgramCount === 0) {
+    flags.push("no-valid-program-data-programs");
+  } else if (candidateProgramCount > 0) {
+    flags.push("bounded-target");
+  }
+
+  return {
+    category: vst3ProgramDataProfileCategory(lists.length, programDataListCount, candidateProgramCount),
+    flags: [...new Set(flags)],
+    programListCount: lists.length,
+    programDataListCount,
+    candidateProgramCount
+  };
+}
+
+function vst3ProgramDataProfileCategory(programListCount, programDataListCount, candidateProgramCount) {
+  if (programListCount === 0) {
+    return "none";
+  }
+  if (candidateProgramCount > 0) {
+    return "targeted";
+  }
+  return programDataListCount > 0 ? "no-valid-programs" : "unsupported";
 }
 
 function vst3ProgramLists(plugin) {

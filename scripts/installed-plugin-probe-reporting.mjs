@@ -121,6 +121,11 @@ function summarizeCompatibilityMatrix(results, options) {
       ),
       vst3EventFlags: safeMatrixArray(result.vst3EventProfile?.flags, 64),
       vst3ProgramData: safeMatrixText(result.vst3ProgramData ?? "missing", 64),
+      vst3ProgramDataTarget: safeMatrixText(vst3ProgramDataProfileStatus(result), 64),
+      vst3ProgramDataFlags: safeMatrixArray(result.vst3ProgramDataProfile?.flags, 64),
+      vst3ProgramDataProgramLists: safeMatrixInteger(result.vst3ProgramDataProfile?.programListCount, 0, 256),
+      vst3ProgramDataCapableLists: safeMatrixInteger(result.vst3ProgramDataProfile?.programDataListCount, 0, 256),
+      vst3ProgramDataCandidatePrograms: safeMatrixInteger(result.vst3ProgramDataProfile?.candidateProgramCount, 0, 65536),
       vst3ProgramLists: safeMatrixText(vst3ProgramListStatus(result), 64),
       parameterMetadata: safeMatrixText(parameterMetadataStatus(result), 64),
       parameterDisplayInput: safeMatrixText(result.parameterDisplayInput ?? "missing", 64),
@@ -274,6 +279,7 @@ function summarizeFeatureCoverage(results, options) {
   return {
     listedPresets: countStatuses(results, "listedPreset"),
     vst3ProgramData: countStatuses(results, "vst3ProgramData"),
+    vst3ProgramDataTargets: countBy(results, vst3ProgramDataProfileStatus),
     vst3ProgramLists: countVst3ProgramLists(results),
     parameterMetadata: countParameterMetadata(results),
     parameterDisplayInput: countStatuses(results, "parameterDisplayInput"),
@@ -360,6 +366,13 @@ function parameterMetadataStatus(result) {
 function vst3MidiControllerEventStatus(result) {
   if (result.vst3MidiControllerEvents !== undefined) {
     return result.vst3MidiControllerEvents;
+  }
+  return String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format";
+}
+
+function vst3ProgramDataProfileStatus(result) {
+  if (result.vst3ProgramDataProfile?.category) {
+    return result.vst3ProgramDataProfile.category;
   }
   return String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format";
 }
@@ -498,6 +511,7 @@ function printFeatureCoverage(coverage, stream) {
   for (const [label, counts] of [
     ["listed presets", coverage.listedPresets],
     ["VST3 program data", coverage.vst3ProgramData],
+    ["VST3 program-data targets", coverage.vst3ProgramDataTargets],
     ["VST3 program lists", coverage.vst3ProgramLists],
     ["parameter metadata", coverage.parameterMetadata],
     ["display-text input", coverage.parameterDisplayInput],
