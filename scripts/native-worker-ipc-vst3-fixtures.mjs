@@ -122,11 +122,96 @@ export async function exerciseVst3NoteExpressionNativeWorker({
   }
 }
 
+export async function exerciseVst3WeirdMetadataNativeWorker({
+  check,
+  createTestWorkers,
+  tempDir,
+  workerPath
+}) {
+  const metadataWorkers = createTestWorkers(workerPath, {
+    maxWorkerCommandBytes: 4096,
+    maxWorkerPendingCommandBytes: 4096,
+    maxWorkerStdoutLineBytes: 8192
+  });
+  const metadataWorker = new metadataWorkers.NativeHostWorker(
+    { format: "vst3", bundlePath: tempDir, renderEngine: "native-vst3" },
+    vst3InstrumentInstance()
+  );
+
+  try {
+    await metadataWorker.ready;
+    const parameters = await metadataWorker.getParameters();
+    check(
+      parameters.length === 2 &&
+        parameters[0].id === "cutoff" &&
+        parameters[0].name === "cutoff" &&
+        parameters[0].normalizedValue === 0 &&
+        parameters[0].defaultNormalizedValue === 1 &&
+        parameters[0].readOnly === true &&
+        !parameters[0].vst3Unit &&
+        parameters[1].programChange === true &&
+        parameters[1].programList?.programs?.[0]?.index === 1 &&
+        parameters[1].programList?.programs?.[0]?.name === "Program 2",
+      "native VST3 workers normalize partial/weird parameter metadata"
+    );
+
+    const programLists = await metadataWorker.getVst3ProgramLists();
+    check(
+      programLists.length === 1 &&
+        programLists[0].id === 2147483647 &&
+        programLists[0].name === "Programs" &&
+        programLists[0].unitId === -1 &&
+        programLists[0].programDataSupported === true &&
+        programLists[0].programs?.[0]?.index === 0 &&
+        programLists[0].programs?.[0]?.name === "Program 1" &&
+        programLists[0].programs?.[0]?.normalizedValue === 1 &&
+        programLists[0].programs?.[1]?.index === 255 &&
+        programLists[0].programs?.[1]?.normalizedValue === 0,
+      "native VST3 workers normalize partial/weird program-list metadata"
+    );
+
+    const noteExpressions = await metadataWorker.getVst3NoteExpressions();
+    check(
+      noteExpressions.length === 1 &&
+        noteExpressions[0].typeId === 6 &&
+        noteExpressions[0].name === "Expression 6" &&
+        noteExpressions[0].shortName === "txt" &&
+        noteExpressions[0].defaultValue === 0.75 &&
+        noteExpressions[0].minValue === 0.75 &&
+        noteExpressions[0].maxValue === 0.75 &&
+        noteExpressions[0].busIndex === 31 &&
+        noteExpressions[0].channel === 15 &&
+        noteExpressions[0].bipolar === true &&
+        noteExpressions[0].oneShot === true &&
+        noteExpressions[0].absolute === true,
+      "native VST3 workers normalize partial/weird note-expression metadata"
+    );
+
+    const layout = await metadataWorker.getLayout();
+    check(
+      layout.requestedOutputChannels === 32 &&
+        layout.outputChannels === 1 &&
+        layout.outputBuses === 2 &&
+        layout.outputBusLayouts?.[0]?.index === 31 &&
+        layout.outputBusLayouts?.[0]?.name === "Output 1" &&
+        layout.outputBusLayouts?.[0]?.type === "unknown" &&
+        layout.outputBusLayouts?.[0]?.channels === 32 &&
+        layout.outputBusLayouts?.[1]?.name === "Output 2" &&
+        layout.sampleRate === 8000 &&
+        layout.maxBlockSize === 8192,
+      "native VST3 workers normalize partial/weird bus layout metadata"
+    );
+  } finally {
+    metadataWorker.destroy();
+  }
+}
+
 export function writeVst3NativeWorkerIpcFixtures({ tempDir }) {
   return {
     midiControllerMappingNativeWorkerPath: writeVst3MidiControllerMappingNativeWorker(tempDir),
     multiBusNativeWorkerPath: writeVst3MultiBusNativeWorker(tempDir),
-    noteExpressionNativeWorkerPath: writeVst3NoteExpressionNativeWorker(tempDir)
+    noteExpressionNativeWorkerPath: writeVst3NoteExpressionNativeWorker(tempDir),
+    weirdMetadataNativeWorkerPath: writeVst3WeirdMetadataNativeWorker(tempDir)
   };
 }
 
@@ -292,6 +377,120 @@ process.stdin.on("data", (chunk) => {
         ? { ok: true, eventCount: 3 }
         : { error: "bad_note_expression_events" }
     ) + "\\n");
+  }
+});
+setTimeout(() => {}, 30000);
+`
+  );
+}
+
+function writeVst3WeirdMetadataNativeWorker(tempDir) {
+  return writeExecutable(
+    tempDir,
+    "vst3-weird-metadata-native-worker.mjs",
+    `#!/usr/bin/env node
+const longText = "x".repeat(200);
+const responses = {
+  parameters: {
+    parameters: [
+      null,
+      { name: "missing id", normalizedValue: 0.5 },
+      {
+        id: "cutoff",
+        name: "",
+        normalizedValue: "not-a-number",
+        defaultNormalizedValue: 3,
+        displayValue: longText,
+        readOnly: true,
+        stepCount: -5,
+        vst3Unit: { id: "not-an-int", name: "bad" }
+      },
+      {
+        id: "program",
+        name: "Program",
+        normalizedValue: 0.3,
+        programChange: true,
+        programList: {
+          id: "bad",
+          name: "",
+          programs: [
+            null,
+            { index: "bad", name: "", normalizedValue: 2 }
+          ]
+        }
+      }
+    ]
+  },
+  programLists: {
+    vst3ProgramLists: [
+      null,
+      {
+        id: 999999999999,
+        name: "",
+        unitId: "bad",
+        programDataSupported: true,
+        programs: [
+          null,
+          { index: -5, name: "", normalizedValue: 2 },
+          { index: 999, name: null, normalizedValue: -1 }
+        ]
+      },
+      { id: 2, name: "Empty", programs: [] }
+    ]
+  },
+  noteExpressions: {
+    vst3NoteExpressions: [
+      null,
+      { typeId: "bad", name: "broken" },
+      {
+        typeId: 6,
+        name: "",
+        shortName: "txt",
+        unit: "",
+        defaultValue: 2,
+        minValue: 0.75,
+        maxValue: -1,
+        stepCount: -1,
+        busIndex: 99,
+        channel: 99,
+        unitId: "bad",
+        associatedParameterId: "",
+        bipolar: true,
+        oneShot: true,
+        absolute: true
+      }
+    ]
+  },
+  layout: {
+    requestedOutputChannels: 99,
+    outputChannels: "bad",
+    outputBuses: 2,
+    outputBusLayouts: [
+      { index: 99, name: "", type: "side", channels: 99, active: "yes" },
+      null
+    ],
+    sampleRate: 1,
+    maxBlockSize: 999999
+  }
+};
+
+process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
+process.stdin.setEncoding("utf8");
+let buffer = "";
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk;
+  while (true) {
+    const newline = buffer.indexOf("\\n");
+    if (newline < 0) {
+      return;
+    }
+    const line = buffer.slice(0, newline).trim();
+    buffer = buffer.slice(newline + 1);
+    if (line === "quit") {
+      process.exit(0);
+    }
+    process.stdout.write(JSON.stringify(responses[line] ?? { error: "unknown_command" }) + "\\n");
   }
 });
 setTimeout(() => {}, 30000);

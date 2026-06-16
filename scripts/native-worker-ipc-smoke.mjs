@@ -15,6 +15,7 @@ import {
   exerciseVst3MidiControllerMappingNativeWorker,
   exerciseVst3MultiBusNativeWorker,
   exerciseVst3NoteExpressionNativeWorker,
+  exerciseVst3WeirdMetadataNativeWorker,
   writeVst3NativeWorkerIpcFixtures
 } from "./native-worker-ipc-vst3-fixtures.mjs";
 import { exerciseVst3ProgramDataSupport } from "./native-worker-ipc-vst3-cases.mjs";
@@ -89,7 +90,8 @@ try {
   const {
     midiControllerMappingNativeWorkerPath,
     multiBusNativeWorkerPath,
-    noteExpressionNativeWorkerPath
+    noteExpressionNativeWorkerPath,
+    weirdMetadataNativeWorkerPath
   } = writeVst3NativeWorkerIpcFixtures({ tempDir });
 
   const workers = createTestWorkers(nativeWorkerPath);
@@ -122,6 +124,13 @@ try {
     createTestWorkers,
     tempDir,
     workerPath: noteExpressionNativeWorkerPath
+  });
+
+  await exerciseVst3WeirdMetadataNativeWorker({
+    check,
+    createTestWorkers,
+    tempDir,
+    workerPath: weirdMetadataNativeWorkerPath
   });
 
   const fileGrantOperation = await exerciseDaemonFileGrantOperation({
