@@ -81,6 +81,10 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     format: "vst3",
     vst3NoteExpressions: [{ typeId: "bad" }]
   });
+  const cappedVst3EventProfile = summarizeProbeVst3Events({
+    format: "vst3",
+    vst3NoteExpressions: Array.from({ length: 256 }, (_, index) => ({ typeId: index }))
+  });
   check(
     vst3EventProfile.category === "non-main-event-bus" &&
       vst3EventProfile.noteExpressionCount === 3 &&
@@ -98,7 +102,10 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       vst3EventProfile.flags.includes("duplicate-note-expression-type-id") &&
       invalidVst3EventProfile.category === "invalid-metadata" &&
       invalidVst3EventProfile.invalidNoteExpressionCount === 1 &&
-      invalidVst3EventProfile.flags.includes("no-valid-note-expressions"),
+      invalidVst3EventProfile.flags.includes("no-valid-note-expressions") &&
+      cappedVst3EventProfile.noteExpressionCount === 256 &&
+      cappedVst3EventProfile.metadataAtLimit === true &&
+      cappedVst3EventProfile.flags.includes("metadata-at-limit"),
     "installed plugin probe classifies VST3 event metadata coverage"
   );
   check(

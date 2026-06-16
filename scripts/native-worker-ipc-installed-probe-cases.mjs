@@ -391,6 +391,30 @@ export function exerciseInstalledProbeSupport({ check }) {
     summarizeProbeResults([{ ok: true, format: "vst3", vst3ProgramListCount: 0 }]).coverage.vst3ProgramLists.none === 1,
     "installed plugin probe summarizes VST3 plugins with no program lists"
   );
+  const cappedEventMatrix = summarizeProbeResults([{
+    ok: true,
+    format: "vst3",
+    vst3EventProfile: {
+      category: "main-event-bus",
+      flags: ["note-expressions", "metadata-at-limit"],
+      noteExpressionCount: 256,
+      valueExpressionCount: 255,
+      textExpressionCount: 1,
+      invalidNoteExpressionCount: 0,
+      duplicateNoteExpressionTypeIdCount: 0,
+      associatedParameterCount: 0,
+      metadataAtLimit: true,
+      eventBuses: [0],
+      channels: [0],
+      typeIds: [0, 6]
+    }
+  }]).matrix[0];
+  check(
+    cappedEventMatrix.vst3NoteExpressionMetadataAtLimit === true &&
+      cappedEventMatrix.vst3EventFlags.includes("metadata-at-limit") &&
+      cappedEventMatrix.vst3NoteExpressionCount === 256,
+    "installed plugin probe matrix reports capped VST3 note-expression metadata"
+  );
   const pathError = Object.assign(
     new Error(
       "failed to load /Library/Audio/Plug-Ins/VST3/Private Plugin.vst3 and file:///Users/test/Secrets/license.key from C:\\Users\\test\\Private Plugin.vst3"

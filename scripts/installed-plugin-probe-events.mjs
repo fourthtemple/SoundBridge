@@ -31,6 +31,7 @@ export function summarizeProbeVst3Events(plugin) {
     invalidNoteExpressionCount: invalidExpressionCount,
     duplicateNoteExpressionTypeIdCount: duplicateTypeIdCount,
     associatedParameterCount: expressions.filter((expression) => expression.hasAssociatedParameter).length,
+    metadataAtLimit,
     eventBuses,
     channels,
     typeIds
