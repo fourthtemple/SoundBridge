@@ -593,10 +593,24 @@ export function exerciseInstalledProbeSupport({ check }) {
   } catch (error) {
     mismatchedMainCode = error.code;
   }
+  let duplicateBusCode = "";
+  try {
+    assertProbeRenderMatchesLayout({
+      channels: [[0, 0], [0.1, 0.1]],
+      outputBuses: [
+        { index: 0, channels: [[0, 0], [0.1, 0.1]] },
+        { index: 2, channels: [[0.2, 0.2]] },
+        { index: 2, channels: [[0.3, 0.3]] }
+      ]
+    }, multiOutputLayout, 2);
+  } catch (error) {
+    duplicateBusCode = error.code;
+  }
   check(
     goodMultiOutputCode === "ok" &&
       missingBusCode === "bad_render_layout" &&
-      mismatchedMainCode === "bad_render_layout",
+      mismatchedMainCode === "bad_render_layout" &&
+      duplicateBusCode === "bad_render_layout",
     "installed plugin probe validates negotiated output-bus render layouts"
   );
   const vst3MidiEvents = midiEventsForBlock("vst3", 64, 64);
