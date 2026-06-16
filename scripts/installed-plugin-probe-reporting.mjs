@@ -123,6 +123,10 @@ function summarizeCompatibilityMatrix(results, options) {
       busOutputChannels: safeMatrixInteger(result.busProfile?.outputChannels, 0, 32),
       busActiveInputIndexes: safeMatrixIntegerArray(result.busProfile?.activeInputBusIndexes, 0, 31),
       busActiveOutputIndexes: safeMatrixIntegerArray(result.busProfile?.activeOutputBusIndexes, 0, 31),
+      busInactiveInputCount: safeMatrixInteger(result.busProfile?.inactiveInputBuses, 0, 32),
+      busInactiveOutputCount: safeMatrixInteger(result.busProfile?.inactiveOutputBuses, 0, 32),
+      busInactiveInputIndexes: safeMatrixIntegerArray(result.busProfile?.inactiveInputBusIndexes, 0, 31),
+      busInactiveOutputIndexes: safeMatrixIntegerArray(result.busProfile?.inactiveOutputBusIndexes, 0, 31),
       vst3EventCategory: safeMatrixText(
         result.vst3EventProfile?.category ??
           (String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format"),

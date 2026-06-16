@@ -125,15 +125,19 @@ export function exerciseInstalledProbeSupport({ check }) {
       fileGrantOperations: ["loadPreset", "restoreState", "saveStateDirectory", "loadSample", "other"],
       busProfile: {
         category: "sidechain",
-        flags: ["sidechain-input", "multi-input"],
+        flags: ["sidechain-input", "multi-input", "inactive-input-bus", "inactive-output-bus"],
         inputChannels: 3,
         outputChannels: 2,
-        inputBuses: 2,
-        outputBuses: 1,
+        inputBuses: 3,
+        outputBuses: 2,
         activeInputBuses: 2,
         activeOutputBuses: 1,
+        inactiveInputBuses: 1,
+        inactiveOutputBuses: 1,
         activeInputBusIndexes: [0, 1],
-        activeOutputBusIndexes: [0]
+        activeOutputBusIndexes: [0],
+        inactiveInputBusIndexes: [3],
+        inactiveOutputBusIndexes: [1]
       },
       vst3EventProfile: {
         category: "non-main-event-bus",
@@ -252,6 +256,8 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.coverage.fileGrantOtherPresetLoad.applied === 1 &&
       coverageSummary.coverage.fileGrantOperations.other === 1 &&
       coverageSummary.coverage.busLayouts.sidechain === 1 &&
+      coverageSummary.coverage.busLayouts["flag:inactive-input-bus"] === 1 &&
+      coverageSummary.coverage.busLayouts["flag:inactive-output-bus"] === 1 &&
       coverageSummary.coverage.busLayouts["flag:multi-output-instrument"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["non-main-event-bus"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:text-expression"] === 1 &&
@@ -311,14 +317,18 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].stateControllerBytes === 10 &&
       coverageSummary.matrix[0].automation === "applied" &&
       coverageSummary.matrix[0].automationLanePointCount === 2 &&
-      coverageSummary.matrix[0].busInputCount === 2 &&
-      coverageSummary.matrix[0].busOutputCount === 1 &&
+      coverageSummary.matrix[0].busInputCount === 3 &&
+      coverageSummary.matrix[0].busOutputCount === 2 &&
       coverageSummary.matrix[0].busActiveInputCount === 2 &&
       coverageSummary.matrix[0].busActiveOutputCount === 1 &&
+      coverageSummary.matrix[0].busInactiveInputCount === 1 &&
+      coverageSummary.matrix[0].busInactiveOutputCount === 1 &&
       coverageSummary.matrix[0].busInputChannels === 3 &&
       coverageSummary.matrix[0].busOutputChannels === 2 &&
       JSON.stringify(coverageSummary.matrix[0].busActiveInputIndexes) === JSON.stringify([0, 1]) &&
       JSON.stringify(coverageSummary.matrix[0].busActiveOutputIndexes) === JSON.stringify([0]) &&
+      JSON.stringify(coverageSummary.matrix[0].busInactiveInputIndexes) === JSON.stringify([3]) &&
+      JSON.stringify(coverageSummary.matrix[0].busInactiveOutputIndexes) === JSON.stringify([1]) &&
       coverageSummary.matrix[0].vst3NoteExpressionCount === 3 &&
       coverageSummary.matrix[0].vst3ValueNoteExpressionCount === 1 &&
       coverageSummary.matrix[0].vst3TextNoteExpressionCount === 2 &&

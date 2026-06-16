@@ -8,6 +8,8 @@ export function summarizeProbeBusLayout(plugin, layout) {
   const kind = knownKind(plugin?.kind);
   const activeInputs = inputBuses.filter(activeAudioBus);
   const activeOutputs = outputBuses.filter(activeAudioBus);
+  const inactiveInputs = inputBuses.filter(inactiveAudioBus);
+  const inactiveOutputs = outputBuses.filter(inactiveAudioBus);
   const sidechain = activeInputs.some((bus) => bus.index > 0 || bus.type === "aux");
   const multiOutput = outputBusCount > 1 || activeOutputs.some((bus) => bus.index > 0);
   const flags = [];
@@ -33,6 +35,12 @@ export function summarizeProbeBusLayout(plugin, layout) {
   if (activeInputs.some((bus) => bus.channels === 0) || activeOutputs.some((bus) => bus.channels === 0)) {
     flags.push("active-empty-bus");
   }
+  if (inactiveInputs.length > 0) {
+    flags.push("inactive-input-bus");
+  }
+  if (inactiveOutputs.length > 0) {
+    flags.push("inactive-output-bus");
+  }
   if (inputBuses.some((bus) => bus.type === "unknown") || outputBuses.some((bus) => bus.type === "unknown")) {
     flags.push("unknown-bus-type");
   }
@@ -49,8 +57,12 @@ export function summarizeProbeBusLayout(plugin, layout) {
     outputBuses: outputBusCount,
     activeInputBuses: activeInputs.length,
     activeOutputBuses: activeOutputs.length,
+    inactiveInputBuses: inactiveInputs.length,
+    inactiveOutputBuses: inactiveOutputs.length,
     activeInputBusIndexes: boundedBusIndexes(activeInputs),
-    activeOutputBusIndexes: boundedBusIndexes(activeOutputs)
+    activeOutputBusIndexes: boundedBusIndexes(activeOutputs),
+    inactiveInputBusIndexes: boundedBusIndexes(inactiveInputs),
+    inactiveOutputBusIndexes: boundedBusIndexes(inactiveOutputs)
   };
 }
 
@@ -68,6 +80,10 @@ function boundedBusLayouts(value) {
 
 function activeAudioBus(bus) {
   return bus.active === true && bus.channels >= 0;
+}
+
+function inactiveAudioBus(bus) {
+  return bus.active === false && bus.channels >= 0;
 }
 
 function busProfileCategory({ kind, multiOutput, sidechain }) {

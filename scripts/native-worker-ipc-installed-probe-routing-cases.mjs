@@ -18,13 +18,17 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     {
       inputChannels: 2,
       outputChannels: 2,
-      inputBuses: 2,
-      outputBuses: 1,
+      inputBuses: 3,
+      outputBuses: 2,
       inputBusLayouts: [
         { index: 0, channels: 2, type: "main", active: true },
-        { index: 1, channels: 1, type: "aux", active: true }
+        { index: 1, channels: 1, type: "aux", active: true },
+        { index: 3, channels: 1, type: "aux", active: false }
       ],
-      outputBusLayouts: [{ index: 0, channels: 2, type: "main", active: true }]
+      outputBusLayouts: [
+        { index: 0, channels: 2, type: "main", active: true },
+        { index: 1, channels: 2, type: "aux", active: false }
+      ]
     }
   );
   const nonsequentialOutputProfile = summarizeProbeBusLayout(
@@ -58,7 +62,11 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
   check(
     sidechainProfile.category === "sidechain" &&
       sidechainProfile.flags.includes("sidechain-input") &&
+      sidechainProfile.flags.includes("inactive-input-bus") &&
+      sidechainProfile.flags.includes("inactive-output-bus") &&
       JSON.stringify(sidechainProfile.activeInputBusIndexes) === JSON.stringify([0, 1]) &&
+      JSON.stringify(sidechainProfile.inactiveInputBusIndexes) === JSON.stringify([3]) &&
+      JSON.stringify(sidechainProfile.inactiveOutputBusIndexes) === JSON.stringify([1]) &&
       nonsequentialOutputProfile.flags.includes("nonsequential-bus-indexes") &&
       nonsequentialOutputProfile.flags.includes("duplicate-bus-indexes") &&
       JSON.stringify(nonsequentialOutputProfile.activeOutputBusIndexes) === JSON.stringify([0, 2]) &&
