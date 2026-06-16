@@ -247,6 +247,52 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   }
   check(unadvertisedCode === "unsupported_file_grant_operation", "daemon file grant operations reject unadvertised worker operations before path use");
 
+  const unsupportedWorkerInstance = {
+    ...instance,
+    instanceId: "inst-worker-unsupported",
+    fileGrantAttachments: new Map(),
+    fileGrantOperations: ["loadSample"],
+    worker: {
+      async useFileGrant() {
+        throw new Error("unsupported_file_grant_operation");
+      }
+    }
+  };
+  instanceFileGrantSupport.attachFileGrant({
+    instanceId: unsupportedWorkerInstance.instanceId,
+    grantId: sampleGrant.grantId,
+    purpose: "sample",
+    access: "read",
+    kind: "file"
+  }, session, () => unsupportedWorkerInstance);
+  const unsupportedWorkerOperations = createDaemonFileGrantOperations({
+    getInstance(instanceId) {
+      if (instanceId !== unsupportedWorkerInstance.instanceId) {
+        throw protocolError("instance_not_found", "missing instance");
+      }
+      return unsupportedWorkerInstance;
+    },
+    instanceFileGrantSupport,
+    makeProtocolError: protocolError
+  });
+  let unsupportedWorkerCode;
+  let unsupportedWorkerMessage = "";
+  try {
+    await unsupportedWorkerOperations.useFileGrant({
+      instanceId: unsupportedWorkerInstance.instanceId,
+      grantId: sampleGrant.grantId,
+      operation: "loadSample"
+    }, session);
+  } catch (error) {
+    unsupportedWorkerCode = error.code;
+    unsupportedWorkerMessage = String(error.message ?? "");
+  }
+  check(
+    unsupportedWorkerCode === "unsupported_file_grant_operation" &&
+      !unsupportedWorkerMessage.includes(sampleGrant.absolutePath),
+    "daemon file grant operations keep worker-refused advanced grants path-free"
+  );
+
   return { response, observedAbsolutePath };
 }
 
