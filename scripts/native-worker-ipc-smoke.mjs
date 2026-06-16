@@ -9,10 +9,14 @@ import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemo
 import { exerciseInstalledProbeSupport } from "./native-worker-ipc-installed-probe-cases.mjs";
 import {
   exerciseGrantAwareNativeWorker,
-  exerciseVst3MidiControllerMappingNativeWorker,
-  exerciseVst3MultiBusNativeWorker,
   writeNativeWorkerIpcFixtures
 } from "./native-worker-ipc-fixtures.mjs";
+import {
+  exerciseVst3MidiControllerMappingNativeWorker,
+  exerciseVst3MultiBusNativeWorker,
+  exerciseVst3NoteExpressionNativeWorker,
+  writeVst3NativeWorkerIpcFixtures
+} from "./native-worker-ipc-vst3-fixtures.mjs";
 import { exerciseVst3ProgramDataSupport } from "./native-worker-ipc-vst3-cases.mjs";
 import { createNativeWorkerProcesses } from "./native-worker-processes.mjs";
 
@@ -80,10 +84,13 @@ try {
     hangingNativeCommandWorkerPath,
     stubbornExampleCommandWorkerPath,
     stubbornNativeCommandWorkerPath,
-    grantAwareNativeWorkerPath,
-    midiControllerMappingNativeWorkerPath,
-    multiBusNativeWorkerPath
+    grantAwareNativeWorkerPath
   } = writeNativeWorkerIpcFixtures({ tempDir, fixtureGrantPath });
+  const {
+    midiControllerMappingNativeWorkerPath,
+    multiBusNativeWorkerPath,
+    noteExpressionNativeWorkerPath
+  } = writeVst3NativeWorkerIpcFixtures({ tempDir });
 
   const workers = createTestWorkers(nativeWorkerPath);
 
@@ -108,6 +115,13 @@ try {
     createTestWorkers,
     tempDir,
     workerPath: midiControllerMappingNativeWorkerPath
+  });
+
+  await exerciseVst3NoteExpressionNativeWorker({
+    check,
+    createTestWorkers,
+    tempDir,
+    workerPath: noteExpressionNativeWorkerPath
   });
 
   const fileGrantOperation = await exerciseDaemonFileGrantOperation({
