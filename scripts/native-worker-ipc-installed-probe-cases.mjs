@@ -143,11 +143,13 @@ export function exerciseInstalledProbeSupport({ check }) {
           "non-main-channel",
           "multi-channel",
           "text-expression",
-          "value-expression"
+          "value-expression",
+          "invalid-note-expression"
         ],
         noteExpressionCount: 2,
         valueExpressionCount: 1,
         textExpressionCount: 1,
+        invalidNoteExpressionCount: 1,
         associatedParameterCount: 1,
         eventBuses: [0, 2],
         channels: [0, 3],
@@ -241,6 +243,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.coverage.vst3EventProfiles["non-main-event-bus"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:text-expression"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:value-expression"] === 1 &&
+      coverageSummary.coverage.vst3EventProfiles["flag:invalid-note-expression"] === 1 &&
       coverageSummary.coverage.vst3MidiControllerEvents.accepted === 1 &&
       coverageSummary.coverage.vst3MidiControllerEvents["skipped-format"] === 1 &&
       coverageSummary.coverage.automationLanes.applied === 1 &&
@@ -304,6 +307,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].vst3NoteExpressionCount === 2 &&
       coverageSummary.matrix[0].vst3ValueNoteExpressionCount === 1 &&
       coverageSummary.matrix[0].vst3TextNoteExpressionCount === 1 &&
+      coverageSummary.matrix[0].vst3InvalidNoteExpressionCount === 1 &&
       coverageSummary.matrix[0].vst3AssociatedNoteExpressionCount === 1 &&
       JSON.stringify(coverageSummary.matrix[0].vst3NoteExpressionTypeIds) === JSON.stringify([0, 6]) &&
       JSON.stringify(coverageSummary.matrix[0].vst3EventBuses) === JSON.stringify([0, 2]) &&

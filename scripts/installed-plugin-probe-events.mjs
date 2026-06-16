@@ -6,19 +6,24 @@ export function summarizeProbeVst3Events(plugin) {
     return { category: "skipped-format", flags: [] };
   }
 
-  const expressions = boundedNoteExpressions(plugin?.vst3NoteExpressions);
+  const {
+    expressions,
+    invalidExpressionCount,
+    metadataAtLimit
+  } = boundedNoteExpressionProfile(plugin?.vst3NoteExpressions);
   const eventBuses = uniqueSorted(expressions.map((expression) => expression.busIndex));
   const channels = uniqueSorted(expressions.map((expression) => expression.channel));
   const typeIds = uniqueSorted(expressions.map((expression) => expression.typeId));
   const textExpressionCount = expressions.filter(isTextExpression).length;
-  const flags = expressionFlags(expressions, eventBuses, channels);
+  const flags = expressionFlags(expressions, eventBuses, channels, { invalidExpressionCount, metadataAtLimit });
 
   return {
-    category: expressionCategory(expressions, eventBuses, channels),
+    category: expressionCategory(expressions, eventBuses, channels, invalidExpressionCount),
     flags,
     noteExpressionCount: expressions.length,
     valueExpressionCount: expressions.length - textExpressionCount,
     textExpressionCount,
+    invalidNoteExpressionCount: invalidExpressionCount,
     associatedParameterCount: expressions.filter((expression) => expression.hasAssociatedParameter).length,
     eventBuses,
     channels,
@@ -26,12 +31,21 @@ export function summarizeProbeVst3Events(plugin) {
   };
 }
 
-function expressionFlags(expressions, eventBuses, channels) {
+function expressionFlags(expressions, eventBuses, channels, { invalidExpressionCount, metadataAtLimit }) {
   if (expressions.length === 0) {
-    return ["no-note-expressions"];
+    const flags = invalidExpressionCount > 0
+      ? ["invalid-note-expression", "no-valid-note-expressions"]
+      : ["no-note-expressions"];
+    if (metadataAtLimit) {
+      flags.push("metadata-at-limit");
+    }
+    return flags;
   }
 
   const flags = ["note-expressions"];
+  if (invalidExpressionCount > 0) {
+    flags.push("invalid-note-expression");
+  }
   if (eventBuses.some((busIndex) => busIndex > 0)) {
     flags.push("non-main-event-bus");
   }
@@ -53,7 +67,7 @@ function expressionFlags(expressions, eventBuses, channels) {
   if (expressions.some((expression) => expression.hasAssociatedParameter)) {
     flags.push("associated-parameter");
   }
-  if (expressions.length >= MAX_VST3_NOTE_EXPRESSIONS) {
+  if (metadataAtLimit) {
     flags.push("metadata-at-limit");
   }
   return flags;
@@ -63,9 +77,9 @@ function isTextExpression(expression) {
   return expression.typeId === TEXT_NOTE_EXPRESSION_TYPE_ID;
 }
 
-function expressionCategory(expressions, eventBuses, channels) {
+function expressionCategory(expressions, eventBuses, channels, invalidExpressionCount) {
   if (expressions.length === 0) {
-    return "no-note-expressions";
+    return invalidExpressionCount > 0 ? "invalid-metadata" : "no-note-expressions";
   }
   if (eventBuses.some((busIndex) => busIndex > 0)) {
     return "non-main-event-bus";
@@ -76,14 +90,25 @@ function expressionCategory(expressions, eventBuses, channels) {
   return "main-event-bus";
 }
 
-function boundedNoteExpressions(value) {
+function boundedNoteExpressionProfile(value) {
   if (!Array.isArray(value)) {
-    return [];
+    return { expressions: [], invalidExpressionCount: 0, metadataAtLimit: false };
   }
-  return value
-    .slice(0, MAX_VST3_NOTE_EXPRESSIONS)
-    .map((expression) => normalizeNoteExpression(expression))
-    .filter(Boolean);
+  const expressions = [];
+  let invalidExpressionCount = 0;
+  for (const expression of value.slice(0, MAX_VST3_NOTE_EXPRESSIONS)) {
+    const normalized = normalizeNoteExpression(expression);
+    if (normalized) {
+      expressions.push(normalized);
+    } else {
+      invalidExpressionCount += 1;
+    }
+  }
+  return {
+    expressions,
+    invalidExpressionCount,
+    metadataAtLimit: value.length >= MAX_VST3_NOTE_EXPRESSIONS
+  };
 }
 
 function normalizeNoteExpression(expression) {

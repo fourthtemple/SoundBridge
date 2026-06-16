@@ -71,20 +71,30 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     format: "vst3",
     vst3NoteExpressions: [
       { typeId: 0, busIndex: 0, channel: 0 },
-      { typeId: 6, busIndex: 2, channel: 3, associatedParameterId: "param-1" }
+      { typeId: 6, busIndex: 2, channel: 3, associatedParameterId: "param-1" },
+      { typeId: "bad", busIndex: 0, channel: 0 }
     ]
+  });
+  const invalidVst3EventProfile = summarizeProbeVst3Events({
+    format: "vst3",
+    vst3NoteExpressions: [{ typeId: "bad" }]
   });
   check(
     vst3EventProfile.category === "non-main-event-bus" &&
       vst3EventProfile.noteExpressionCount === 2 &&
       vst3EventProfile.valueExpressionCount === 1 &&
       vst3EventProfile.textExpressionCount === 1 &&
+      vst3EventProfile.invalidNoteExpressionCount === 1 &&
       vst3EventProfile.associatedParameterCount === 1 &&
       JSON.stringify(vst3EventProfile.typeIds) === JSON.stringify([0, 6]) &&
       JSON.stringify(vst3EventProfile.eventBuses) === JSON.stringify([0, 2]) &&
       vst3EventProfile.flags.includes("text-expression") &&
       vst3EventProfile.flags.includes("value-expression") &&
-      vst3EventProfile.flags.includes("associated-parameter"),
+      vst3EventProfile.flags.includes("associated-parameter") &&
+      vst3EventProfile.flags.includes("invalid-note-expression") &&
+      invalidVst3EventProfile.category === "invalid-metadata" &&
+      invalidVst3EventProfile.invalidNoteExpressionCount === 1 &&
+      invalidVst3EventProfile.flags.includes("no-valid-note-expressions"),
     "installed plugin probe classifies VST3 event metadata coverage"
   );
   check(
