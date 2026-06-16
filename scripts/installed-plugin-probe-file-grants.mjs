@@ -268,6 +268,50 @@ export async function probeFileGrantLicenseLoad({
   }
 }
 
+export async function probeFileGrantOtherPresetLoad({
+  assertProbe,
+  fileGrantRoot,
+  instanceId,
+  phase,
+  plugin,
+  request,
+  result,
+  session,
+  socket
+}) {
+  if (!pluginAdvertisesFileGrantOperation(plugin, "other")) {
+    result.fileGrantOtherPresetLoad = "skipped-unadvertised";
+    return;
+  }
+  const presetPath = path.join(fileGrantRoot, `${safeFilename(plugin.pluginId)}.vendor-preset`);
+  fs.writeFileSync(presetPath, "SoundBridge vendor preset fixture\n", "utf8");
+  let grantId = "";
+  try {
+    const grant = await phase(result, "createOtherPresetFileGrant", () =>
+      request(socket, "createFileGrant", { path: presetPath, purpose: "preset", access: "read", kind: "file" }, true, session)
+    );
+    grantId = grant.grantId;
+    await phase(result, "attachOtherPresetFileGrant", () =>
+      request(socket, "attachFileGrant", { instanceId, grantId, purpose: "preset", access: "read", kind: "file" }, true, session)
+    );
+    const loaded = await phase(result, "useFileGrantOtherPreset", () =>
+      request(
+        socket,
+        "useFileGrant",
+        { instanceId, grantId, operation: "other", purpose: "preset", access: "read", kind: "file" },
+        true,
+        session
+      )
+    );
+    assertProbe(loaded.applied === true, "bad_file_grant_other_preset", "explicit other preset file grant was not applied");
+    assertNoNativeLaunchData(loaded, "file grant other preset response", assertProbe);
+    result.fileGrantOtherPresetLoad = "applied";
+  } finally {
+    await detachAndRevokeGrant({ grantId, instanceId, request, session, socket });
+    fs.rmSync(presetPath, { force: true });
+  }
+}
+
 export function nativeStateFileText(format, stateEnvelope) {
   let parsed;
   try {

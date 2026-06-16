@@ -9,6 +9,7 @@ import {
   assertNoNativeLaunchData,
   probeFileGrantCacheDirectoryOpen,
   probeFileGrantLicenseLoad,
+  probeFileGrantOtherPresetLoad,
   probeFileGrantPresetLoad,
   probeFileGrantSampleLoad,
   probeFileGrantStateRestore,
@@ -255,6 +256,17 @@ async function probePlugin(socket, session, plugin) {
       socket
     });
     await probeFileGrantLicenseLoad({
+      assertProbe,
+      fileGrantRoot: FILE_GRANT_ROOT,
+      instanceId,
+      phase,
+      plugin,
+      request,
+      result,
+      session,
+      socket
+    });
+    await probeFileGrantOtherPresetLoad({
       assertProbe,
       fileGrantRoot: FILE_GRANT_ROOT,
       instanceId,

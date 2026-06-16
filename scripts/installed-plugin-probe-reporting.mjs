@@ -121,6 +121,7 @@ function summarizeCompatibilityMatrix(results) {
       fileGrantSampleLoad: safeMatrixText(result.fileGrantSampleLoad ?? "missing", 64),
       fileGrantCacheDirectoryOpen: safeMatrixText(result.fileGrantCacheDirectoryOpen ?? "missing", 64),
       fileGrantLicenseLoad: safeMatrixText(result.fileGrantLicenseLoad ?? "missing", 64),
+      fileGrantOtherPresetLoad: safeMatrixText(result.fileGrantOtherPresetLoad ?? "missing", 64),
       featureStatus: summarizeFeatureStatus(result),
       fileGrantOperations: safeMatrixArray(result.fileGrantOperations, 64)
     });
@@ -174,7 +175,10 @@ function fileGrantFeatureStatus(result) {
     "useFileGrantOpenCacheDirectory",
     "createLicenseFileGrant",
     "attachLicenseFileGrant",
-    "useFileGrantLoadLicense"
+    "useFileGrantLoadLicense",
+    "createOtherPresetFileGrant",
+    "attachOtherPresetFileGrant",
+    "useFileGrantOtherPreset"
   ])) {
     return "failed";
   }
@@ -186,7 +190,8 @@ function fileGrantFeatureStatus(result) {
     result.fileGrantSavedStateRestore,
     result.fileGrantSampleLoad,
     result.fileGrantCacheDirectoryOpen,
-    result.fileGrantLicenseLoad
+    result.fileGrantLicenseLoad,
+    result.fileGrantOtherPresetLoad
   ].filter(Boolean).map(String);
   if (workflowStatuses.some((status) => status === "applied")) {
     return "passed";
@@ -265,6 +270,7 @@ function summarizeFeatureCoverage(results, options) {
     fileGrantSampleLoad: countStatuses(results, "fileGrantSampleLoad"),
     fileGrantCacheDirectoryOpen: countStatuses(results, "fileGrantCacheDirectoryOpen"),
     fileGrantLicenseLoad: countStatuses(results, "fileGrantLicenseLoad"),
+    fileGrantOtherPresetLoad: countStatuses(results, "fileGrantOtherPresetLoad"),
     fileGrantOperations: countFileGrantOperations(results),
     busLayouts: countBusLayouts(results),
     vst3EventProfiles: countVst3EventProfiles(results),
@@ -459,6 +465,7 @@ function printFeatureCoverage(coverage, stream) {
     ["file grant sample load", coverage.fileGrantSampleLoad],
     ["file grant cache directory open", coverage.fileGrantCacheDirectoryOpen],
     ["file grant license load", coverage.fileGrantLicenseLoad],
+    ["file grant explicit other preset load", coverage.fileGrantOtherPresetLoad],
     ["file grant operations advertised", coverage.fileGrantOperations],
     ["bus layouts", coverage.busLayouts],
     ["VST3 event metadata", coverage.vst3EventProfiles],

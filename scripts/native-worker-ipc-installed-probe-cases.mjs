@@ -55,6 +55,7 @@ export function exerciseInstalledProbeSupport({ check }) {
     "useFileGrantLoadSample",
     "useFileGrantOpenCacheDirectory",
     "useFileGrantLoadLicense",
+    "useFileGrantOtherPreset",
     "getLatency",
     "getTailTime",
     "setAutomationLane",
@@ -85,7 +86,8 @@ export function exerciseInstalledProbeSupport({ check }) {
       fileGrantSampleLoad: "applied",
       fileGrantCacheDirectoryOpen: "skipped-unadvertised",
       fileGrantLicenseLoad: "skipped-unadvertised",
-      fileGrantOperations: ["loadPreset", "restoreState", "saveStateDirectory", "loadSample"],
+      fileGrantOtherPresetLoad: "applied",
+      fileGrantOperations: ["loadPreset", "restoreState", "saveStateDirectory", "loadSample", "other"],
       busProfile: { category: "sidechain", flags: ["sidechain-input", "multi-input"] },
       vst3EventProfile: {
         category: "non-main-event-bus",
@@ -113,6 +115,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       fileGrantSampleLoad: "skipped-unadvertised",
       fileGrantCacheDirectoryOpen: "applied",
       fileGrantLicenseLoad: "applied",
+      fileGrantOtherPresetLoad: "skipped-unadvertised",
       fileGrantOperations: ["loadPreset", "openCacheDirectory", "loadLicense"],
       busProfile: { category: "multi-output-instrument", flags: ["multi-output", "multi-output-instrument"] },
       automationLaneSkipped: "lv2-block-size-profile",
@@ -132,6 +135,8 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.coverage.fileGrantSampleLoad.applied === 1 &&
       coverageSummary.coverage.fileGrantCacheDirectoryOpen.applied === 1 &&
       coverageSummary.coverage.fileGrantLicenseLoad.applied === 1 &&
+      coverageSummary.coverage.fileGrantOtherPresetLoad.applied === 1 &&
+      coverageSummary.coverage.fileGrantOperations.other === 1 &&
       coverageSummary.coverage.busLayouts.sidechain === 1 &&
       coverageSummary.coverage.busLayouts["flag:multi-output-instrument"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["non-main-event-bus"] === 1 &&
@@ -152,6 +157,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].automation === "applied" &&
       coverageSummary.matrix[0].hostTransport === "accepted" &&
       coverageSummary.matrix[0].fileGrantSampleLoad === "applied" &&
+      coverageSummary.matrix[0].fileGrantOtherPresetLoad === "applied" &&
       coverageSummary.matrix[0].featureStatus.instantiation === "passed" &&
       coverageSummary.matrix[0].featureStatus.parameters === "passed" &&
       coverageSummary.matrix[0].featureStatus.fileGrants === "passed" &&
@@ -162,6 +168,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[1].vst3ProgramLists === "skipped-format" &&
       coverageSummary.matrix[1].fileGrantCacheDirectoryOpen === "applied" &&
       coverageSummary.matrix[1].fileGrantLicenseLoad === "applied" &&
+      coverageSummary.matrix[1].fileGrantOtherPresetLoad === "skipped-unadvertised" &&
       coverageSummary.matrix[1].featureStatus.fileGrants === "passed" &&
       coverageSummary.matrix[1].fileGrantOperations.includes("loadLicense"),
     "installed plugin probe builds path-free compatibility matrix entries"
@@ -212,6 +219,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageLines.some((line) => line.includes("file grant sample load:")) &&
       coverageLines.some((line) => line.includes("file grant cache directory open:")) &&
       coverageLines.some((line) => line.includes("file grant license load:")) &&
+      coverageLines.some((line) => line.includes("file grant explicit other preset load:")) &&
       coverageLines.some((line) => line.includes("file grant operations advertised:")) &&
       coverageLines.some((line) => line.includes("VST3 event metadata:")) &&
       coverageLines.some((line) => line.includes("host transport:")) &&
