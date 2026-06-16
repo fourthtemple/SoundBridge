@@ -12,6 +12,7 @@ export function createDaemonControlEvents({
     maxNoteExpressionTextBytes,
     maxParameterEventsPerRequest,
     maxPluginParameterTextBytes,
+    maxPluginBuses,
     maxTransportSamplePosition
   } = limits;
   const {
@@ -42,6 +43,7 @@ export function createDaemonControlEvents({
       const type = String(event.type ?? "");
       const channel = requireIntInRange(event.channel ?? 0, 0, 15, `events[${index}].channel`);
       const time = requireIntInRange(event.time ?? 0, 0, maxOffset, `events[${index}].time`);
+      const busIndex = optionalBusIndex(event, index);
       if (type === "noteOn" || type === "noteOff") {
         const note = requireIntInRange(event.note, 0, 127, `events[${index}].note`);
         const velocity = requireNumberInRange(
@@ -52,32 +54,33 @@ export function createDaemonControlEvents({
         );
         const normalized = { type, note, velocity, channel, time };
         addOptionalNoteId(normalized, event, index);
+        addOptionalBusIndex(normalized, busIndex);
         return normalized;
       }
       if (type === "controlChange") {
-        return {
+        return addOptionalBusIndex({
           type,
           controller: requireIntInRange(event.controller, 0, 127, `events[${index}].controller`),
           value: requireNumberInRange(event.value, 0, 1, `events[${index}].value`),
           channel,
           time
-        };
+        }, busIndex);
       }
       if (type === "pitchBend") {
-        return {
+        return addOptionalBusIndex({
           type,
           value: requireNumberInRange(event.value, -1, 1, `events[${index}].value`),
           channel,
           time
-        };
+        }, busIndex);
       }
       if (type === "channelPressure") {
-        return {
+        return addOptionalBusIndex({
           type,
           pressure: requireNumberInRange(event.pressure, 0, 1, `events[${index}].pressure`),
           channel,
           time
-        };
+        }, busIndex);
       }
       if (type === "polyPressure") {
         const normalized = {
@@ -88,35 +91,36 @@ export function createDaemonControlEvents({
           time
         };
         addOptionalNoteId(normalized, event, index);
+        addOptionalBusIndex(normalized, busIndex);
         return normalized;
       }
       if (type === "programChange") {
-        return {
+        return addOptionalBusIndex({
           type,
           program: requireIntInRange(event.program, 0, 127, `events[${index}].program`),
           channel,
           time
-        };
+        }, busIndex);
       }
       if (type === "noteExpression") {
-        return {
+        return addOptionalBusIndex({
           type,
           typeId: requireIntegerInRange(event.typeId, 0, 4_294_967_295, `events[${index}].typeId`),
           noteId: requireIntegerInRange(event.noteId, 0, 2_147_483_647, `events[${index}].noteId`),
           value: requireNumberInRange(event.value, 0, 1, `events[${index}].value`),
           channel,
           time
-        };
+        }, busIndex);
       }
       if (type === "noteExpressionText") {
-        return {
+        return addOptionalBusIndex({
           type,
           typeId: requireIntegerInRange(event.typeId, 0, 4_294_967_295, `events[${index}].typeId`),
           noteId: requireIntegerInRange(event.noteId, 0, 2_147_483_647, `events[${index}].noteId`),
           text: requireBoundedEventText(event.text, maxNoteExpressionTextBytes, `events[${index}].text`),
           channel,
           time
-        };
+        }, busIndex);
       }
       throw makeProtocolError(
         "invalid_argument",
@@ -143,6 +147,21 @@ export function createDaemonControlEvents({
     if (event.noteId !== undefined) {
       normalized.noteId = requireIntegerInRange(event.noteId, 0, 2_147_483_647, `events[${index}].noteId`);
     }
+  }
+
+  function optionalBusIndex(event, index) {
+    if (event.busIndex === undefined) {
+      return undefined;
+    }
+    const maxBusIndex = Math.max(1, Number(maxPluginBuses) || 32) - 1;
+    return requireIntInRange(event.busIndex, 0, maxBusIndex, `events[${index}].busIndex`);
+  }
+
+  function addOptionalBusIndex(normalized, busIndex) {
+    if (busIndex !== undefined) {
+      normalized.busIndex = busIndex;
+    }
+    return normalized;
   }
 
   function normalizeParameterEvents(events, maxBlockSizeForInstance) {

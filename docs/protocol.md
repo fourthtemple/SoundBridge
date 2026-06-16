@@ -249,7 +249,7 @@ VST3 parameters may include bounded `vst3Unit` metadata from the SDK `IUnitInfo`
 
 VST3 plugin snapshots may include `vst3ProgramLists`, a bounded list of all SDK program lists exposed by `IUnitInfo`, with at most 256 lists and 256 named programs per list. Program-list names and program names use the same 160-byte cap as parameter names; `unitId` is included when the SDK ties a list to a unit. Lists may include `programDataSupported: true` when the worker can export opaque SDK `IProgramListData` for daemon-listed programs. Hosts should use `programChange` parameters for selection when present and must not treat program-list metadata as permission to read, write, import, or load arbitrary preset files.
 
-VST3 plugin snapshots may include `vst3NoteExpressions`, a bounded list from the SDK `INoteExpressionController` for event bus 0 and channels 0-15. The daemon exposes at most 256 expression definitions with capped display text, `typeId`, optional `unitId` and `associatedParameterId`, normalized value bounds, flags, `busIndex`, and `channel`. Value-style note-expression events use normalized `value`; text-style note-expression events use bounded UTF-8 `text` and are still VST3-only.
+VST3 plugin snapshots may include `vst3NoteExpressions`, a bounded list from the SDK `INoteExpressionController`; current discovery probes event bus 0 and channels 0-15. The daemon exposes at most 256 expression definitions with capped display text, `typeId`, optional `unitId` and `associatedParameterId`, normalized value bounds, flags, `busIndex`, and `channel`. Value-style note-expression events use normalized `value`; text-style note-expression events use bounded UTF-8 `text`; event delivery can include a bounded VST3 `busIndex` and is still VST3-only.
 
 Compatible LV2 control ports marked with `lv2:toggled`, `lv2:integer`, or `lv2:enumeration` expose bounded `stepCount` metadata. The reference LV2 worker caps reported step counts and quantizes normalized writes back to legal plain values before writing the plugin port. For LV2 fixed/power-of-two block profiles, parameter writes are still allowed at block boundaries, but nonzero sample-offset automation is rejected until a sub-block scheduling model can satisfy those plugin contracts.
 
@@ -599,6 +599,7 @@ Request:
       "typeId": 0,
       "noteId": 42,
       "value": 0.5,
+      "busIndex": 0,
       "channel": 0,
       "time": 80
     },
@@ -614,7 +615,7 @@ Request:
 }
 ```
 
-`events` is bounded to 4096 items per request. Supported event types are `noteOn`, `noteOff`, `controlChange`, `pitchBend`, `channelPressure`, `polyPressure`, `programChange`, `noteExpression`, and `noteExpressionText`. `note`, `controller`, and `program` are `0..127`; optional VST3 `noteId` values on note events and required `noteId` values on note-expression events are `0..2147483647`; note-expression `typeId` is `0..4294967295`; `velocity`, `value` for control change or value-style note expression, and `pressure` are `0..1`; text-style note-expression `text` is 1..256 UTF-8 bytes without NUL characters; pitch-bend `value` is `-1..1`; `channel` is `0..15`; and `time` is an integer sample offset into the next render block. Daemons must reject malformed or out-of-range MIDI events before dispatching them to a native worker. `noteExpression` and `noteExpressionText` currently require a native VST3 worker and are rejected for AU, LV2, mock, or example-only targets.
+`events` is bounded to 4096 items per request. Supported event types are `noteOn`, `noteOff`, `controlChange`, `pitchBend`, `channelPressure`, `polyPressure`, `programChange`, `noteExpression`, and `noteExpressionText`. `note`, `controller`, and `program` are `0..127`; optional VST3 `noteId` values on note events and required `noteId` values on note-expression events are `0..2147483647`; note-expression `typeId` is `0..4294967295`; `velocity`, `value` for control change or value-style note expression, and `pressure` are `0..1`; text-style note-expression `text` is 1..256 UTF-8 bytes without NUL characters; pitch-bend `value` is `-1..1`; `channel` is `0..15`; and `time` is an integer sample offset into the next render block. Optional VST3 `busIndex` routes events to a bounded VST3 event bus and must be `0..maxPluginBuses-1`; it defaults to `0` and is rejected for non-VST3 workers. Daemons must reject malformed or out-of-range MIDI events before dispatching them to a native worker. `noteExpression` and `noteExpressionText` currently require a native VST3 worker and are rejected for AU, LV2, mock, or example-only targets.
 
 Response:
 

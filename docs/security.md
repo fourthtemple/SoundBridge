@@ -94,7 +94,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | Audio channels | 0–32 in, 1–32 out | `createInstance.inputChannels` / `outputChannels` |
 | Plugin buses | 0–32 in, 1–32 out; explicit input bus indexes must be unique integers in 0–31 and worker line-protocol bus framing must be revalidated | `getLayout`, `createInstance.layout`, `processAudioBlock.inputBuses` |
 | MIDI events per request | 4096 | `sendMidiEvents.events` |
-| VST3 note-expression metadata/events | 256 metadata entries; display text capped to parameter-text limits; event text capped to 256 UTF-8 bytes; type ids `0..4294967295`; note ids `0..2147483647` | `PluginMetadata.vst3NoteExpressions`, `sendMidiEvents.events` |
+| VST3 note-expression metadata/events | 256 metadata entries; display text capped to parameter-text limits; event text capped to 256 UTF-8 bytes; type ids `0..4294967295`; note ids `0..2147483647`; event bus indexes `0..maxPluginBuses-1` | `PluginMetadata.vst3NoteExpressions`, `sendMidiEvents.events` |
 | Parameter automation events per request | 4096 | `setParameterEvents.events`, expanded `setParameterCurve` events |
 | Parameter automation curve points | 256, never above the parameter-event cap | `setParameterCurve.points` |
 | Parameter automation lanes | 128 lanes per instance; 4096 points per lane; render-block lane expansion capped by the parameter-event cap | `setAutomationLane.points`, `clearAutomationLane`, `processAudioBlock.transport.samplePosition` |

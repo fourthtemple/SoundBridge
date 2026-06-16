@@ -31,26 +31,26 @@ export function createDaemonNormalizers(options = {}) {
           return vst3NoteEventToken("off", event, event.velocity, format);
         }
         if (event.type === "controlChange") {
-          return ["cc", event.controller, event.value, event.channel, event.time].join(":");
+          return vst3BusEventToken(["cc", event.controller, event.value, event.channel, event.time], event, format);
         }
         if (event.type === "pitchBend") {
-          return ["bend", event.value, event.channel, event.time].join(":");
+          return vst3BusEventToken(["bend", event.value, event.channel, event.time], event, format);
         }
         if (event.type === "channelPressure") {
-          return ["pressure", event.pressure, event.channel, event.time].join(":");
+          return vst3BusEventToken(["pressure", event.pressure, event.channel, event.time], event, format);
         }
         if (event.type === "polyPressure") {
           return vst3NoteEventToken("poly", event, event.pressure, format);
         }
         if (event.type === "programChange") {
-          return ["program", event.program, event.channel, event.time].join(":");
+          return vst3BusEventToken(["program", event.program, event.channel, event.time], event, format);
         }
         if (event.type === "noteExpression" && format === "vst3") {
-          return ["expr", event.typeId, event.value, event.noteId, event.channel, event.time].join(":");
+          return vst3BusEventToken(["expr", event.typeId, event.value, event.noteId, event.channel, event.time], event, format);
         }
         if (event.type === "noteExpressionText" && format === "vst3") {
           const encodedText = Buffer.from(event.text, "utf8").toString("base64");
-          return ["exprText", event.typeId, encodedText, event.noteId, event.channel, event.time].join(":");
+          return vst3BusEventToken(["exprText", event.typeId, encodedText, event.noteId, event.channel, event.time], event, format);
         }
         throw protocolError("invalid_argument", `Unsupported MIDI event type: ${event.type}`);
       })
@@ -61,6 +61,14 @@ export function createDaemonNormalizers(options = {}) {
     const token = [kind, event.note, value, event.channel, event.time];
     if (format === "vst3" && Number.isInteger(event.noteId)) {
       token.push(event.noteId);
+    }
+    return vst3BusEventToken(token, event, format);
+  }
+
+  function vst3BusEventToken(parts, event, format) {
+    const token = [...parts];
+    if (format === "vst3" && Number.isInteger(event.busIndex)) {
+      token.push(`bus=${event.busIndex}`);
     }
     return token.join(":");
   }

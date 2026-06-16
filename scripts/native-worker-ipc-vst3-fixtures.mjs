@@ -99,9 +99,9 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
   try {
     await midiWorker.ready;
     await midiWorker.sendMidiEvents([
-      { type: "controlChange", controller: 74, value: 0.25, channel: 2, time: 3 },
-      { type: "pitchBend", value: -0.5, channel: 2, time: 4 },
-      { type: "channelPressure", pressure: 0.75, channel: 2, time: 5 }
+      { type: "controlChange", controller: 74, value: 0.25, channel: 2, time: 3, busIndex: 1 },
+      { type: "pitchBend", value: -0.5, channel: 2, time: 4, busIndex: 1 },
+      { type: "channelPressure", pressure: 0.75, channel: 2, time: 5, busIndex: 1 }
     ]);
     check(true, "native VST3 workers encode mapped MIDI-controller parameter events");
   } finally {
@@ -128,9 +128,9 @@ export async function exerciseVst3NoteExpressionNativeWorker({
   try {
     await noteExpressionWorker.ready;
     await noteExpressionWorker.sendMidiEvents([
-      { type: "noteOn", note: 60, velocity: 0.8, channel: 1, time: 0, noteId: 42 },
-      { type: "noteExpression", typeId: 0, value: 0.5, noteId: 42, channel: 1, time: 2 },
-      { type: "noteExpressionText", typeId: 6, text: "bow", noteId: 42, channel: 1, time: 4 }
+      { type: "noteOn", note: 60, velocity: 0.8, channel: 1, time: 0, noteId: 42, busIndex: 2 },
+      { type: "noteExpression", typeId: 0, value: 0.5, noteId: 42, channel: 1, time: 2, busIndex: 2 },
+      { type: "noteExpressionText", typeId: 6, text: "bow", noteId: 42, channel: 1, time: 4, busIndex: 2 }
     ]);
     check(true, "native VST3 workers encode note-expression value/text event lists");
   } finally {
@@ -337,7 +337,7 @@ function writeVst3MidiControllerMappingNativeWorker(tempDir) {
     tempDir,
     "vst3-midi-controller-mapping-native-worker.mjs",
     `#!/usr/bin/env node
-const expectedCommand = "midi cc:74:0.25:2:3;bend:-0.5:2:4;pressure:0.75:2:5";
+const expectedCommand = "midi cc:74:0.25:2:3:bus=1;bend:-0.5:2:4:bus=1;pressure:0.75:2:5:bus=1";
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
 let buffer = "";
@@ -371,7 +371,7 @@ function writeVst3NoteExpressionNativeWorker(tempDir) {
     tempDir,
     "vst3-note-expression-native-worker.mjs",
     `#!/usr/bin/env node
-const expectedCommand = "midi on:60:0.8:1:0:42;expr:0:0.5:42:1:2;exprText:6:Ym93:42:1:4";
+const expectedCommand = "midi on:60:0.8:1:0:42:bus=2;expr:0:0.5:42:1:2:bus=2;exprText:6:Ym93:42:1:4:bus=2";
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
 let buffer = "";

@@ -187,6 +187,7 @@ const {
     maxMidiEventsPerRequest: MAX_MIDI_EVENTS_PER_REQUEST,
     maxNoteExpressionTextBytes: MAX_NOTE_EXPRESSION_TEXT_BYTES,
     maxParameterEventsPerRequest: MAX_PARAMETER_EVENTS_PER_REQUEST,
+    maxPluginBuses: MAX_PLUGIN_BUSES,
     maxPluginParameterTextBytes: MAX_PLUGIN_PARAMETER_TEXT_BYTES,
     maxTransportSamplePosition: MAX_TRANSPORT_SAMPLE_POSITION
   },
@@ -705,6 +706,10 @@ async function sendMidiEvents(instanceId, events, session) {
   );
   if (hasVst3NoteExpressionEvent && instance.nativeHost?.format !== "vst3") {
     throw protocolError("unsupported_midi_event", "VST3 note-expression events require a VST3 native worker.");
+  }
+  const hasVst3BusIndex = acceptedEvents.some((event) => event.busIndex !== undefined);
+  if (hasVst3BusIndex && instance.nativeHost?.format !== "vst3") {
+    throw protocolError("unsupported_midi_event", "VST3 event-bus routing requires a VST3 native worker.");
   }
   const hasNativeMidiWorker =
     typeof instance.renderEngine === "string" &&

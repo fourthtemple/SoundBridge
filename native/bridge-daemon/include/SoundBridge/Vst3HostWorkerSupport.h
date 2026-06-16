@@ -60,6 +60,7 @@ struct PendingMidiEvent {
   Steinberg::int32 noteId = -1;
   std::u16string noteExpressionText;
   float value = 0.8F;
+  std::uint32_t busIndex = 0;
   std::uint8_t channel = 0;
   std::uint32_t sampleOffset = 0;
 };

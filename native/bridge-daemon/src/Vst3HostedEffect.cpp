@@ -381,7 +381,7 @@ bool HostedVst3Effect::midiEventToParameterChange(
 
   Steinberg::Vst::ParamID id = 0;
   if (midiMapping_->getMidiControllerAssignment(
-          0,
+          static_cast<Steinberg::int32>(std::clamp<std::uint32_t>(event.busIndex, 0, kMaxWorkerChannels - 1)),
           static_cast<Steinberg::int16>(event.channel),
           controllerNumber,
           id) != Steinberg::kResultOk) {

@@ -48,6 +48,10 @@ bool isPowerOfTwo(std::uint32_t value) {
   return value > 0 && (value & (value - 1U)) == 0;
 }
 
+bool isBusIndexToken(const std::string& token) {
+  return token.rfind("bus=", 0) == 0;
+}
+
 bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
   std::vector<std::string> parts;
   std::stringstream stream(token);
@@ -71,8 +75,23 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
     return true;
   };
 
+  auto parseOptionalBusIndex = [&](std::size_t busIndexPart) -> bool {
+    if (parts.size() == busIndexPart) {
+      return true;
+    }
+    if (parts.size() != busIndexPart + 1 || !isBusIndexToken(parts[busIndexPart])) {
+      return false;
+    }
+    std::uint32_t busIndex = 0;
+    if (!parseUint32Arg(parts[busIndexPart].c_str() + 4, 0, kMaxWorkerChannels - 1, busIndex)) {
+      return false;
+    }
+    event.busIndex = busIndex;
+    return true;
+  };
+
   if (parts[0] == "on" || parts[0] == "off" || parts[0] == "poly") {
-    if (parts.size() != 5 && parts.size() != 6) {
+    if (parts.size() < 5 || parts.size() > 7) {
       return false;
     }
     std::uint32_t note = 60;
@@ -80,28 +99,33 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
     double value = parts[0] == "off" ? 0.0 : 0.8;
     if (!parseUint32Arg(parts[1].c_str(), 0, 127, note) ||
         !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
-        !parseChannelAndOffset(3, 4) ||
-        (parts.size() == 6 && !parseUint32Arg(parts[5].c_str(), 0, 2147483647U, noteId))) {
+        !parseChannelAndOffset(3, 4)) {
+      return false;
+    }
+    const bool hasNoteId = parts.size() >= 6 && !isBusIndexToken(parts[5]);
+    if ((hasNoteId && !parseUint32Arg(parts[5].c_str(), 0, 2147483647U, noteId)) ||
+        !parseOptionalBusIndex(hasNoteId ? 6 : 5)) {
       return false;
     }
     event.type = parts[0] == "on"
         ? PendingMidiEventType::NoteOn
         : parts[0] == "off" ? PendingMidiEventType::NoteOff : PendingMidiEventType::PolyPressure;
     event.note = static_cast<std::uint8_t>(note);
-    event.noteId = parts.size() == 6 ? static_cast<Steinberg::int32>(noteId) : -1;
+    event.noteId = hasNoteId ? static_cast<Steinberg::int32>(noteId) : -1;
     event.value = static_cast<float>(value);
     return true;
   }
 
   if (parts[0] == "cc") {
-    if (parts.size() != 5) {
+    if (parts.size() != 5 && parts.size() != 6) {
       return false;
     }
     std::uint32_t controller = 0;
     double value = 0.0;
     if (!parseUint32Arg(parts[1].c_str(), 0, 127, controller) ||
         !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
-        !parseChannelAndOffset(3, 4)) {
+        !parseChannelAndOffset(3, 4) ||
+        !parseOptionalBusIndex(5)) {
       return false;
     }
     event.type = PendingMidiEventType::ControlChange;
@@ -111,12 +135,13 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
   }
 
   if (parts[0] == "bend") {
-    if (parts.size() != 4) {
+    if (parts.size() != 4 && parts.size() != 5) {
       return false;
     }
     double value = 0.0;
     if (!parseDoubleArg(parts[1].c_str(), -1.0, 1.0, value) ||
-        !parseChannelAndOffset(2, 3)) {
+        !parseChannelAndOffset(2, 3) ||
+        !parseOptionalBusIndex(4)) {
       return false;
     }
     event.type = PendingMidiEventType::PitchBend;
@@ -125,12 +150,13 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
   }
 
   if (parts[0] == "pressure") {
-    if (parts.size() != 4) {
+    if (parts.size() != 4 && parts.size() != 5) {
       return false;
     }
     double pressure = 0.0;
     if (!parseDoubleArg(parts[1].c_str(), 0.0, 1.0, pressure) ||
-        !parseChannelAndOffset(2, 3)) {
+        !parseChannelAndOffset(2, 3) ||
+        !parseOptionalBusIndex(4)) {
       return false;
     }
     event.type = PendingMidiEventType::ChannelPressure;
@@ -139,12 +165,13 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
   }
 
   if (parts[0] == "program") {
-    if (parts.size() != 4) {
+    if (parts.size() != 4 && parts.size() != 5) {
       return false;
     }
     std::uint32_t program = 0;
     if (!parseUint32Arg(parts[1].c_str(), 0, 127, program) ||
-        !parseChannelAndOffset(2, 3)) {
+        !parseChannelAndOffset(2, 3) ||
+        !parseOptionalBusIndex(4)) {
       return false;
     }
     event.type = PendingMidiEventType::ProgramChange;
@@ -153,7 +180,7 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
   }
 
   if (parts[0] == "expr") {
-    if (parts.size() != 6) {
+    if (parts.size() != 6 && parts.size() != 7) {
       return false;
     }
     std::uint32_t typeId = 0;
@@ -162,7 +189,8 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
     if (!parseUint32Arg(parts[1].c_str(), 0, 4294967295U, typeId) ||
         !parseDoubleArg(parts[2].c_str(), 0.0, 1.0, value) ||
         !parseUint32Arg(parts[3].c_str(), 0, 2147483647U, noteId) ||
-        !parseChannelAndOffset(4, 5)) {
+        !parseChannelAndOffset(4, 5) ||
+        !parseOptionalBusIndex(6)) {
       return false;
     }
     event.type = PendingMidiEventType::NoteExpression;
@@ -173,14 +201,15 @@ bool parseMidiEventToken(const std::string& token, PendingMidiEvent& event) {
   }
 
   if (parts[0] == "exprText") {
-    if (parts.size() != 6) {
+    if (parts.size() != 6 && parts.size() != 7) {
       return false;
     }
     std::uint32_t typeId = 0;
     std::uint32_t noteId = 0;
     if (!parseUint32Arg(parts[1].c_str(), 0, 4294967295U, typeId) ||
         !parseUint32Arg(parts[3].c_str(), 0, 2147483647U, noteId) ||
-        !parseChannelAndOffset(4, 5)) {
+        !parseChannelAndOffset(4, 5) ||
+        !parseOptionalBusIndex(6)) {
       return false;
     }
     try {
@@ -489,7 +518,8 @@ bool parseMidiEvents(const std::string& encoded, std::vector<PendingMidiEvent>& 
 
 bool makeVst3Event(const PendingMidiEvent& pending, std::uint32_t frames, Steinberg::Vst::Event& event) {
   event = {};
-  event.busIndex = 0;
+  event.busIndex = static_cast<Steinberg::int32>(
+      std::clamp<std::uint32_t>(pending.busIndex, 0, kMaxWorkerChannels - 1));
   event.sampleOffset = static_cast<Steinberg::int32>(
       std::clamp<std::uint32_t>(pending.sampleOffset, 0, frames > 0 ? frames - 1 : 0));
   event.ppqPosition = 0.0;

@@ -46,6 +46,15 @@ export function createSecurityMidiCases({ check, request }) {
       socket,
       session,
       instanceId,
+      [{ type: "noteOn", note: 60, velocity: 0.8, busIndex: 999 }],
+      "invalid_argument",
+      "sendMidiEvents rejects out-of-range VST3 event-bus fields"
+    );
+
+    await expectMidiError(
+      socket,
+      session,
+      instanceId,
       [{ type: "pitchBend", value: 2 }],
       "invalid_argument",
       "sendMidiEvents rejects out-of-range pitch bend fields"
@@ -94,6 +103,15 @@ export function createSecurityMidiCases({ check, request }) {
       [{ type: "noteExpressionText", typeId: 6, noteId: 1, text: "ah" }],
       "unsupported_midi_event",
       "sendMidiEvents rejects VST3 note-expression text for non-VST3 workers"
+    );
+
+    await expectMidiError(
+      socket,
+      session,
+      instanceId,
+      [{ type: "noteOn", note: 60, velocity: 0.8, busIndex: 1 }],
+      "unsupported_midi_event",
+      "sendMidiEvents rejects VST3 event-bus routing for non-VST3 workers"
     );
   }
 
