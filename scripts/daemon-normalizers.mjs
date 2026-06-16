@@ -196,6 +196,9 @@ export function createDaemonNormalizers(options = {}) {
     if (!programData || typeof programData !== "object") {
       return undefined;
     }
+    if (programData.format !== undefined && programData.format !== "vst3") {
+      throw protocolError("bad_program_data", "VST3 program data reported the wrong format.");
+    }
     const data = String(programData.data ?? "");
     if (!isBase64Text(data)) {
       throw protocolError("bad_program_data", "VST3 program data was not valid base64.");

@@ -69,6 +69,12 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     )) === "program_data_too_large",
     "daemon normalizers reject oversized VST3 program data"
   );
+  check(
+    (await rejectedCode(() =>
+      unitNormalizers.normalizeVst3ProgramData({ format: "au", programListId: 7, programIndex: 0, data: "YWI=" })
+    )) === "bad_program_data",
+    "daemon normalizers reject wrong-format VST3 program data"
+  );
 
   const fakeInstance = vst3ProgramDataInstance();
   const programDataSupport = createProgramDataSupport({
@@ -156,6 +162,11 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
   check(
     (await rejectedCode(() => programDataSupport.getVst3ProgramData("inst-test", 7, 0, {}))) === "bad_program_data",
     "daemon VST3 program-data helper rejects mismatched worker export metadata"
+  );
+  fakeInstance.workerProgramData = { format: "au", programListId: 7, programIndex: 0, data: "YWI=" };
+  check(
+    (await rejectedCode(() => programDataSupport.getVst3ProgramData("inst-test", 7, 0, {}))) === "bad_program_data",
+    "daemon VST3 program-data helper rejects wrong-format worker export metadata"
   );
   delete fakeInstance.workerProgramData;
 
