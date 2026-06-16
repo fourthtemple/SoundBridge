@@ -81,6 +81,15 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     )) === "bad_program_data",
     "daemon normalizers reject missing VST3 program data bytes"
   );
+  check(
+    (await rejectedCode(() =>
+      unitNormalizers.normalizeVst3ProgramData({ programIndex: 0, data: "YWI=" })
+    )) === "bad_program_data" &&
+      (await rejectedCode(() =>
+        unitNormalizers.normalizeVst3ProgramData({ programListId: 7, data: "YWI=" })
+      )) === "bad_program_data",
+    "daemon normalizers reject missing VST3 program-data target metadata"
+  );
 
   const fakeInstance = vst3ProgramDataInstance();
   const programDataSupport = createProgramDataSupport({
@@ -167,6 +176,15 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       "program_data_not_supported",
     "daemon VST3 program-data helper rejects restore targets without program-data support"
   );
+  fakeInstance.vst3ProgramLists = originalProgramLists;
+
+  fakeInstance.vst3ProgramLists = [{ id: 0, programDataSupported: true, programs: [{ index: 0 }] }];
+  fakeInstance.workerProgramData = { format: "vst3", data: "YWI=" };
+  check(
+    (await rejectedCode(() => programDataSupport.getVst3ProgramData("inst-test", 0, 0, {}))) === "bad_program_data",
+    "daemon VST3 program-data helper rejects worker exports without target metadata"
+  );
+  delete fakeInstance.workerProgramData;
   fakeInstance.vst3ProgramLists = originalProgramLists;
 
   fakeInstance.workerProgramData = { format: "vst3", programListId: 8, programIndex: 0, data: "YWI=" };

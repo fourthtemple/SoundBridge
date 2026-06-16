@@ -212,13 +212,32 @@ export function createDaemonNormalizers(options = {}) {
         maxProgramDataBytes: limits.maxPluginProgramDataBytes
       });
     }
+    const programListId = requireVst3ProgramDataInteger(
+      programData.programListId,
+      -2147483648,
+      2147483647,
+      "programListId"
+    );
+    const programIndex = requireVst3ProgramDataInteger(
+      programData.programIndex,
+      0,
+      limits.maxPluginPrograms - 1,
+      "programIndex"
+    );
     return {
       format: "vst3",
-      programListId: normalizeInt(programData.programListId, -2147483648, 2147483647, 0),
-      programIndex: normalizeInt(programData.programIndex, 0, limits.maxPluginPrograms - 1, 0),
+      programListId,
+      programIndex,
       size,
       data
     };
+  }
+
+  function requireVst3ProgramDataInteger(value, min, max, label) {
+    if (!Number.isInteger(value) || value < min || value > max) {
+      throw protocolError("bad_program_data", `VST3 program data ${label} was out of range.`);
+    }
+    return value;
   }
 
   function normalizeVst3NoteExpressions(expressions) {
