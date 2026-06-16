@@ -108,14 +108,32 @@ export async function exerciseVst3MultiBusNativeWorker({
 
     check(
       Array.isArray(rendered.outputBuses) &&
-        rendered.outputBuses.length === 2 &&
+        rendered.outputBuses.length === 3 &&
         rendered.outputBuses[1]?.index === 1 &&
-        JSON.stringify(rendered.outputBuses[1].channels) === JSON.stringify([[0.5, 0.6]]),
+        JSON.stringify(rendered.outputBuses[1].channels) === JSON.stringify([[0.5, 0.6]]) &&
+        rendered.outputBuses[2]?.index === 2,
       "native VST3 workers preserve multi-bus render responses"
     );
     check(
       JSON.stringify(rendered.outputBuses?.[0]?.channels) === JSON.stringify(rendered.channels),
       "native VST3 workers keep bus 0 mirrored in legacy render channels"
+    );
+    const sidechainRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0, 0], [0, 0]],
+      inputBuses: [
+        { index: 0, channels: [[0.2, 0.4], [0.6, 0.8]] },
+        { index: 1, channels: [[0.1, 0.3]] }
+      ],
+      transport: { samplePosition: 96 }
+    });
+    check(
+      sidechainRendered.outputBuses?.length === 3 &&
+        JSON.stringify(sidechainRendered.outputBuses?.[0]?.channels) === JSON.stringify(sidechainRendered.channels) &&
+        JSON.stringify(sidechainRendered.channels) === JSON.stringify([[0.3, 0.7], [0.6, 0.8]]) &&
+        JSON.stringify(sidechainRendered.outputBuses?.[2]?.channels) === JSON.stringify([[-0.1, -0.3]]),
+      "native VST3 workers route explicit sidechain buses independently of legacy channels"
     );
   } finally {
     busWorker.destroy();
@@ -330,7 +348,7 @@ function vst3MultiBusInstance() {
       inputChannels: 2,
       outputChannels: 2,
       inputBuses: 2,
-      outputBuses: 2,
+      outputBuses: 3,
       inputBusLayouts: [
         {
           index: 0,
@@ -366,6 +384,15 @@ function vst3MultiBusInstance() {
           direction: "output",
           mediaType: "audio",
           name: "Aux Output",
+          type: "aux",
+          channels: 1,
+          active: true
+        },
+        {
+          index: 2,
+          direction: "output",
+          mediaType: "audio",
+          name: "Sidechain Monitor",
           type: "aux",
           channels: 1,
           active: true
@@ -505,29 +532,54 @@ process.stdin.on("data", (chunk) => {
     const frames = Number(parts[1]);
     const channels = parseChannels(parts[3], frames);
     const inputBuses = parseInputBuses(parts[4], frames);
-    const expectedChannels = [[0.1, 0.2], [0.3, 0.4]];
-    const expectedBuses = [
+    const mainChannels = [[0.1, 0.2], [0.3, 0.4]];
+    const mainInputBuses = [
       { index: 0, channels: [[0.1, 0.2], [0.3, 0.4]] },
       { index: 1, channels: [[0.5, 0.6]] }
     ];
-    const requestMatched = frames === 2 &&
+    const mainRequestMatched = frames === 2 &&
       Number(parts[2]) === 48000 &&
       parts[5] === "playing=1,sample=32" &&
-      JSON.stringify(channels) === JSON.stringify(expectedChannels) &&
-      JSON.stringify(inputBuses) === JSON.stringify(expectedBuses);
-    if (!requestMatched) {
-      process.stdout.write(JSON.stringify({ error: "bad_multibus_render" }) + "\\n");
+      JSON.stringify(channels) === JSON.stringify(mainChannels) &&
+      JSON.stringify(inputBuses) === JSON.stringify(mainInputBuses);
+    if (mainRequestMatched) {
+      const mainOutput = [[0.6, 0.8], [0.3, 0.4]];
+      process.stdout.write(JSON.stringify({
+        channels: mainOutput,
+        outputBuses: [
+          { index: 0, channels: mainOutput },
+          { index: 1, channels: [[0.5, 0.6]] },
+          { index: 2, channels: [[-0.5, -0.6]] }
+        ]
+      }) + "\\n");
       continue;
     }
 
-    const mainOutput = [[0.6, 0.8], [0.3, 0.4]];
-    process.stdout.write(JSON.stringify({
-      channels: mainOutput,
-      outputBuses: [
-        { index: 0, channels: mainOutput },
-        { index: 1, channels: [[0.5, 0.6]] }
-      ]
-    }) + "\\n");
+    const sidechainLegacyChannels = [[0, 0], [0, 0]];
+    const sidechainInputBuses = [
+      { index: 0, channels: [[0.2, 0.4], [0.6, 0.8]] },
+      { index: 1, channels: [[0.1, 0.3]] }
+    ];
+    const sidechainRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[5] === "sample=96" &&
+      JSON.stringify(channels) === JSON.stringify(sidechainLegacyChannels) &&
+      JSON.stringify(inputBuses) === JSON.stringify(sidechainInputBuses);
+    if (sidechainRequestMatched) {
+      const sidechainMainOutput = [[0.3, 0.7], [0.6, 0.8]];
+      process.stdout.write(JSON.stringify({
+        channels: sidechainMainOutput,
+        outputBuses: [
+          { index: 0, channels: sidechainMainOutput },
+          { index: 1, channels: [[0.1, 0.3]] },
+          { index: 2, channels: [[-0.1, -0.3]] }
+        ]
+      }) + "\\n");
+      continue;
+    }
+
+    process.stdout.write(JSON.stringify({ error: "bad_multibus_render" }) + "\\n");
+    continue;
   }
 });
 setTimeout(() => {}, 30000);
