@@ -77,8 +77,10 @@ export function createDaemonVst3ProgramData({
   function assertListedProgramData(instance, programListId, programIndex) {
     const matchingProgramLists = (instance.vst3ProgramLists ?? []).filter((list) => list?.id === programListId);
     const programList = matchingProgramLists.length === 1 ? matchingProgramLists[0] : undefined;
-    const listedProgram = programList?.programs?.some((program) => program.index === programIndex);
-    if (!programList?.programDataSupported || !listedProgram) {
+    const matchingPrograms = Array.isArray(programList?.programs)
+      ? programList.programs.filter((program) => program?.index === programIndex)
+      : [];
+    if (!programList?.programDataSupported || matchingPrograms.length !== 1) {
       throw protocolError("program_data_not_supported", "The requested VST3 program does not expose bounded program data.");
     }
   }

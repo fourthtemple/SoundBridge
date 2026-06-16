@@ -170,6 +170,13 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
         "program_data_not_supported",
     "daemon VST3 program-data helper rejects duplicate program-list restore targets"
   );
+  fakeInstance.vst3ProgramLists = [{ id: 7, programDataSupported: true, programs: [{ index: 0 }, { index: 0 }] }];
+  check(
+    (await rejectedCode(() => programDataSupport.getVst3ProgramData("inst-test", 7, 0, {}))) === "program_data_not_supported" &&
+      (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", programEnvelope(), {}))) ===
+        "program_data_not_supported",
+    "daemon VST3 program-data helper rejects duplicate program-index restore targets"
+  );
   fakeInstance.vst3ProgramLists = [{ id: 7, programDataSupported: false, programs: [{ index: 0 }] }];
   check(
     (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", programEnvelope(), {}))) ===
