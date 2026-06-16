@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { AUDIO_UNIT_HOST_PROFILES, isKnownAudioUnitHostProfile } from "./daemon-au-host-profiles.mjs";
 import { exerciseDaemonFileGrantOperation } from "./daemon-file-grant-operations-smoke.mjs";
+import { createDaemonInstrumentRendering } from "./daemon-instrument-rendering.mjs";
 import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { exerciseInstalledProbeSupport } from "./native-worker-ipc-installed-probe-cases.mjs";
@@ -66,6 +67,8 @@ try {
       refreshedInstance.nativeParameterIds.has("native-param"),
     "daemon parameter snapshots refresh native ids and cap status"
   );
+
+  await exerciseDaemonInstrumentRenderContext({ check });
 
   await exerciseVst3ProgramDataSupport({ check, protocolError });
 
@@ -524,6 +527,57 @@ function nativeWorkerInstance() {
       maxBlockSize: 1
     }
   };
+}
+
+async function exerciseDaemonInstrumentRenderContext({ check }) {
+  const renderRequests = [];
+  const { processInstrumentBlock } = createDaemonInstrumentRendering({
+    nativeRenderer: "",
+    parameterValue(instance, parameterId, fallback) {
+      return instance.parameterValues?.[parameterId] ?? fallback;
+    },
+    synthesizeInstrumentBlock() {
+      return [];
+    }
+  });
+  const processed = await processInstrumentBlock(
+    {
+      format: "vst3",
+      kind: "instrument",
+      renderEngine: "native-vst3",
+      parameterValues: { gain: 0.7, tone: 0.2, detune: 0.4 },
+      worker: {
+        renderEngine: "native-vst3",
+        async render(request) {
+          renderRequests.push(request);
+          return {
+            channels: [[0.25, 0.5]],
+            outputBuses: [
+              { index: 0, channels: [[0.25, 0.5]] },
+              { index: 1, channels: [[0.1, 0.2]] }
+            ]
+          };
+        }
+      }
+    },
+    2,
+    48000,
+    {
+      inputBuses: [{ index: 1, channels: [[0.3, 0.4]] }],
+      transport: { playing: true, samplePosition: 128 }
+    }
+  );
+  check(
+    renderRequests.length === 1 &&
+      renderRequests[0].transport?.samplePosition === 128 &&
+      renderRequests[0].inputBuses?.[0]?.index === 1 &&
+      renderRequests[0].gain === 0.7 &&
+      renderRequests[0].tone === 0.2 &&
+      renderRequests[0].detune === 0.4 &&
+      processed.renderEngine === "native-vst3" &&
+      processed.outputBuses?.[1]?.index === 1,
+    "daemon native instrument renders preserve bus and transport context"
+  );
 }
 
 function publicGrantIsPathFree(grant) {

@@ -5,13 +5,15 @@ export function createDaemonInstrumentRendering({
   parameterValue,
   synthesizeInstrumentBlock
 }) {
-  async function processInstrumentBlock(instance, frames, sampleRate) {
+  async function processInstrumentBlock(instance, frames, sampleRate, options = {}) {
     if (instance.worker) {
       try {
         const rendered = await instance.worker.render({
           frames,
           sampleRate,
           channels: [],
+          inputBuses: options.inputBuses,
+          transport: options.transport,
           gain: parameterValue(instance, "gain", 0.5),
           tone: parameterValue(instance, "tone", 0.5),
           detune: parameterValue(instance, "detune", 0.5)

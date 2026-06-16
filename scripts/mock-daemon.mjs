@@ -616,7 +616,7 @@ async function processAudioBlock(payload, session) {
   await applyAutomationLanesForBlock(instance, transport, frames);
 
   if (instance.kind === "instrument") {
-    const processed = await processInstrumentBlock(instance, frames, blockSampleRate);
+    const processed = await processInstrumentBlock(instance, frames, blockSampleRate, { inputBuses, transport });
     const processedChannels = normalizeAudioChannels(processed.channels, instance.outputChannels, frames);
     return {
       blockId: payload.blockId,
