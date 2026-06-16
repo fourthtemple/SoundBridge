@@ -53,7 +53,7 @@ export function createDaemonFileGrantOperations({
       throw makeProtocolError("file_grant_operation_failed", "The plugin worker failed while consuming this file grant.");
     }
 
-    const workerStatus = boundedText(result?.status, 64);
+    const workerStatus = pathFreeWorkerStatus(result?.status, grant);
     return {
       accepted: true,
       applied: result?.applied === true,
@@ -107,6 +107,18 @@ export function createDaemonFileGrantOperations({
   return {
     useFileGrant
   };
+}
+
+function pathFreeWorkerStatus(value, grant) {
+  const rawText = String(value ?? "");
+  if (!rawText) {
+    return "";
+  }
+  const privateTexts = [grant.absolutePath, grant.rootId].filter((candidate) => typeof candidate === "string" && candidate.length > 0);
+  if (privateTexts.some((candidate) => rawText.includes(candidate))) {
+    return "";
+  }
+  return boundedText(rawText, 64);
 }
 
 function instanceAdvertisesOperation(instance, operation) {

@@ -33,6 +33,66 @@ export async function exerciseGrantAwareNativeWorker({
     grantWorkerResult.applied === true && grantWorkerResult.status === "grant-ok",
     "native host workers encode bounded file grant commands"
   );
+  const presetGrantWorkerResult = await grantWorker.useFileGrant({
+    operation: "loadPreset",
+    grant: {
+      grantId: "filegrant-preset",
+      purpose: "preset",
+      access: "read",
+      kind: "file",
+      displayName: "Fixture Preset.fxp",
+      absolutePath: path.join(tempDir, "Fixture Preset.fxp")
+    }
+  });
+  check(
+    presetGrantWorkerResult.applied === true && presetGrantWorkerResult.status === "preset-ok",
+    "native host workers encode bounded preset file grant commands"
+  );
+  const cacheDirectoryGrantWorkerResult = await grantWorker.useFileGrant({
+    operation: "openCacheDirectory",
+    grant: {
+      grantId: "filegrant-cache-dir",
+      purpose: "cache",
+      access: "readWrite",
+      kind: "directory",
+      displayName: "Fixture Cache",
+      absolutePath: tempDir
+    }
+  });
+  check(
+    cacheDirectoryGrantWorkerResult.applied === true && cacheDirectoryGrantWorkerResult.status === "cache-dir-ok",
+    "native host workers encode bounded cache directory grant commands"
+  );
+  const licenseGrantWorkerResult = await grantWorker.useFileGrant({
+    operation: "loadLicense",
+    grant: {
+      grantId: "filegrant-license",
+      purpose: "license",
+      access: "read",
+      kind: "file",
+      displayName: "Fixture License.key",
+      absolutePath: path.join(tempDir, "Fixture License.key")
+    }
+  });
+  check(
+    licenseGrantWorkerResult.applied === true && licenseGrantWorkerResult.status === "license-ok",
+    "native host workers encode bounded license file grant commands"
+  );
+  const otherPresetGrantWorkerResult = await grantWorker.useFileGrant({
+    operation: "other",
+    grant: {
+      grantId: "filegrant-vendor-preset",
+      purpose: "preset",
+      access: "read",
+      kind: "file",
+      displayName: "Fixture Vendor Preset.vstpreset",
+      absolutePath: path.join(tempDir, "Fixture Vendor Preset.vstpreset")
+    }
+  });
+  check(
+    otherPresetGrantWorkerResult.applied === true && otherPresetGrantWorkerResult.status === "other-preset-ok",
+    "native host workers encode bounded explicit other file grant commands"
+  );
   const stateDirectoryGrantWorkerResult = await grantWorker.useFileGrant({
     operation: "saveStateDirectory",
     grant: {
@@ -272,12 +332,18 @@ setTimeout(() => {}, 30000);
 }
 
 function writeGrantAwareNativeWorker(tempDir, fixtureGrantPath) {
+  const presetPath = path.join(tempDir, "Fixture Preset.fxp");
+  const licensePath = path.join(tempDir, "Fixture License.key");
+  const vendorPresetPath = path.join(tempDir, "Fixture Vendor Preset.vstpreset");
   return writeExecutable(
     tempDir,
     "grant-aware-native-worker.mjs",
     `#!/usr/bin/env node
 const expectedFilePath = ${JSON.stringify(fixtureGrantPath)};
 const expectedDirectoryPath = ${JSON.stringify(tempDir)};
+const expectedPresetPath = ${JSON.stringify(presetPath)};
+const expectedLicensePath = ${JSON.stringify(licensePath)};
+const expectedVendorPresetPath = ${JSON.stringify(vendorPresetPath)};
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
 let buffer = "";
@@ -328,6 +394,34 @@ process.stdin.on("data", (chunk) => {
       parts[5] === "filegrant-test" &&
       displayName === "Fixture Grant.wav" &&
       absolutePath === expectedFilePath;
+    const presetApplied = parts[1] === "loadPreset" &&
+      parts[2] === "preset" &&
+      parts[3] === "read" &&
+      parts[4] === "file" &&
+      parts[5] === "filegrant-preset" &&
+      displayName === "Fixture Preset.fxp" &&
+      absolutePath === expectedPresetPath;
+    const cacheDirectoryApplied = parts[1] === "openCacheDirectory" &&
+      parts[2] === "cache" &&
+      parts[3] === "readWrite" &&
+      parts[4] === "directory" &&
+      parts[5] === "filegrant-cache-dir" &&
+      displayName === "Fixture Cache" &&
+      absolutePath === expectedDirectoryPath;
+    const licenseApplied = parts[1] === "loadLicense" &&
+      parts[2] === "license" &&
+      parts[3] === "read" &&
+      parts[4] === "file" &&
+      parts[5] === "filegrant-license" &&
+      displayName === "Fixture License.key" &&
+      absolutePath === expectedLicensePath;
+    const otherPresetApplied = parts[1] === "other" &&
+      parts[2] === "preset" &&
+      parts[3] === "read" &&
+      parts[4] === "file" &&
+      parts[5] === "filegrant-vendor-preset" &&
+      displayName === "Fixture Vendor Preset.vstpreset" &&
+      absolutePath === expectedVendorPresetPath;
     const stateDirectoryApplied = parts[1] === "saveStateDirectory" &&
       parts[2] === "state" &&
       parts[3] === "readWrite" &&
@@ -336,8 +430,13 @@ process.stdin.on("data", (chunk) => {
       displayName === "Fixture Grants" &&
       absolutePath === expectedDirectoryPath;
     process.stdout.write(JSON.stringify({
-      applied: sampleApplied || stateDirectoryApplied,
-      status: stateDirectoryApplied ? "state-dir-ok" : "grant-ok"
+      applied: sampleApplied || presetApplied || cacheDirectoryApplied || licenseApplied || otherPresetApplied || stateDirectoryApplied,
+      status: stateDirectoryApplied ? "state-dir-ok" :
+        cacheDirectoryApplied ? "cache-dir-ok" :
+        licenseApplied ? "license-ok" :
+        otherPresetApplied ? "other-preset-ok" :
+        presetApplied ? "preset-ok" :
+        "grant-ok"
     }) + "\\n");
   }
 });

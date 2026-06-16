@@ -3,7 +3,7 @@ import { createDaemonInstanceFileGrants } from "./daemon-instance-file-grants.mj
 
 export async function exerciseDaemonFileGrantOperation({ absolutePath, check, protocolError }) {
   const session = { sessionToken: "session-test", origin: "http://127.0.0.1:5173" };
-  const grant = {
+  const sampleGrant = {
     grantId: "filegrant-test",
     ownerSessionToken: session.sessionToken,
     ownerOrigin: session.origin,
@@ -15,21 +15,44 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     createdAt: Date.now(),
     expiresAt: Date.now() + 60_000
   };
+  const presetGrant = grantFixture(sampleGrant, {
+    grantId: "filegrant-preset",
+    purpose: "preset",
+    displayName: "Fixture Preset.fxp",
+    absolutePath: `${absolutePath}.preset`
+  });
+  const cacheGrant = grantFixture(sampleGrant, {
+    grantId: "filegrant-cache",
+    purpose: "cache",
+    access: "readWrite",
+    kind: "directory",
+    displayName: "Fixture Cache",
+    absolutePath: `${absolutePath}.cache`
+  });
+  const licenseGrant = grantFixture(sampleGrant, {
+    grantId: "filegrant-license",
+    purpose: "license",
+    displayName: "Fixture License.key",
+    absolutePath: `${absolutePath}.license`
+  });
   let observedAbsolutePath;
+  const observedOperations = [];
   const instance = {
     instanceId: "inst-test",
     ownerSessionToken: session.sessionToken,
     fileGrantAttachments: new Map(),
-    fileGrantOperations: ["loadSample", "loadLicense", "other"],
+    fileGrantOperations: ["loadPreset", "loadSample", "openCacheDirectory", "loadLicense", "other"],
     worker: {
       async useFileGrant({ operation, grant: workerGrant }) {
         observedAbsolutePath = workerGrant.absolutePath;
-        return { applied: operation === "loadSample", status: "ok", absolutePath: workerGrant.absolutePath };
+        observedOperations.push({ operation, grant: workerGrant });
+        const status = operation === "loadSample" ? `loaded ${workerGrant.absolutePath}` : `${operation}-ok`;
+        return { applied: operation !== "other", status, absolutePath: workerGrant.absolutePath };
       }
     }
   };
   const instanceFileGrantSupport = createDaemonInstanceFileGrants({
-    fileGrantSupport: createFakeFileGrantSupport(grant, protocolError),
+    fileGrantSupport: createFakeFileGrantSupport([sampleGrant, presetGrant, cacheGrant, licenseGrant], protocolError),
     maxFileGrantsPerInstance: 4,
     makeProtocolError: protocolError
   });
@@ -45,22 +68,88 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   });
   instanceFileGrantSupport.attachFileGrant({
     instanceId: instance.instanceId,
-    grantId: grant.grantId,
+    grantId: sampleGrant.grantId,
     purpose: "sample",
+    access: "read",
+    kind: "file"
+  }, session, () => instance);
+  instanceFileGrantSupport.attachFileGrant({
+    instanceId: instance.instanceId,
+    grantId: presetGrant.grantId,
+    purpose: "preset",
+    access: "read",
+    kind: "file"
+  }, session, () => instance);
+  instanceFileGrantSupport.attachFileGrant({
+    instanceId: instance.instanceId,
+    grantId: cacheGrant.grantId,
+    purpose: "cache",
+    access: "readWrite",
+    kind: "directory"
+  }, session, () => instance);
+  instanceFileGrantSupport.attachFileGrant({
+    instanceId: instance.instanceId,
+    grantId: licenseGrant.grantId,
+    purpose: "license",
     access: "read",
     kind: "file"
   }, session, () => instance);
   const response = await operations.useFileGrant({
     instanceId: instance.instanceId,
-    grantId: grant.grantId,
+    grantId: sampleGrant.grantId,
     operation: "loadSample"
   }, session);
+  check(
+    response.applied === true &&
+      response.workerStatus === undefined &&
+      observedOperations.at(-1)?.grant.absolutePath === sampleGrant.absolutePath,
+    "daemon file grant operations suppress worker statuses that include private paths"
+  );
+
+  const presetResponse = await operations.useFileGrant({
+    instanceId: instance.instanceId,
+    grantId: presetGrant.grantId,
+    operation: "loadPreset"
+  }, session);
+  check(
+    presetResponse.applied === true &&
+      presetResponse.operation === "loadPreset" &&
+      presetResponse.grant.purpose === "preset" &&
+      presetResponse.workerStatus === "loadPreset-ok",
+    "daemon file grant operations route preset file grants"
+  );
+
+  const cacheResponse = await operations.useFileGrant({
+    instanceId: instance.instanceId,
+    grantId: cacheGrant.grantId,
+    operation: "openCacheDirectory"
+  }, session);
+  check(
+    cacheResponse.applied === true &&
+      cacheResponse.operation === "openCacheDirectory" &&
+      cacheResponse.grant.kind === "directory" &&
+      cacheResponse.workerStatus === "openCacheDirectory-ok",
+    "daemon file grant operations route cache directory grants"
+  );
+
+  const licenseResponse = await operations.useFileGrant({
+    instanceId: instance.instanceId,
+    grantId: licenseGrant.grantId,
+    operation: "loadLicense"
+  }, session);
+  check(
+    licenseResponse.applied === true &&
+      licenseResponse.operation === "loadLicense" &&
+      licenseResponse.grant.purpose === "license" &&
+      licenseResponse.workerStatus === "loadLicense-ok",
+    "daemon file grant operations route license file grants"
+  );
 
   let mismatchCode;
   try {
     await operations.useFileGrant({
       instanceId: instance.instanceId,
-      grantId: grant.grantId,
+      grantId: sampleGrant.grantId,
       operation: "loadLicense"
     }, session);
   } catch (error) {
@@ -84,7 +173,7 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   try {
     await operations.useFileGrant({
       instanceId: instance.instanceId,
-      grantId: grant.grantId
+      grantId: sampleGrant.grantId
     }, session);
   } catch (error) {
     missingOperationCode = error.code;
@@ -95,7 +184,7 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   try {
     await operations.useFileGrant({
       instanceId: instance.instanceId,
-      grantId: grant.grantId,
+      grantId: sampleGrant.grantId,
       operation: "other"
     }, session);
   } catch (error) {
@@ -105,7 +194,7 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
 
   const otherResponse = await operations.useFileGrant({
     instanceId: instance.instanceId,
-    grantId: grant.grantId,
+    grantId: sampleGrant.grantId,
     operation: "other",
     purpose: "sample",
     access: "read",
@@ -123,7 +212,7 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   try {
     await operations.useFileGrant({
       instanceId: instance.instanceId,
-      grantId: grant.grantId,
+      grantId: sampleGrant.grantId,
       operation: "runAnything"
     }, session);
   } catch (error) {
@@ -161,7 +250,12 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
   return { response, observedAbsolutePath };
 }
 
-function createFakeFileGrantSupport(grant, protocolError) {
+function grantFixture(base, overrides) {
+  return { ...base, ...overrides };
+}
+
+function createFakeFileGrantSupport(grants, protocolError) {
+  const grantsById = new Map(grants.map((grant) => [grant.grantId, grant]));
   return {
     publicFileGrant(candidate) {
       return {
@@ -175,7 +269,8 @@ function createFakeFileGrantSupport(grant, protocolError) {
       };
     },
     resolveFileGrantForUse(grantId, session, constraints = {}) {
-      if (grantId !== grant.grantId) {
+      const grant = grantsById.get(grantId);
+      if (!grant) {
         throw protocolError("file_grant_not_found", "missing grant");
       }
       if (session?.sessionToken !== grant.ownerSessionToken) {
