@@ -84,11 +84,11 @@ export function summarizeProbeResults(results, options = {}) {
     total: results.length,
     coverage: summarizeFeatureCoverage(results, options),
     failures,
-    matrix: summarizeCompatibilityMatrix(results)
+    matrix: summarizeCompatibilityMatrix(results, options)
   };
 }
 
-function summarizeCompatibilityMatrix(results) {
+function summarizeCompatibilityMatrix(results, options) {
   return results.map((result) => {
     const failedPhase = firstFailedPhase(result);
     const failureError = failedPhase?.error ?? result.error;
@@ -122,13 +122,15 @@ function summarizeCompatibilityMatrix(results) {
       fileGrantCacheDirectoryOpen: safeMatrixText(result.fileGrantCacheDirectoryOpen ?? "missing", 64),
       fileGrantLicenseLoad: safeMatrixText(result.fileGrantLicenseLoad ?? "missing", 64),
       fileGrantOtherPresetLoad: safeMatrixText(result.fileGrantOtherPresetLoad ?? "missing", 64),
-      featureStatus: summarizeFeatureStatus(result),
+      nativeEditor: safeMatrixText(nativeEditorStatus(result, options), 64),
+      nativeEditorTransport: safeMatrixText(result.nativeEditor?.transport, 64),
+      featureStatus: summarizeFeatureStatus(result, options),
       fileGrantOperations: safeMatrixArray(result.fileGrantOperations, 64)
     });
   });
 }
 
-function summarizeFeatureStatus(result) {
+function summarizeFeatureStatus(result, options) {
   return {
     instantiation: phaseGroupStatus(result, ["createInstance"]),
     parameters: parameterFeatureStatus(result),
@@ -142,7 +144,7 @@ function summarizeFeatureStatus(result) {
     rendering: renderingFeatureStatus(result),
     busLayouts: busLayoutFeatureStatus(result),
     latencyTail: phaseGroupStatus(result, ["getLatency", "getTailTime"]),
-    editor: editorFeatureStatus(result)
+    editor: nativeEditorStatus(result, options)
   };
 }
 
@@ -228,13 +230,16 @@ function busLayoutFeatureStatus(result) {
   return result.busProfile?.category ? "passed" : "missing";
 }
 
-function editorFeatureStatus(result) {
+function nativeEditorStatus(result, options) {
+  if (!options.nativeEditorBroker) {
+    return "not-requested";
+  }
   if (hasFailedPhase(result, ["openNativeEditor", "closeNativeEditor"])) {
     return "failed";
   }
   return result.nativeEditor?.transport || (hasOkPhase(result, "openNativeEditor") && hasOkPhase(result, "closeNativeEditor"))
-    ? "passed"
-    : "not-requested";
+    ? "opened"
+    : "missing";
 }
 
 function phaseGroupStatus(result, names) {
@@ -444,7 +449,7 @@ function countNativeEditor(results, options) {
   }
   const counts = {};
   for (const result of results) {
-    const status = result.nativeEditor?.transport ? "opened" : "missing";
+    const status = nativeEditorStatus(result, options);
     counts[status] = (counts[status] ?? 0) + 1;
   }
   return counts;

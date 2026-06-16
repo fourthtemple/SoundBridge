@@ -158,23 +158,27 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].hostTransport === "accepted" &&
       coverageSummary.matrix[0].fileGrantSampleLoad === "applied" &&
       coverageSummary.matrix[0].fileGrantOtherPresetLoad === "applied" &&
+      coverageSummary.matrix[0].nativeEditor === "opened" &&
+      coverageSummary.matrix[0].nativeEditorTransport === "native-broker" &&
       coverageSummary.matrix[0].featureStatus.instantiation === "passed" &&
       coverageSummary.matrix[0].featureStatus.parameters === "passed" &&
       coverageSummary.matrix[0].featureStatus.fileGrants === "passed" &&
       coverageSummary.matrix[0].featureStatus.transport === "accepted" &&
       coverageSummary.matrix[0].featureStatus.rendering === "passed" &&
-      coverageSummary.matrix[0].featureStatus.editor === "passed" &&
+      coverageSummary.matrix[0].featureStatus.editor === "opened" &&
       coverageSummary.matrix[1].name === "[local-path]" &&
       coverageSummary.matrix[1].vst3ProgramLists === "skipped-format" &&
       coverageSummary.matrix[1].fileGrantCacheDirectoryOpen === "applied" &&
       coverageSummary.matrix[1].fileGrantLicenseLoad === "applied" &&
       coverageSummary.matrix[1].fileGrantOtherPresetLoad === "skipped-unadvertised" &&
+      coverageSummary.matrix[1].nativeEditor === "missing" &&
       coverageSummary.matrix[1].featureStatus.fileGrants === "passed" &&
       coverageSummary.matrix[1].fileGrantOperations.includes("loadLicense"),
     "installed plugin probe builds path-free compatibility matrix entries"
   );
   check(
-    summarizeProbeResults(coverageResults).coverage.nativeEditor["not-requested"] === 2,
+    summarizeProbeResults(coverageResults).coverage.nativeEditor["not-requested"] === 2 &&
+      summarizeProbeResults(coverageResults).matrix[0].nativeEditor === "not-requested",
     "installed plugin probe marks native editor coverage as not requested by default"
   );
   check(
