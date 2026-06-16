@@ -157,6 +157,7 @@ function summarizeCompatibilityMatrix(results, options) {
       vst3ProgramDataEmptyProgramLists: safeMatrixInteger(result.vst3ProgramDataProfile?.emptyProgramListCount, 0, 256),
       vst3ProgramDataInvalidLists: safeMatrixInteger(result.vst3ProgramDataProfile?.invalidProgramListCount, 0, 256),
       vst3ProgramDataInvalidProgramIndexes: safeMatrixInteger(result.vst3ProgramDataProfile?.invalidProgramIndexCount, 0, 65536),
+      vst3ProgramDataDuplicateProgramIndexes: safeMatrixInteger(result.vst3ProgramDataProfile?.duplicateProgramIndexCount, 0, 65536),
       vst3ProgramLists: safeMatrixText(vst3ProgramListStatus(result), 64),
       parameterMetadata: safeMatrixText(parameterMetadataStatus(result), 64),
       parameterProfile: safeMatrixText(parameterProfileStatus(result), 64),

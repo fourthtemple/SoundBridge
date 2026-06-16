@@ -34,7 +34,7 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
     format: "vst3",
     vst3ProgramLists: [
       { id: 1, programDataSupported: false, programs: [{ index: 0 }] },
-      { id: 2, programDataSupported: true, programs: [{ index: 3 }, { index: "bad" }] }
+      { id: 2, programDataSupported: true, programs: [{ index: 3 }, { index: 3 }, { index: "bad" }] }
     ]
   });
   const weirdProgramDataProfile = summarizeVst3ProgramDataProfile({
@@ -58,9 +58,11 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       targetedProgramDataProfile.flags.includes("bounded-target") &&
       targetedProgramDataProfile.programListCount === 2 &&
       targetedProgramDataProfile.programDataListCount === 1 &&
-      targetedProgramDataProfile.candidateProgramCount === 1 &&
+      targetedProgramDataProfile.candidateProgramCount === 2 &&
       targetedProgramDataProfile.unsupportedProgramListCount === 1 &&
       targetedProgramDataProfile.invalidProgramIndexCount === 1 &&
+      targetedProgramDataProfile.duplicateProgramIndexCount === 1 &&
+      targetedProgramDataProfile.flags.includes("duplicate-program-index") &&
       weirdProgramDataProfile.category === "no-valid-programs" &&
       weirdProgramDataProfile.invalidProgramListCount === 1 &&
       weirdProgramDataProfile.emptyProgramListCount === 1 &&
