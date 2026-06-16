@@ -19,7 +19,11 @@ import {
 import { summarizeProbeVst3Events } from "./installed-plugin-probe-events.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
-import { midiEventsForBlock, summarizeProbeMidiControllerEvents } from "./installed-plugin-probe-midi.mjs";
+import {
+  midiEventsForBlock,
+  summarizeProbeMidiControllerEvents,
+  summarizeProbeMidiProgramChangeEvents
+} from "./installed-plugin-probe-midi.mjs";
 import {
   assertParameterDisplayMetadata,
   probeParameterDisplayInput,
@@ -359,8 +363,13 @@ async function probePlugin(socket, session, plugin) {
     result.midiEventCount = midiAccepted.eventCount;
     result.midiControllerEventProfile = summarizeProbeMidiControllerEvents(midiEvents);
     result.midiControllerEventCount = result.midiControllerEventProfile.eventCount;
+    result.midiProgramChangeEventProfile = summarizeProbeMidiProgramChangeEvents(midiEvents);
+    result.midiProgramChangeEventCount = result.midiProgramChangeEventProfile.eventCount;
     result.vst3MidiControllerEvents = String(plugin.format ?? "").toLowerCase() === "vst3"
       ? result.midiControllerEventCount > 0 ? "accepted" : "missing"
+      : "skipped-format";
+    result.vst3MidiProgramChangeEvents = String(plugin.format ?? "").toLowerCase() === "vst3"
+      ? result.midiProgramChangeEventCount > 0 ? "accepted" : "missing"
       : "skipped-format";
 
     const renderPayload = renderPayloadForLayout(instanceId, result.layout, {

@@ -25,6 +25,8 @@ export function midiEventsForBlock(format, frames = 64, maxBlockSize = 64) {
     events.push({ type: "controlChange", controller: 74, value: 0.25, channel: 2, time: offset(0.625), busIndex: 1 });
     events.push({ type: "pitchBend", value: -0.2, channel: 2, time: offset(0.75), busIndex: 1 });
     events.push({ type: "channelPressure", pressure: 0.6, channel: 2, time: offset(0.875), busIndex: 1 });
+    events.push({ type: "programChange", program: 2, channel: 0, time: offset(0.90625) });
+    events.push({ type: "programChange", program: 7, channel: 2, time: offset(0.921875), busIndex: 1 });
     events.push({ type: "noteOff", note: 62, velocity: 0, channel: 1, time: offset(0.9375), noteId: busNoteId, busIndex: 1 });
   }
   return events;
@@ -55,6 +57,23 @@ export function summarizeProbeMidiControllerEvents(events) {
   };
 }
 
+export function summarizeProbeMidiProgramChangeEvents(events) {
+  if (!Array.isArray(events)) {
+    return emptyMidiProgramChangeProfile();
+  }
+  const programEvents = events.filter((event) => event?.type === "programChange");
+  if (programEvents.length === 0) {
+    return emptyMidiProgramChangeProfile();
+  }
+  return {
+    eventCount: programEvents.length,
+    flags: midiProgramChangeFlags(programEvents),
+    programs: uniqueSortedIntegers(programEvents.map((event) => event.program), 0, 127),
+    channels: uniqueSortedIntegers(programEvents.map((event) => event.channel ?? 0), 0, 15),
+    eventBuses: uniqueSortedIntegers(programEvents.map((event) => event.busIndex ?? 0), 0, 31)
+  };
+}
+
 function emptyMidiControllerProfile() {
   return {
     eventCount: 0,
@@ -62,6 +81,16 @@ function emptyMidiControllerProfile() {
     flags: ["no-controller-events"],
     types: [],
     controllers: [],
+    channels: [],
+    eventBuses: []
+  };
+}
+
+function emptyMidiProgramChangeProfile() {
+  return {
+    eventCount: 0,
+    flags: ["no-program-change-events"],
+    programs: [],
     channels: [],
     eventBuses: []
   };
@@ -83,6 +112,17 @@ function midiControllerFlags(events, types = knownControllerEventTypes(events)) 
   if (types.length > 1) {
     flags.push("multi-controller-family");
   }
+  if (events.some((event) => Number.isInteger(event.busIndex) && event.busIndex > 0)) {
+    flags.push("non-main-event-bus");
+  }
+  if (events.some((event) => Number.isInteger(event.channel) && event.channel > 0)) {
+    flags.push("non-main-channel");
+  }
+  return flags;
+}
+
+function midiProgramChangeFlags(events) {
+  const flags = ["program-change-events"];
   if (events.some((event) => Number.isInteger(event.busIndex) && event.busIndex > 0)) {
     flags.push("non-main-event-bus");
   }

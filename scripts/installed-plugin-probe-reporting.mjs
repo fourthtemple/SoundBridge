@@ -223,6 +223,16 @@ function summarizeCompatibilityMatrix(results, options) {
       midiControllerChannels: safeMatrixIntegerArray(result.midiControllerEventProfile?.channels, 0, 15),
       midiControllerEventBuses: safeMatrixIntegerArray(result.midiControllerEventProfile?.eventBuses, 0, 31),
       vst3MidiControllerEvents: safeMatrixText(vst3MidiControllerEventStatus(result), 64),
+      midiProgramChangeEventCount: safeMatrixInteger(
+        result.midiProgramChangeEventProfile?.eventCount ?? result.midiProgramChangeEventCount,
+        0,
+        4096
+      ),
+      midiProgramChangeFlags: safeMatrixArray(result.midiProgramChangeEventProfile?.flags, 64),
+      midiProgramChangePrograms: safeMatrixIntegerArray(result.midiProgramChangeEventProfile?.programs, 0, 127),
+      midiProgramChangeChannels: safeMatrixIntegerArray(result.midiProgramChangeEventProfile?.channels, 0, 15),
+      midiProgramChangeEventBuses: safeMatrixIntegerArray(result.midiProgramChangeEventProfile?.eventBuses, 0, 31),
+      vst3MidiProgramChangeEvents: safeMatrixText(vst3MidiProgramChangeEventStatus(result), 64),
       hostTransport: safeMatrixText(result.hostTransport ?? "missing", 64),
       fileGrantSampleLoad: safeMatrixText(result.fileGrantSampleLoad ?? "missing", 64),
       fileGrantCacheDirectoryOpen: safeMatrixText(result.fileGrantCacheDirectoryOpen ?? "missing", 64),
@@ -389,6 +399,7 @@ function summarizeFeatureCoverage(results, options) {
     busLayouts: countBusLayouts(results),
     vst3EventProfiles: countVst3EventProfiles(results),
     vst3MidiControllerEvents: countBy(results, vst3MidiControllerEventStatus),
+    vst3MidiProgramChangeEvents: countBy(results, vst3MidiProgramChangeEventStatus),
     automationLanes: countAutomationLanes(results),
     hostTransport: countStatuses(results, "hostTransport"),
     latencyTail: countBy(results, latencyTailStatus),
@@ -481,6 +492,13 @@ function stateProfileStatus(result) {
 function vst3MidiControllerEventStatus(result) {
   if (result.vst3MidiControllerEvents !== undefined) {
     return result.vst3MidiControllerEvents;
+  }
+  return String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format";
+}
+
+function vst3MidiProgramChangeEventStatus(result) {
+  if (result.vst3MidiProgramChangeEvents !== undefined) {
+    return result.vst3MidiProgramChangeEvents;
   }
   return String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format";
 }
@@ -680,6 +698,7 @@ function printFeatureCoverage(coverage, stream) {
     ["bus layouts", coverage.busLayouts],
     ["VST3 event metadata", coverage.vst3EventProfiles],
     ["VST3 MIDI-controller events", coverage.vst3MidiControllerEvents],
+    ["VST3 MIDI program-change events", coverage.vst3MidiProgramChangeEvents],
     ["automation lanes", coverage.automationLanes],
     ["host transport", coverage.hostTransport],
     ["latency/tail", coverage.latencyTail],

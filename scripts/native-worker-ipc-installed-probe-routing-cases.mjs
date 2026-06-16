@@ -3,7 +3,8 @@ import { summarizeProbeBusLayout } from "./installed-plugin-probe-layouts.mjs";
 import {
   midiControllerEventCount,
   midiEventsForBlock,
-  summarizeProbeMidiControllerEvents
+  summarizeProbeMidiControllerEvents,
+  summarizeProbeMidiProgramChangeEvents
 } from "./installed-plugin-probe-midi.mjs";
 import {
   assertProbeRenderMatchesLayout,
@@ -300,8 +301,9 @@ function exerciseRenderLayoutValidation({ check }) {
 function exerciseProbeMidiCoverage({ check }) {
   const vst3MidiEvents = midiEventsForBlock("vst3", 64, 64);
   const vst3MidiControllerProfile = summarizeProbeMidiControllerEvents(vst3MidiEvents);
+  const vst3MidiProgramChangeProfile = summarizeProbeMidiProgramChangeEvents(vst3MidiEvents);
   check(
-    vst3MidiEvents.length === 14 &&
+    vst3MidiEvents.length === 16 &&
       vst3MidiEvents.some((event) => event.type === "noteExpression" && event.noteId === 77) &&
       vst3MidiEvents.some((event) => event.type === "noteExpressionText" && event.text === "probe" && event.noteId === 77) &&
       vst3MidiEvents.some((event) => event.type === "noteExpression" && event.noteId === 78 && event.busIndex === 1) &&
@@ -310,6 +312,7 @@ function exerciseProbeMidiCoverage({ check }) {
       vst3MidiEvents.some((event) => event.type === "controlChange" && event.controller === 74 && event.busIndex === 1) &&
       vst3MidiEvents.some((event) => event.type === "pitchBend" && event.busIndex === 1) &&
       vst3MidiEvents.some((event) => event.type === "channelPressure" && event.busIndex === 1) &&
+      vst3MidiEvents.some((event) => event.type === "programChange" && event.program === 7 && event.busIndex === 1) &&
       midiControllerEventCount(vst3MidiEvents) === 6 &&
       vst3MidiControllerProfile.eventCount === 6 &&
       vst3MidiControllerProfile.controllerFamilyCount === 3 &&
@@ -320,7 +323,12 @@ function exerciseProbeMidiCoverage({ check }) {
       JSON.stringify(vst3MidiControllerProfile.controllers) === JSON.stringify([1, 74]) &&
       JSON.stringify(vst3MidiControllerProfile.channels) === JSON.stringify([0, 2]) &&
       JSON.stringify(vst3MidiControllerProfile.eventBuses) === JSON.stringify([0, 1]) &&
+      vst3MidiProgramChangeProfile.eventCount === 2 &&
+      vst3MidiProgramChangeProfile.flags.includes("non-main-event-bus") &&
+      JSON.stringify(vst3MidiProgramChangeProfile.programs) === JSON.stringify([2, 7]) &&
+      JSON.stringify(vst3MidiProgramChangeProfile.channels) === JSON.stringify([0, 2]) &&
+      JSON.stringify(vst3MidiProgramChangeProfile.eventBuses) === JSON.stringify([0, 1]) &&
       midiEventsForBlock("au", 64, 64).every((event) => !event.type.startsWith("noteExpression")),
-    "installed plugin probe sends VST3 note-expression and MIDI-controller coverage"
+    "installed plugin probe sends VST3 note-expression, MIDI-controller, and program-change coverage"
   );
 }

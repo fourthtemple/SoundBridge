@@ -172,7 +172,7 @@ export function exerciseInstalledProbeSupport({ check }) {
         typeIds: [0, 6]
       },
       automationLanePointCount: 2,
-      midiEventCount: 14,
+      midiEventCount: 16,
       midiControllerEventProfile: {
         eventCount: 6,
         controllerFamilyCount: 3,
@@ -192,6 +192,15 @@ export function exerciseInstalledProbeSupport({ check }) {
       },
       midiControllerEventCount: 6,
       vst3MidiControllerEvents: "accepted",
+      midiProgramChangeEventProfile: {
+        eventCount: 2,
+        flags: ["program-change-events", "non-main-event-bus", "non-main-channel"],
+        programs: [2, 7],
+        channels: [0, 2],
+        eventBuses: [0, 1]
+      },
+      midiProgramChangeEventCount: 2,
+      vst3MidiProgramChangeEvents: "accepted",
       hostTransport: "accepted",
       pluginLatencySamples: 32,
       transportLatencySamples: 64,
@@ -235,6 +244,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       busProfile: { category: "multi-output-instrument", flags: ["multi-output", "multi-output-instrument"] },
       automationLaneSkipped: "lv2-block-size-profile",
       vst3MidiControllerEvents: "skipped-format",
+      vst3MidiProgramChangeEvents: "skipped-format",
       pluginLatencySamples: 0,
       transportLatencySamples: 64,
       reportedLatencySamples: 64,
@@ -277,6 +287,8 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.coverage.vst3EventProfiles["flag:duplicate-note-expression-type-id"] === 1 &&
       coverageSummary.coverage.vst3MidiControllerEvents.accepted === 1 &&
       coverageSummary.coverage.vst3MidiControllerEvents["skipped-format"] === 1 &&
+      coverageSummary.coverage.vst3MidiProgramChangeEvents.accepted === 1 &&
+      coverageSummary.coverage.vst3MidiProgramChangeEvents["skipped-format"] === 1 &&
       coverageSummary.coverage.automationLanes.applied === 1 &&
       coverageSummary.coverage.hostTransport.accepted === 1 &&
       coverageSummary.coverage.latencyTail["latency-tail"] === 1 &&
@@ -351,7 +363,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       JSON.stringify(coverageSummary.matrix[0].vst3NoteExpressionTypeIds) === JSON.stringify([0, 6]) &&
       JSON.stringify(coverageSummary.matrix[0].vst3EventBuses) === JSON.stringify([0, 2]) &&
       JSON.stringify(coverageSummary.matrix[0].vst3EventChannels) === JSON.stringify([0, 3]) &&
-      coverageSummary.matrix[0].midiEventCount === 14 &&
+      coverageSummary.matrix[0].midiEventCount === 16 &&
       coverageSummary.matrix[0].midiControllerEventCount === 6 &&
       coverageSummary.matrix[0].midiControllerFamilyCount === 3 &&
       coverageSummary.matrix[0].midiControllerFlags.includes("multi-controller-family") &&
@@ -363,6 +375,12 @@ export function exerciseInstalledProbeSupport({ check }) {
       JSON.stringify(coverageSummary.matrix[0].midiControllerChannels) === JSON.stringify([0, 2]) &&
       JSON.stringify(coverageSummary.matrix[0].midiControllerEventBuses) === JSON.stringify([0, 1]) &&
       coverageSummary.matrix[0].vst3MidiControllerEvents === "accepted" &&
+      coverageSummary.matrix[0].midiProgramChangeEventCount === 2 &&
+      coverageSummary.matrix[0].midiProgramChangeFlags.includes("non-main-event-bus") &&
+      JSON.stringify(coverageSummary.matrix[0].midiProgramChangePrograms) === JSON.stringify([2, 7]) &&
+      JSON.stringify(coverageSummary.matrix[0].midiProgramChangeChannels) === JSON.stringify([0, 2]) &&
+      JSON.stringify(coverageSummary.matrix[0].midiProgramChangeEventBuses) === JSON.stringify([0, 1]) &&
+      coverageSummary.matrix[0].vst3MidiProgramChangeEvents === "accepted" &&
       coverageSummary.matrix[0].hostTransport === "accepted" &&
       coverageSummary.matrix[0].latencyTail === "latency-tail" &&
       coverageSummary.matrix[0].pluginLatencySamples === 32 &&
@@ -395,6 +413,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[1].stateFlags.includes("state-blob") &&
       coverageSummary.matrix[1].stateBytes === 8 &&
       coverageSummary.matrix[1].vst3MidiControllerEvents === "skipped-format" &&
+      coverageSummary.matrix[1].vst3MidiProgramChangeEvents === "skipped-format" &&
       coverageSummary.matrix[1].fileGrantCacheDirectoryOpen === "applied" &&
       coverageSummary.matrix[1].fileGrantLicenseLoad === "applied" &&
       coverageSummary.matrix[1].fileGrantOtherPresetLoad === "skipped-unadvertised" &&
@@ -532,6 +551,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageLines.some((line) => line.includes("file grant operations advertised:")) &&
       coverageLines.some((line) => line.includes("VST3 event metadata:")) &&
       coverageLines.some((line) => line.includes("VST3 MIDI-controller events:")) &&
+      coverageLines.some((line) => line.includes("VST3 MIDI program-change events:")) &&
       coverageLines.some((line) => line.includes("host transport:")) &&
       coverageLines.some((line) => line.includes("latency/tail:")) &&
       coverageLines.some((line) => line.includes("render signal:")) &&
