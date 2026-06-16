@@ -141,7 +141,15 @@ export function exerciseInstalledProbeSupport({ check }) {
       },
       vst3EventProfile: {
         category: "non-main-event-bus",
-        flags: ["note-expressions", "non-main-event-bus", "multi-event-bus", "non-main-channel", "multi-channel", "text-expression"],
+        flags: [
+          "note-expressions",
+          "non-main-event-bus",
+          "multi-event-bus",
+          "non-main-channel",
+          "multi-channel",
+          "text-expression",
+          "value-expression"
+        ],
         noteExpressionCount: 2,
         valueExpressionCount: 1,
         textExpressionCount: 1,
@@ -230,6 +238,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.coverage.busLayouts["flag:multi-output-instrument"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["non-main-event-bus"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:text-expression"] === 1 &&
+      coverageSummary.coverage.vst3EventProfiles["flag:value-expression"] === 1 &&
       coverageSummary.coverage.vst3MidiControllerEvents.accepted === 1 &&
       coverageSummary.coverage.vst3MidiControllerEvents["skipped-format"] === 1 &&
       coverageSummary.coverage.automationLanes.applied === 1 &&
@@ -495,6 +504,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       JSON.stringify(vst3EventProfile.typeIds) === JSON.stringify([0, 6]) &&
       JSON.stringify(vst3EventProfile.eventBuses) === JSON.stringify([0, 2]) &&
       vst3EventProfile.flags.includes("text-expression") &&
+      vst3EventProfile.flags.includes("value-expression") &&
       vst3EventProfile.flags.includes("associated-parameter"),
     "installed plugin probe classifies VST3 event metadata coverage"
   );

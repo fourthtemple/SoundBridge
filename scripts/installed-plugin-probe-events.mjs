@@ -47,6 +47,9 @@ function expressionFlags(expressions, eventBuses, channels) {
   if (expressions.some((expression) => expression.typeId === TEXT_NOTE_EXPRESSION_TYPE_ID)) {
     flags.push("text-expression");
   }
+  if (expressions.some((expression) => !isTextExpression(expression))) {
+    flags.push("value-expression");
+  }
   if (expressions.some((expression) => expression.hasAssociatedParameter)) {
     flags.push("associated-parameter");
   }
