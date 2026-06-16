@@ -475,6 +475,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       inputBusLayouts: [{ index: 0, channels: 2, type: "main", active: true }],
       outputBusLayouts: [
         { index: 0, channels: 2, type: "main", active: true },
+        { index: 2, channels: 1, type: "aux", active: true },
         { index: 2, channels: 1, type: "aux", active: true }
       ]
     }
@@ -497,6 +498,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       sidechainProfile.flags.includes("sidechain-input") &&
       JSON.stringify(sidechainProfile.activeInputBusIndexes) === JSON.stringify([0, 1]) &&
       nonsequentialOutputProfile.flags.includes("nonsequential-bus-indexes") &&
+      nonsequentialOutputProfile.flags.includes("duplicate-bus-indexes") &&
       JSON.stringify(nonsequentialOutputProfile.activeOutputBusIndexes) === JSON.stringify([0, 2]) &&
       multiOutputInstrumentProfile.category === "multi-output-instrument" &&
       multiOutputInstrumentProfile.flags.includes("multi-output-instrument") &&

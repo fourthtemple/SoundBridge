@@ -27,6 +27,9 @@ export function summarizeProbeBusLayout(plugin, layout) {
   if (hasNonSequentialIndexes(inputBuses) || hasNonSequentialIndexes(outputBuses)) {
     flags.push("nonsequential-bus-indexes");
   }
+  if (hasDuplicateIndexes(inputBuses) || hasDuplicateIndexes(outputBuses)) {
+    flags.push("duplicate-bus-indexes");
+  }
   if (activeInputs.some((bus) => bus.channels === 0) || activeOutputs.some((bus) => bus.channels === 0)) {
     flags.push("active-empty-bus");
   }
@@ -88,6 +91,10 @@ function busProfileCategory({ kind, multiOutput, sidechain }) {
 
 function hasNonSequentialIndexes(buses) {
   return buses.some((bus, index) => bus.index !== index);
+}
+
+function hasDuplicateIndexes(buses) {
+  return new Set(buses.map((bus) => bus.index)).size !== buses.length;
 }
 
 function boundedBusIndexes(buses) {
