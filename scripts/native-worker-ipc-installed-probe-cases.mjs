@@ -391,6 +391,28 @@ export function exerciseInstalledProbeSupport({ check }) {
     summarizeProbeResults([{ ok: true, format: "vst3", vst3ProgramListCount: 0 }]).coverage.vst3ProgramLists.none === 1,
     "installed plugin probe summarizes VST3 plugins with no program lists"
   );
+  const cappedProgramMatrix = summarizeProbeResults([{
+    ok: true,
+    format: "vst3",
+    vst3ProgramDataProfile: {
+      category: "targeted",
+      flags: ["bounded-target", "program-list-metadata-at-limit", "program-metadata-at-limit"],
+      programListCount: 256,
+      programDataListCount: 1,
+      candidateProgramCount: 256,
+      programListMetadataAtLimit: true,
+      programMetadataAtLimit: true
+    }
+  }]).matrix[0];
+  check(
+    cappedProgramMatrix.vst3ProgramDataProgramLists === 256 &&
+      cappedProgramMatrix.vst3ProgramDataCandidatePrograms === 256 &&
+      cappedProgramMatrix.vst3ProgramDataProgramListMetadataAtLimit === true &&
+      cappedProgramMatrix.vst3ProgramDataProgramMetadataAtLimit === true &&
+      cappedProgramMatrix.vst3ProgramDataFlags.includes("program-list-metadata-at-limit") &&
+      cappedProgramMatrix.vst3ProgramDataFlags.includes("program-metadata-at-limit"),
+    "installed plugin probe matrix reports capped VST3 program-data metadata"
+  );
   const cappedEventMatrix = summarizeProbeResults([{
     ok: true,
     format: "vst3",

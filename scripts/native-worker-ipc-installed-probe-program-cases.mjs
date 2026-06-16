@@ -75,6 +75,14 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       { id: 7, programs: [{ index: 0 }] }
     ]
   });
+  const cappedProgramDataProfile = summarizeVst3ProgramDataProfile({
+    format: "vst3",
+    vst3ProgramLists: Array.from({ length: 256 }, (_, listIndex) => ({
+      id: listIndex,
+      programDataSupported: listIndex === 0,
+      programs: Array.from({ length: listIndex === 0 ? 256 : 1 }, (_, programIndex) => ({ index: programIndex }))
+    }))
+  });
   check(
     targetedProgramDataProfile.category === "targeted" &&
       targetedProgramDataProfile.flags.includes("program-data-unsupported") &&
@@ -104,7 +112,14 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       missingProgramsProfile.missingProgramArrayCount === 1 &&
       missingProgramsProfile.undisclosedProgramListCount === 1 &&
       missingProgramsProfile.flags.includes("missing-programs") &&
-      missingProgramsProfile.flags.includes("program-data-undisclosed"),
+      missingProgramsProfile.flags.includes("program-data-undisclosed") &&
+      cappedProgramDataProfile.category === "targeted" &&
+      cappedProgramDataProfile.programListCount === 256 &&
+      cappedProgramDataProfile.candidateProgramCount === 256 &&
+      cappedProgramDataProfile.programListMetadataAtLimit === true &&
+      cappedProgramDataProfile.programMetadataAtLimit === true &&
+      cappedProgramDataProfile.flags.includes("program-list-metadata-at-limit") &&
+      cappedProgramDataProfile.flags.includes("program-metadata-at-limit"),
     "installed plugin probe classifies VST3 program-data target edge cases"
   );
 }
