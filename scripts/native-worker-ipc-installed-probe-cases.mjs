@@ -39,6 +39,8 @@ export function exerciseInstalledProbeSupport({ check }) {
       listedPreset: "applied",
       vst3ProgramData: "restored",
       vst3ProgramListCount: 2,
+      parameterCount: 1024,
+      parameterMetadataAtLimit: true,
       parameterDisplayInput: "applied",
       fileGrantStateRestore: "applied",
       fileGrantPresetLoad: "applied",
@@ -61,6 +63,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       format: "au",
       listedPreset: "skipped",
       vst3ProgramData: "skipped-format",
+      parameterCount: 0,
       parameterDisplayInput: "skipped",
       fileGrantOperations: ["loadPreset", "openCacheDirectory", "loadLicense"],
       busProfile: { category: "multi-output-instrument", flags: ["multi-output", "multi-output-instrument"] },
@@ -72,6 +75,8 @@ export function exerciseInstalledProbeSupport({ check }) {
     coverageSummary.coverage.listedPresets.applied === 1 &&
       coverageSummary.coverage.vst3ProgramData.restored === 1 &&
       coverageSummary.coverage.vst3ProgramLists.listed === 1 &&
+      coverageSummary.coverage.parameterMetadata["at-limit"] === 1 &&
+      coverageSummary.coverage.parameterMetadata.none === 1 &&
       coverageSummary.coverage.fileGrantOperations.loadSample === 1 &&
       coverageSummary.coverage.fileGrantOperations.openCacheDirectory === 1 &&
       coverageSummary.coverage.fileGrantOperations.loadLicense === 1 &&
@@ -104,6 +109,7 @@ export function exerciseInstalledProbeSupport({ check }) {
     coverageLines.some((line) => line === "Feature coverage:") &&
       coverageLines.some((line) => line.includes("VST3 program data: 1 restored, 1 skipped-format")) &&
       coverageLines.some((line) => line.includes("VST3 program lists:")) &&
+      coverageLines.some((line) => line.includes("parameter metadata:")) &&
       coverageLines.some((line) => line.includes("file grant operations advertised:")) &&
       coverageLines.some((line) => line.includes("VST3 event metadata:")) &&
       coverageLines.some((line) => line.includes("bus layouts:")),

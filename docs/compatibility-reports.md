@@ -74,6 +74,8 @@ VST3 reports also include a path-free `vst3EventProfile` derived from bounded no
 
 The summary report also counts VST3 program-list metadata as `listed`, `none`, `missing`, or `skipped-format`. Use this together with `vst3ProgramData` coverage to separate plugins that expose no SDK program lists from plugins whose program-data restore path failed.
 
+Parameter metadata coverage is reported as `listed`, `none`, `missing`, or `at-limit`. An `at-limit` result means the daemon bounded the plugin's metadata at the configured parameter cap; include it in reports because it can explain incomplete generic-editor, automation, or program-change coverage.
+
 The summary report counts advertised `fileGrantOperations` such as `loadPreset`, `restoreState`, `saveStateDirectory`, `loadSample`, `openCacheDirectory`, and `loadLicense`. Treat this as workflow readiness metadata: it says which bounded file operations the plugin/worker exposes, not that private preset, sample, cache, or license files should be attached to public reports.
 
 ## Privacy And Safety
