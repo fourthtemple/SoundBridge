@@ -103,7 +103,8 @@ export function exerciseInstalledProbeSupport({ check }) {
         displayValueCount: 512,
         unitCount: 20,
         programChangeCount: 2,
-        vst3UnitCount: 4
+        vst3UnitCount: 4,
+        duplicateParameterIdCount: 1
       },
       parameterDisplayInput: "applied",
       stateProfile: {
@@ -296,6 +297,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].parameterUnitCount === 20 &&
       coverageSummary.matrix[0].parameterProgramChangeCount === 2 &&
       coverageSummary.matrix[0].parameterVst3UnitCount === 4 &&
+      coverageSummary.matrix[0].parameterDuplicateIdCount === 1 &&
       coverageSummary.matrix[0].stateProfile === "component-controller" &&
       coverageSummary.matrix[0].stateFlags.includes("component") &&
       coverageSummary.matrix[0].stateFlags.includes("controller") &&
@@ -523,6 +525,11 @@ export function exerciseInstalledProbeSupport({ check }) {
       vst3Unit: { id: 2 }
     },
     {
+      id: "cutoff",
+      automatable: false,
+      readOnly: true
+    },
+    {
       id: "program",
       automatable: true,
       readOnly: true,
@@ -538,10 +545,12 @@ export function exerciseInstalledProbeSupport({ check }) {
       parameterProfile.flags.includes("display-values") &&
       parameterProfile.flags.includes("program-change") &&
       parameterProfile.flags.includes("vst3-units") &&
-      parameterProfile.parameterCount === 2 &&
+      parameterProfile.flags.includes("duplicate-parameter-id") &&
+      parameterProfile.parameterCount === 3 &&
       parameterProfile.writableCount === 1 &&
-      parameterProfile.readOnlyCount === 1 &&
+      parameterProfile.readOnlyCount === 2 &&
       parameterProfile.programChangeCount === 1 &&
+      parameterProfile.duplicateParameterIdCount === 1 &&
       readOnlyParameterProfile.category === "read-only" &&
       readOnlyParameterProfile.flags.includes("no-writable-parameters"),
     "installed plugin probe classifies bounded parameter metadata profiles"

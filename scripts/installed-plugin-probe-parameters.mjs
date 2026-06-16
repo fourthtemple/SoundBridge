@@ -57,7 +57,8 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
       displayValueCount: 0,
       unitCount: 0,
       programChangeCount: 0,
-      vst3UnitCount: 0
+      vst3UnitCount: 0,
+      duplicateParameterIdCount: 0
     };
   }
 
@@ -73,10 +74,19 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     displayValueCount: 0,
     unitCount: 0,
     programChangeCount: 0,
-    vst3UnitCount: 0
+    vst3UnitCount: 0,
+    duplicateParameterIdCount: 0
   };
 
+  const seenIds = new Set();
   for (const parameter of bounded) {
+    const parameterId = typeof parameter?.id === "string" ? parameter.id : "";
+    if (parameterId) {
+      if (seenIds.has(parameterId)) {
+        profile.duplicateParameterIdCount += 1;
+      }
+      seenIds.add(parameterId);
+    }
     if (parameter?.automatable !== false) {
       profile.automatableCount += 1;
     }
@@ -149,6 +159,9 @@ function parameterProfileFlags(profile, { atLimit, isVst3 }) {
   }
   if (isVst3 && profile.vst3UnitCount > 0) {
     flags.push("vst3-units");
+  }
+  if (profile.duplicateParameterIdCount > 0) {
+    flags.push("duplicate-parameter-id");
   }
   return flags;
 }

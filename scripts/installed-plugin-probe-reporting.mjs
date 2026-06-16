@@ -172,6 +172,7 @@ function summarizeCompatibilityMatrix(results, options) {
       parameterUnitCount: safeMatrixInteger(result.parameterProfile?.unitCount, 0, 1024),
       parameterProgramChangeCount: safeMatrixInteger(result.parameterProfile?.programChangeCount, 0, 1024),
       parameterVst3UnitCount: safeMatrixInteger(result.parameterProfile?.vst3UnitCount, 0, 1024),
+      parameterDuplicateIdCount: safeMatrixInteger(result.parameterProfile?.duplicateParameterIdCount, 0, 1024),
       parameterDisplayInput: safeMatrixText(result.parameterDisplayInput ?? "missing", 64),
       stateProfile: safeMatrixText(stateProfileStatus(result), 64),
       stateFlags: safeMatrixArray(result.stateProfile?.flags, 64),
