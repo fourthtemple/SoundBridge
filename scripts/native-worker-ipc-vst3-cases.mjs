@@ -373,6 +373,20 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       "program_data_not_supported",
     "daemon VST3 program-data helper rejects restore targets without program-data support"
   );
+  fakeInstance.vst3ProgramLists = [{
+    id: 7,
+    programDataSupported: true,
+    programs: [
+      ...Array.from({ length: 256 }, () => ({ index: 1, normalizedValue: 0.5 })),
+      { index: 0, normalizedValue: 0 }
+    ]
+  }];
+  check(
+    (await rejectedCode(() => programDataSupport.getVst3ProgramData("inst-test", 7, 0, {}))) === "program_data_not_supported" &&
+      (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", programEnvelope(), {}))) ===
+        "program_data_not_supported",
+    "daemon VST3 program-data helper rejects targets beyond the listed program cap"
+  );
   fakeInstance.vst3ProgramLists = originalProgramLists;
 
   fakeInstance.vst3ProgramLists = [{ id: 0, programDataSupported: true, programs: [{ index: 0 }] }];

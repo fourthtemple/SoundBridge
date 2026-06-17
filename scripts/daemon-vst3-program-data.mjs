@@ -80,7 +80,7 @@ export function createDaemonVst3ProgramData({
     const matchingProgramLists = (instance.vst3ProgramLists ?? []).filter((list) => list?.id === programListId);
     const programList = matchingProgramLists.length === 1 ? matchingProgramLists[0] : undefined;
     const matchingPrograms = Array.isArray(programList?.programs)
-      ? programList.programs.filter((program) => program?.index === programIndex)
+      ? programList.programs.slice(0, maxPluginPrograms).filter((program) => program?.index === programIndex)
       : [];
     if (!programList?.programDataSupported || !hasBoundedProgramDataTarget(matchingPrograms)) {
       throw protocolError("program_data_not_supported", "The requested VST3 program does not expose bounded program data.");
