@@ -115,10 +115,12 @@ export async function exerciseVst3WeirdMetadataNativeWorker({
         parameters[0].defaultNormalizedValue === 1 &&
         parameters[0].readOnly === true &&
         !parameters[0].vst3Unit &&
-        parameters[0].vst3MidiMappings?.length === 1 &&
+        parameters[0].vst3MidiMappings?.length === 3 &&
         parameters[0].vst3MidiMappings[0].busIndex === 0 &&
         parameters[0].vst3MidiMappings[0].channel === 0 &&
         parameters[0].vst3MidiMappings[0].controller === 1 &&
+        parameters[0].vst3MidiMappings[1].controller === 128 &&
+        parameters[0].vst3MidiMappings[2].controller === 129 &&
         parameters[1].programChange === true &&
         parameters[1].programList?.programDataSupported === false &&
         parameters[1].programList?.programs?.[0]?.index === 1 &&
@@ -299,6 +301,8 @@ const responses = {
         vst3Unit: { id: "not-an-int", name: "bad" },
         vst3MidiMappings: [
           { busIndex: 0, channel: 0, controller: 1 },
+          { busIndex: 0, channel: 1, controller: 128 },
+          { busIndex: 1, channel: 0, controller: 129 },
           { busIndex: 99, channel: 0, controller: 1 },
           { busIndex: 0, channel: 99, controller: 1 },
           { busIndex: 0, channel: 0, controller: 999 }
