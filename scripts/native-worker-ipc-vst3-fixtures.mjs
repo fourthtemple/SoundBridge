@@ -150,7 +150,18 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
       { type: "channelPressure", pressure: 0.3, channel: 0, time: 2 },
       { type: "programChange", program: 2, channel: 0, time: 3 }
     ]);
+    await midiWorker.sendMidiEvents([
+      { type: "controlChange", controller: 0, value: 0, channel: 0, time: 0, busIndex: 0 },
+      { type: "controlChange", controller: 127, value: 1, channel: 15, time: 7, busIndex: 31 },
+      { type: "pitchBend", value: -1, channel: 0, time: 1, busIndex: 0 },
+      { type: "pitchBend", value: 1, channel: 15, time: 6, busIndex: 31 },
+      { type: "channelPressure", pressure: 0, channel: 0, time: 2, busIndex: 0 },
+      { type: "channelPressure", pressure: 1, channel: 15, time: 5, busIndex: 31 },
+      { type: "programChange", program: 0, channel: 0, time: 3, busIndex: 0 },
+      { type: "programChange", program: 127, channel: 15, time: 4, busIndex: 31 }
+    ]);
     check(true, "native VST3 workers encode explicit-bus and main-bus MIDI-controller/program-change events");
+    check(true, "native VST3 workers encode MIDI-controller/program-change boundary routes");
   } finally {
     midiWorker.destroy();
   }
@@ -374,7 +385,8 @@ function writeVst3MidiControllerMappingNativeWorker(tempDir) {
     `#!/usr/bin/env node
 const expectedCommands = new Set([
   "midi cc:74:0.25:2:3:bus=1;bend:-0.5:2:4:bus=1;pressure:0.75:2:5:bus=1;program:7:2:6:bus=1",
-  "midi cc:1:0.4:0:0;bend:0.1:0:1;pressure:0.3:0:2;program:2:0:3"
+  "midi cc:1:0.4:0:0;bend:0.1:0:1;pressure:0.3:0:2;program:2:0:3",
+  "midi cc:0:0:0:0:bus=0;cc:127:1:15:7:bus=31;bend:-1:0:1:bus=0;bend:1:15:6:bus=31;pressure:0:0:2:bus=0;pressure:1:15:5:bus=31;program:0:0:3:bus=0;program:127:15:4:bus=31"
 ]);
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
