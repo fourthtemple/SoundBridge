@@ -57,6 +57,7 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
       displayValueCount: 0,
       unitCount: 0,
       programChangeCount: 0,
+      programChangeWithoutListCount: 0,
       vst3UnitCount: 0,
       duplicateParameterIdCount: 0
     };
@@ -74,6 +75,7 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     displayValueCount: 0,
     unitCount: 0,
     programChangeCount: 0,
+    programChangeWithoutListCount: 0,
     vst3UnitCount: 0,
     duplicateParameterIdCount: 0
   };
@@ -104,6 +106,9 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     }
     if (parameter?.programChange === true) {
       profile.programChangeCount += 1;
+      if (!Array.isArray(parameter.programList?.programs) || parameter.programList.programs.length === 0) {
+        profile.programChangeWithoutListCount += 1;
+      }
     }
     if (isVst3 && parameter?.vst3Unit && typeof parameter.vst3Unit === "object") {
       profile.vst3UnitCount += 1;
@@ -156,6 +161,9 @@ function parameterProfileFlags(profile, { atLimit, isVst3 }) {
   }
   if (profile.programChangeCount > 0) {
     flags.push("program-change");
+  }
+  if (profile.programChangeWithoutListCount > 0) {
+    flags.push("program-change-without-list");
   }
   if (isVst3 && profile.vst3UnitCount > 0) {
     flags.push("vst3-units");
