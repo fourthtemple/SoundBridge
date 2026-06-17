@@ -1,7 +1,8 @@
 import {
   firstListedPreset,
   firstVst3ProgramDataTarget,
-  summarizeVst3ProgramDataProfile
+  summarizeVst3ProgramDataProfile,
+  vst3ProgramDataByteLength
 } from "./installed-plugin-probe-programs.mjs";
 
 export function exerciseInstalledProbeProgramSupport({ check }) {
@@ -9,6 +10,14 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
     firstListedPreset({ presets: [{ id: "init", name: "Init" }] })?.id === "init" &&
       firstListedPreset({ presets: [{ id: "x".repeat(65) }] }) === undefined,
     "installed plugin probe selects bounded listed presets"
+  );
+  check(
+    vst3ProgramDataByteLength("") === 0 &&
+      vst3ProgramDataByteLength("YWI=") === 2 &&
+      vst3ProgramDataByteLength("+/8=") === 2 &&
+      vst3ProgramDataByteLength("AAA") === undefined &&
+      vst3ProgramDataByteLength("not-base64") === undefined,
+    "installed plugin probe validates VST3 program-data byte lengths"
   );
 
   const sentinelProgramTarget = firstVst3ProgramDataTarget({

@@ -86,6 +86,11 @@ export async function probeVst3ProgramData({
   );
   assertProbe(typeof exported.data === "string", "bad_vst3_program_data", "VST3 raw program data is missing");
   assertProbe(
+    vst3ProgramDataByteLength(exported.data) === exported.size,
+    "bad_vst3_program_data",
+    "VST3 raw program data did not match its reported size"
+  );
+  assertProbe(
     typeof exported.programData === "string" && exported.programData.length > 0,
     "bad_vst3_program_data",
     "VST3 restore envelope is missing"
@@ -279,6 +284,13 @@ export function summarizeVst3ProgramDataProfile(plugin) {
     programListMetadataAtLimit,
     programMetadataAtLimit
   };
+}
+
+export function vst3ProgramDataByteLength(data) {
+  if (typeof data !== "string" || data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/u.test(data)) {
+    return undefined;
+  }
+  return Buffer.from(data, "base64").byteLength;
 }
 
 function vst3ProgramDataProfileCategory(programListCount, programDataListCount, candidateProgramCount) {
