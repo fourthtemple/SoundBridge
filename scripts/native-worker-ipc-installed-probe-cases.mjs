@@ -1,8 +1,4 @@
-import {
-  assertNoNativeLaunchData,
-  nativeStateFileText,
-  summarizeNativeStateProfile
-} from "./installed-plugin-probe-file-grants.mjs";
+import { assertNoNativeLaunchData } from "./installed-plugin-probe-file-grants.mjs";
 import { installedProbeErrorSummary } from "./installed-plugin-probe-errors.mjs";
 import { installedProbeFormats } from "./installed-plugin-probe-formats.mjs";
 import { summarizeParameterProfile } from "./installed-plugin-probe-parameters.mjs";
@@ -640,48 +636,6 @@ export function exerciseInstalledProbeSupport({ check }) {
 
   exerciseInstalledProbeRoutingSupport({ check });
 
-  const vst3ProbeState = nativeStateEnvelope({
-    format: "vst3",
-    component: "Y29tcG9uZW50",
-    controller: "Y29udHJvbGxlcg=="
-  });
-  check(
-    nativeStateFileText("vst3", vst3ProbeState) === "Y29tcG9uZW50 Y29udHJvbGxlcg==\n",
-    "installed plugin probe exports bounded VST3 state files"
-  );
-  const vst3StateProfile = summarizeNativeStateProfile("vst3", vst3ProbeState);
-  const vst3ComponentOnlyProfile = summarizeNativeStateProfile("vst3", nativeStateEnvelope({
-    format: "vst3",
-    component: "Yw=="
-  }));
-  const vst3ControllerOnlyProfile = summarizeNativeStateProfile("vst3", nativeStateEnvelope({
-    format: "vst3",
-    controller: "Yw=="
-  }));
-  const lv2ProbeState = nativeStateEnvelope({ format: "lv2", state: "bHYyLXN0YXRl" });
-  const lv2StateProfile = summarizeNativeStateProfile("lv2", lv2ProbeState);
-  const invalidPartProfile = summarizeNativeStateProfile("vst3", nativeStateEnvelope({ format: "vst3", component: "bad" }));
-  check(
-    nativeStateFileText("lv2", lv2ProbeState) === "bHYyLXN0YXRl\n" &&
-      nativeStateFileText("au", lv2ProbeState) === "",
-    "installed plugin probe exports only matching native state files"
-  );
-  check(
-    vst3StateProfile.category === "component-controller" &&
-      vst3StateProfile.stateBytes === 19 &&
-      vst3StateProfile.componentBytes === 9 &&
-      vst3StateProfile.controllerBytes === 10 &&
-      vst3ComponentOnlyProfile.category === "component-only" &&
-      vst3ControllerOnlyProfile.category === "controller-only" &&
-      lv2StateProfile.category === "single-state" &&
-      lv2StateProfile.stateBytes === 9 &&
-      invalidPartProfile.category === "invalid" &&
-      invalidPartProfile.flags.includes("invalid-component-base64") &&
-      summarizeNativeStateProfile("vst3", Buffer.from("{}", "utf8").toString("base64")).category === "generic-state" &&
-      summarizeNativeStateProfile("vst3", "not-state").category === "invalid",
-    "installed plugin probe classifies bounded native state profiles"
-  );
-
   let nativeLaunchLeakCode;
   try {
     assertNoNativeLaunchData(
@@ -739,8 +693,4 @@ function probeAssert(condition, code, message) {
   if (!condition) {
     throw Object.assign(new Error(message), { code });
   }
-}
-
-function nativeStateEnvelope(nativeState) {
-  return Buffer.from(JSON.stringify({ nativeState }), "utf8").toString("base64");
 }

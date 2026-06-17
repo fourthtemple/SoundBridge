@@ -9,6 +9,7 @@ import { createDaemonNormalizers } from "./daemon-normalizers.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { exerciseInstalledProbeSupport } from "./native-worker-ipc-installed-probe-cases.mjs";
 import { exerciseInstalledProbeParameterSupport } from "./native-worker-ipc-installed-probe-parameter-cases.mjs";
+import { exerciseInstalledProbeStateSupport } from "./native-worker-ipc-installed-probe-state-cases.mjs";
 import {
   exerciseGrantAwareNativeWorker,
   writeNativeWorkerIpcFixtures
@@ -55,6 +56,7 @@ function protocolError(code, message, details) {
 try {
   exerciseInstalledProbeSupport({ check });
   exerciseInstalledProbeParameterSupport({ check });
+  exerciseInstalledProbeStateSupport({ check });
 
   check(
     isKnownAudioUnitHostProfile(AUDIO_UNIT_HOST_PROFILES.REALTIME_MULTI_OUTPUT_SPLITTER) &&
