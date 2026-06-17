@@ -21,6 +21,7 @@ const MIDI_EVENT_TYPES = new Set([
 ]);
 
 const schema = JSON.parse(fs.readFileSync(SCHEMA_URL, "utf8"));
+const NOTE_EXPRESSION_TEXT_PATTERN = "^[^\\u0000]+$";
 
 assertAllRefsResolve([SCHEMA_URL, ...SCHEMA_DEF_URLS]);
 
@@ -74,6 +75,15 @@ for (const variant of midiEventVariants) {
 assert(
   MIDI_EVENT_TYPES.size === seenTypes.size,
   "protocol schema declares every supported MIDI event type"
+);
+const noteExpressionTextVariant = midiEventVariants.find(
+  (variant) => variant?.properties?.type?.const === "noteExpressionText"
+);
+assert(
+  noteExpressionTextVariant?.properties?.text?.minLength === 1 &&
+    noteExpressionTextVariant.properties.text.maxLength === 256 &&
+    noteExpressionTextVariant.properties.text.pattern === NOTE_EXPRESSION_TEXT_PATTERN,
+  "protocol schema declares bounded NUL-free VST3 note-expression text"
 );
 assert(
   schema.$defs?.sendMidiEventsRequest?.properties?.events?.items?.$ref === "#/$defs/midiEvent" &&

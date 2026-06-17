@@ -120,7 +120,7 @@
             "type": { "const": "noteExpressionText" },
             "typeId": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
             "noteId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
-            "text": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "text": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000]+$" },
             "time": { "type": "integer", "minimum": 0, "maximum": 8191 },
             "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
             "busIndex": { "$ref": "#/$defs/vst3EventBusIndex" }
