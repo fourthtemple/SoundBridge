@@ -231,6 +231,12 @@ function knownKind(value) {
 }
 
 function clampInt(value, min, max, fallback) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return fallback;
+  }
+  if (typeof value === "string" && value.trim().length === 0) {
+    return fallback;
+  }
   const numeric = Number(value);
   if (!Number.isInteger(numeric) || numeric < min || numeric > max) {
     return fallback;

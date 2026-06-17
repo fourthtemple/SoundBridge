@@ -130,6 +130,23 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       outputBusLayouts: [{ index: 0, channels: 2, type: "main", active: true }]
     }
   );
+  const typedBusProfile = summarizeProbeBusLayout(
+    { kind: "effect" },
+    {
+      inputChannels: "2",
+      outputChannels: "2",
+      inputBuses: true,
+      outputBuses: "2",
+      inputBusLayouts: [
+        { index: "0", channels: "2", type: "main", active: true },
+        { index: false, channels: "1", type: "aux", active: true }
+      ],
+      outputBusLayouts: [
+        { index: "0", channels: "2", type: "main", active: true },
+        { index: "", channels: false, type: "aux", active: true }
+      ]
+    }
+  );
   const statusOnlyBusSummary = summarizeProbeResults([
     { ok: true, format: "vst3", busProfile: sidechainProfile },
     { ok: false, format: "vst3", pluginId: "vst3:bus-profile-failed", busProfile: { category: "failed" } },
@@ -184,6 +201,16 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       mismatchedCountProfile.outputBusLayoutCount === 1 &&
       mismatchedCountProfile.inputBusCountMismatch === true &&
       mismatchedCountProfile.outputBusCountMismatch === true &&
+      typedBusProfile.inputBuses === 2 &&
+      typedBusProfile.outputBuses === 2 &&
+      JSON.stringify(typedBusProfile.activeInputBusIndexes) === JSON.stringify([0, 1]) &&
+      JSON.stringify(typedBusProfile.activeOutputBusIndexes) === JSON.stringify([0, 1]) &&
+      typedBusProfile.activeEmptyOutputBuses === 1 &&
+      typedBusProfile.duplicateInputBusIndexes === 0 &&
+      typedBusProfile.duplicateOutputBusIndexes === 0 &&
+      typedBusProfile.flags.includes("sidechain-input") &&
+      typedBusProfile.flags.includes("active-empty-bus") &&
+      !typedBusProfile.flags.includes("duplicate-bus-indexes") &&
       statusOnlyBusSummary.coverage.busLayouts.failed === 1 &&
       statusOnlyBusSummary.coverage.busLayouts.missing === 1 &&
       statusOnlyBusSummary.matrix[0].featureStatus.busLayouts === "passed" &&
