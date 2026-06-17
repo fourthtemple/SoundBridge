@@ -35,6 +35,20 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     displayName: "Fixture License.key",
     absolutePath: `${absolutePath}.license`
   });
+  const stateGrant = grantFixture(sampleGrant, {
+    grantId: "filegrant-state",
+    purpose: "state",
+    displayName: "Fixture State.soundbridge-state",
+    absolutePath: `${absolutePath}.state`
+  });
+  const stateDirectoryGrant = grantFixture(sampleGrant, {
+    grantId: "filegrant-state-directory",
+    purpose: "state",
+    access: "readWrite",
+    kind: "directory",
+    displayName: "Fixture State Directory",
+    absolutePath: `${absolutePath}.state-dir`
+  });
   let observedAbsolutePath;
   let observedSampleAbsolutePath;
   const observedOperations = [];
@@ -42,7 +56,15 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     instanceId: "inst-test",
     ownerSessionToken: session.sessionToken,
     fileGrantAttachments: new Map(),
-    fileGrantOperations: ["loadPreset", "loadSample", "openCacheDirectory", "loadLicense", "other"],
+    fileGrantOperations: [
+      "loadPreset",
+      "loadSample",
+      "openCacheDirectory",
+      "loadLicense",
+      "restoreState",
+      "saveStateDirectory",
+      "other"
+    ],
     worker: {
       async useFileGrant({ operation, grant: workerGrant }) {
         observedAbsolutePath = workerGrant.absolutePath;
@@ -56,8 +78,11 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     }
   };
   const instanceFileGrantSupport = createDaemonInstanceFileGrants({
-    fileGrantSupport: createFakeFileGrantSupport([sampleGrant, presetGrant, cacheGrant, licenseGrant], protocolError),
-    maxFileGrantsPerInstance: 4,
+    fileGrantSupport: createFakeFileGrantSupport(
+      [sampleGrant, presetGrant, cacheGrant, licenseGrant, stateGrant, stateDirectoryGrant],
+      protocolError
+    ),
+    maxFileGrantsPerInstance: 6,
     makeProtocolError: protocolError
   });
   const operations = createDaemonFileGrantOperations({
@@ -97,6 +122,20 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     purpose: "license",
     access: "read",
     kind: "file"
+  }, session, () => instance);
+  instanceFileGrantSupport.attachFileGrant({
+    instanceId: instance.instanceId,
+    grantId: stateGrant.grantId,
+    purpose: "state",
+    access: "read",
+    kind: "file"
+  }, session, () => instance);
+  instanceFileGrantSupport.attachFileGrant({
+    instanceId: instance.instanceId,
+    grantId: stateDirectoryGrant.grantId,
+    purpose: "state",
+    access: "readWrite",
+    kind: "directory"
   }, session, () => instance);
   const response = await operations.useFileGrant({
     instanceId: instance.instanceId,
@@ -147,6 +186,34 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
       licenseResponse.grant.purpose === "license" &&
       licenseResponse.workerStatus === "loadLicense-ok",
     "daemon file grant operations route license file grants"
+  );
+
+  const stateRestoreResponse = await operations.useFileGrant({
+    instanceId: instance.instanceId,
+    grantId: stateGrant.grantId,
+    operation: "restoreState"
+  }, session);
+  check(
+    stateRestoreResponse.applied === true &&
+      stateRestoreResponse.operation === "restoreState" &&
+      stateRestoreResponse.grant.purpose === "state" &&
+      stateRestoreResponse.grant.kind === "file" &&
+      stateRestoreResponse.workerStatus === "restoreState-ok",
+    "daemon file grant operations route state restore file grants"
+  );
+
+  const stateSaveResponse = await operations.useFileGrant({
+    instanceId: instance.instanceId,
+    grantId: stateDirectoryGrant.grantId,
+    operation: "saveStateDirectory"
+  }, session);
+  check(
+    stateSaveResponse.applied === true &&
+      stateSaveResponse.operation === "saveStateDirectory" &&
+      stateSaveResponse.grant.purpose === "state" &&
+      stateSaveResponse.grant.kind === "directory" &&
+      stateSaveResponse.workerStatus === "saveStateDirectory-ok",
+    "daemon file grant operations route state directory save grants"
   );
 
   let mismatchCode;
