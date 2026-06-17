@@ -59,6 +59,12 @@ export async function exerciseInstalledProbeProgramSupport({ check }) {
       { id: 9, programDataSupported: true, programs: [{ index: 5, normalizedValue: 0.25 }, { index: 5, normalizedValue: 0.25 }] }
     ]
   });
+  const fallbackAfterAmbiguousProgramTarget = firstVst3ProgramDataTarget({
+    vst3ProgramLists: [
+      { id: 10, programDataSupported: true, programs: [{ index: 0, normalizedValue: 0.25 }, { index: 0, normalizedValue: 0.75 }] },
+      { id: 11, programDataSupported: true, programs: [{ index: 2, normalizedValue: 0.5 }] }
+    ]
+  });
   check(
     sentinelProgramTarget?.programListId === 8 &&
       sentinelProgramTarget.programIndex === 1 &&
@@ -68,6 +74,8 @@ export async function exerciseInstalledProbeProgramSupport({ check }) {
       uniqueFallbackProgramTarget.programIndex === 2 &&
       consistentDuplicateProgramTarget?.programListId === 9 &&
       consistentDuplicateProgramTarget.programIndex === 5 &&
+      fallbackAfterAmbiguousProgramTarget?.programListId === 11 &&
+      fallbackAfterAmbiguousProgramTarget.programIndex === 2 &&
       firstVst3ProgramDataTarget({ vst3ProgramLists: [{ id: 4, programDataSupported: true, programs: [] }] }) === undefined &&
       firstVst3ProgramDataTarget({
         vst3ProgramLists: [{ id: "bad", programDataSupported: true, programs: [{ index: 0 }] }]
