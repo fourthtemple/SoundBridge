@@ -12,6 +12,7 @@ import {
   hasOkPhase,
   hostTransportStatus,
   latencyTailStatus,
+  listedPresetStatus,
   midiTimingStatus,
   nativeEditorStatus,
   outputBusSignalStatus,
@@ -185,7 +186,7 @@ function summarizeCompatibilityMatrix(results, options) {
       reportedLatencySamples: safeMatrixInteger(result.reportedLatencySamples, 0, 1_048_576),
       tailSamples: safeMatrixInteger(result.tailSamples, 0, 1_048_576),
       infiniteTail: typeof result.infiniteTail === "boolean" ? result.infiniteTail : undefined,
-      listedPreset: safeMatrixText(result.listedPreset ?? "missing", 64),
+      listedPreset: safeMatrixText(listedPresetStatus(result), 64),
       listedPresetParameterCount: safeMatrixInteger(result.listedPresetParameterCount, 0, 1024),
       vst3ProgramData: safeMatrixText(vst3ProgramDataStatus(result), 64),
       vst3ProgramDataBytes: safeMatrixInteger(result.vst3ProgramDataSize, 0, MAX_PLUGIN_PROGRAM_DATA_BYTES),
@@ -312,7 +313,7 @@ function summarizeCompatibilityMatrix(results, options) {
 
 function summarizeFeatureCoverage(results, options) {
   return {
-    listedPresets: countStatuses(results, "listedPreset"),
+    listedPresets: countBy(results, listedPresetStatus),
     vst3ProgramData: countBy(results, vst3ProgramDataStatus),
     vst3ProgramDataTargets: countBy(results, vst3ProgramDataProfileStatus),
     vst3ProgramLists: countVst3ProgramLists(results),

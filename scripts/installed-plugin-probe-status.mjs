@@ -7,7 +7,7 @@ export function summarizeFeatureStatus(result, options) {
   return {
     instantiation: phaseGroupStatus(result, ["createInstance"]),
     parameters: parameterFeatureStatus(result),
-    presetSnapshots: safeMatrixText(result.listedPreset ?? "missing", 64),
+    presetSnapshots: safeMatrixText(listedPresetStatus(result), 64),
     vst3ProgramData: safeMatrixText(vst3ProgramDataStatus(result), 64),
     state: phaseGroupStatus(result, ["getState", "setState"]),
     fileGrants: fileGrantFeatureStatus(result),
@@ -39,6 +39,16 @@ export function automationLaneStatus(result) {
     : result.automationLaneSkipped
       ? `skipped-${result.automationLaneSkipped}`
       : "missing";
+}
+
+export function listedPresetStatus(result) {
+  if (result.listedPreset !== undefined) {
+    return String(result.listedPreset);
+  }
+  if (hasFailedPhase(result, ["setPreset"])) {
+    return "failed";
+  }
+  return "missing";
 }
 
 export function parameterMetadataStatus(result) {

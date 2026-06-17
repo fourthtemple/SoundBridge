@@ -6,13 +6,27 @@ import {
   vst3ProgramDataByteLength
 } from "./installed-plugin-probe-programs.mjs";
 import { summarizeProbeResults } from "./installed-plugin-probe-reporting.mjs";
-import { vst3ProgramDataStatus } from "./installed-plugin-probe-status.mjs";
+import { listedPresetStatus, vst3ProgramDataStatus } from "./installed-plugin-probe-status.mjs";
 
 export async function exerciseInstalledProbeProgramSupport({ check }) {
   check(
     firstListedPreset({ presets: [{ id: "init", name: "Init" }] })?.id === "init" &&
       firstListedPreset({ presets: [{ id: "x".repeat(65) }] }) === undefined,
     "installed plugin probe selects bounded listed presets"
+  );
+  const failedListedPresetResult = {
+    ok: false,
+    format: "vst3",
+    pluginId: "vst3:preset-failed",
+    phases: [{ name: "setPreset", ok: false, error: { code: "bad_listed_preset" } }]
+  };
+  const failedListedPresetSummary = summarizeProbeResults([failedListedPresetResult]);
+  check(
+    listedPresetStatus(failedListedPresetResult) === "failed" &&
+      failedListedPresetSummary.coverage.listedPresets.failed === 1 &&
+      failedListedPresetSummary.matrix[0].listedPreset === "failed" &&
+      failedListedPresetSummary.matrix[0].featureStatus.presetSnapshots === "failed",
+    "installed plugin probe reports listed preset failures"
   );
   check(
     vst3ProgramDataByteLength("") === 0 &&
