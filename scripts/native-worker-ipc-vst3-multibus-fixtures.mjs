@@ -182,6 +182,21 @@ export async function exerciseVst3MultiBusNativeWorker({
         JSON.stringify(duplicateBuses.get(31)) === JSON.stringify([[0.3, 0.4]]),
       "native VST3 workers keep first normalized duplicate output bus"
     );
+    const auxOnlyRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0.6, 0.4], [0.2, 0]],
+      transport: { samplePosition: 176 }
+    });
+    const auxOnlyBuses = new Map((auxOnlyRendered.outputBuses ?? []).map((bus) => [bus.index, bus.channels]));
+    check(
+      auxOnlyRendered.outputBuses?.length === 3 &&
+        JSON.stringify(auxOnlyRendered.channels) === JSON.stringify([[0.6, 0.4], [0.2, 0]]) &&
+        JSON.stringify(auxOnlyBuses.get(0)) === JSON.stringify(auxOnlyRendered.channels) &&
+        JSON.stringify(auxOnlyBuses.get(1)) === JSON.stringify([[0.7, 0.8]]) &&
+        JSON.stringify(auxOnlyBuses.get(4)) === JSON.stringify([[0.3, 0.2], [0.1, 0]]),
+      "native VST3 workers synthesize main output buses when workers return only aux buses"
+    );
     const legacyBusRendered = await busWorker.render({
       frames: 2,
       sampleRate: 48000,
@@ -537,6 +552,22 @@ process.stdin.on("data", (chunk) => {
           { index: 31, channels: [[0.3, 0.4]] },
           { index: 99, channels: [[0.8, 0.8]] },
           { index: 0, channels: [[0.5, 0.5], [0.6, 0.6]] }
+        ]
+      }) + "\\n");
+      continue;
+    }
+
+    const auxOnlyOutputBusRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[4] === "-" &&
+      parts[5] === "sample=176" &&
+      JSON.stringify(channels) === JSON.stringify([[0.6, 0.4], [0.2, 0]]);
+    if (auxOnlyOutputBusRequestMatched) {
+      process.stdout.write(JSON.stringify({
+        channels,
+        outputBuses: [
+          { index: 4, channels: [[0.3, 0.2], [0.1, 0]] },
+          { index: 1, channels: [[0.7, 0.8]] }
         ]
       }) + "\\n");
       continue;
