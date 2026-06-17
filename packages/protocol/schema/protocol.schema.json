@@ -241,7 +241,7 @@
       "additionalProperties": true,
       "properties": {
         "instanceId": { "type": "string", "minLength": 1 },
-        "programListId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "programListId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "not": { "const": -1 } },
         "programIndex": { "type": "integer", "minimum": 0, "maximum": 255 }
       }
     },

@@ -144,7 +144,7 @@ export function createDaemonNormalizers(options = {}) {
     };
     if (unit.programListId !== undefined) {
       const programListId = normalizeSignedInt32(unit.programListId);
-      if (programListId !== undefined) {
+      if (programListId !== undefined && programListId !== vst3NoProgramListId) {
         normalized.programListId = programListId;
       }
     }

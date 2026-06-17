@@ -36,9 +36,15 @@ assert(
   "protocol schema resolves split hello response definitions"
 );
 
+const pluginMetadata = resolveRef(schema.$defs?.pluginMetadata?.$ref, SCHEMA_URL);
 assert(
-  resolveRef(schema.$defs?.pluginMetadata?.$ref, SCHEMA_URL)?.properties?.vst3NoteExpressions?.maxItems === 256,
+  pluginMetadata?.properties?.vst3NoteExpressions?.maxItems === 256,
   "protocol schema resolves split plugin metadata definitions"
+);
+const pluginVst3Unit = resolveRef(schema.$defs?.pluginVst3Unit?.$ref, SCHEMA_URL);
+assert(
+  pluginVst3Unit?.properties?.programListId?.not?.const === -1,
+  "protocol schema excludes the VST3 no-program-list unit sentinel"
 );
 
 const vst3EventBusIndex = resolveRef(schema.$defs?.vst3EventBusIndex?.$ref, SCHEMA_URL);
@@ -73,6 +79,12 @@ assert(
   schema.$defs?.sendMidiEventsRequest?.properties?.events?.items?.$ref === "#/$defs/midiEvent" &&
     schema.$defs.sendMidiEventsRequest.properties.events.maxItems === 4096,
   "protocol schema routes sendMidiEvents payloads through bounded MIDI events"
+);
+const requestEnvelopeDefs = loadJson(new URL("../packages/protocol/schema/defs/request-envelope.schema.json", import.meta.url)).$defs;
+assert(
+  schema.$defs?.getVst3ProgramDataRequest?.properties?.programListId?.not?.const === -1 &&
+    requestEnvelopeDefs?.getVst3ProgramDataRequest?.properties?.programListId?.not?.const === -1,
+  "protocol schema excludes the VST3 no-program-list program-data sentinel"
 );
 
 console.log("Protocol schema smoke checks passed.");

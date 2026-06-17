@@ -28,9 +28,16 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     normalizedValue: 0,
     vst3Unit: { id: 3, programListId: "bad" }
   });
+  const sentinelUnitLink = unitNormalizers.normalizeWorkerParameter({
+    id: "sentinel-unit-link",
+    normalizedValue: 0,
+    vst3Unit: { id: 4, programListId: -1 }
+  });
   check(
     invalidUnitLink?.vst3Unit?.id === 3 &&
-      !Object.hasOwn(invalidUnitLink.vst3Unit, "programListId"),
+      !Object.hasOwn(invalidUnitLink.vst3Unit, "programListId") &&
+      sentinelUnitLink?.vst3Unit?.id === 4 &&
+      !Object.hasOwn(sentinelUnitLink.vst3Unit, "programListId"),
     "daemon normalizers omit invalid VST3 unit program-list links"
   );
 
