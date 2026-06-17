@@ -353,8 +353,11 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       auxOnlyOutputSignalMatrix.outputBusSignalCount === 1 &&
       auxOnlyOutputSignalMatrix.outputBusSilentCount === 2 &&
       JSON.stringify(auxOnlyOutputSignalMatrix.outputBusSignalIndexes) === JSON.stringify([1]) &&
+      failedRenderSummary.coverage.renderSignals.failed === 1 &&
       failedRenderSummary.coverage.hostTransport.failed === 1 &&
+      failedRenderSummary.matrix[0].renderSignal === "failed" &&
       failedRenderSummary.matrix[0].hostTransport === "failed" &&
+      failedRenderSummary.matrix[0].featureStatus.rendering === "failed" &&
       failedRenderSummary.matrix[0].featureStatus.transport === "failed" &&
       missingOutputSignalProfile.category === "main-signal" &&
       missingOutputSignalProfile.signalOutputBusCount === 1 &&

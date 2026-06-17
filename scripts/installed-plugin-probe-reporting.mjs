@@ -17,6 +17,7 @@ import {
   outputBusSignalStatus,
   parameterMetadataStatus,
   parameterProfileStatus,
+  renderSignalStatus,
   stateProfileStatus,
   summarizeFeatureStatus,
   vst3EventProfileStatus,
@@ -125,7 +126,7 @@ function summarizeCompatibilityMatrix(results, options) {
       failureCode: result.ok === true
         ? undefined
         : safeMatrixText(failureError?.code ?? failureError?.message ?? "unknown_error", 96),
-      renderSignal: safeMatrixText(result.renderSignal ?? "missing", 32),
+      renderSignal: safeMatrixText(renderSignalStatus(result), 32),
       renderedChannels: safeMatrixInteger(result.renderedChannels, 0, 32),
       outputBusSignal: safeMatrixText(outputBusSignalStatus(result), 64),
       outputBusSignalFlags: safeMatrixArray(result.outputBusSignalProfile?.flags, 64),
@@ -336,7 +337,7 @@ function summarizeFeatureCoverage(results, options) {
     automationLanes: countAutomationLanes(results),
     hostTransport: countBy(results, hostTransportStatus),
     latencyTail: countBy(results, latencyTailStatus),
-    renderSignals: countStatuses(results, "renderSignal"),
+    renderSignals: countBy(results, renderSignalStatus),
     outputBusSignals: countBy(results, outputBusSignalStatus),
     nativeEditor: countNativeEditor(results, options)
   };

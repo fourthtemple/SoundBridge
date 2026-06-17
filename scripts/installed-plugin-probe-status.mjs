@@ -183,6 +183,13 @@ export function outputBusSignalStatus(result) {
   return result.outputBusSignalProfile?.category ?? (hasOkPhase(result, "processAudioBlock") ? "unprofiled" : "missing");
 }
 
+export function renderSignalStatus(result) {
+  if (result.renderSignal !== undefined) {
+    return String(result.renderSignal);
+  }
+  return hasFailedPhase(result, ["processAudioBlock"]) ? "failed" : "missing";
+}
+
 export function nativeEditorStatus(result, options) {
   if (!options.nativeEditorBroker) {
     return "not-requested";
