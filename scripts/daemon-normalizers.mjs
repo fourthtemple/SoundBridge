@@ -9,6 +9,7 @@ export function createDaemonNormalizers(options = {}) {
     maxPluginParameters: positiveInteger(options.maxPluginParameters, 1024),
     maxPluginParameterTextBytes: positiveInteger(options.maxPluginParameterTextBytes, 160),
     maxPluginNoteExpressions: positiveInteger(options.maxPluginNoteExpressions, 256),
+    maxPluginNoteExpressionTextBytes: positiveInteger(options.maxPluginNoteExpressionTextBytes, 256),
     maxPluginMidiMappings: positiveInteger(options.maxPluginMidiMappings, 256),
     maxPluginProgramDataBytes: positiveInteger(options.maxPluginProgramDataBytes, 384 * 1024),
     maxPluginProgramLists: positiveInteger(options.maxPluginProgramLists, 256),
@@ -52,12 +53,26 @@ export function createDaemonNormalizers(options = {}) {
           return vst3BusEventToken(["expr", event.typeId, event.value, event.noteId, event.channel, event.time], event, format);
         }
         if (event.type === "noteExpressionText" && format === "vst3") {
-          const encodedText = Buffer.from(event.text, "utf8").toString("base64");
+          const encodedText = encodeVst3NoteExpressionText(event.text);
           return vst3BusEventToken(["exprText", event.typeId, encodedText, event.noteId, event.channel, event.time], event, format);
         }
         throw protocolError("invalid_argument", `Unsupported MIDI event type: ${event.type}`);
       })
       .join(";");
+  }
+
+  function encodeVst3NoteExpressionText(value) {
+    if (typeof value !== "string") {
+      throw protocolError("invalid_argument", "VST3 note-expression text must be a string.");
+    }
+    const byteLength = Buffer.byteLength(value, "utf8");
+    if (byteLength === 0 || byteLength > limits.maxPluginNoteExpressionTextBytes || value.includes("\u0000")) {
+      throw protocolError(
+        "invalid_argument",
+        `VST3 note-expression text must be 1..${limits.maxPluginNoteExpressionTextBytes} UTF-8 bytes without NUL characters.`
+      );
+    }
+    return Buffer.from(value, "utf8").toString("base64");
   }
 
   function vst3NoteEventToken(kind, event, value, format) {

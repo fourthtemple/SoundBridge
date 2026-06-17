@@ -40,6 +40,23 @@ export async function exerciseVst3NoteExpressionNativeWorker({
       "native VST3 workers encode bounded note-expression value/text event lists"
     );
     check(minimum.eventCount === 3, "native VST3 workers encode minimum note-expression value/text boundaries");
+    const invalidTextMessages = await Promise.all([
+      rejectedMessage(() => noteExpressionWorker.sendMidiEvents([
+        { type: "noteExpressionText", typeId: 6, text: "", noteId: 1, channel: 0, time: 0 }
+      ])),
+      rejectedMessage(() => noteExpressionWorker.sendMidiEvents([
+        { type: "noteExpressionText", typeId: 6, text: "a\u0000h", noteId: 1, channel: 0, time: 0 }
+      ])),
+      rejectedMessage(() => noteExpressionWorker.sendMidiEvents([
+        { type: "noteExpressionText", typeId: 6, text: "x".repeat(257), noteId: 1, channel: 0, time: 0 }
+      ]))
+    ]);
+    check(
+      invalidTextMessages.every((message) =>
+        message === "VST3 note-expression text must be 1..256 UTF-8 bytes without NUL characters."
+      ),
+      "native VST3 workers reject malformed note-expression text before IPC"
+    );
   } finally {
     noteExpressionWorker.destroy();
   }
@@ -133,4 +150,13 @@ function writeExecutable(tempDir, filename, source) {
   fs.writeFileSync(file, source, { mode: 0o755 });
   fs.chmodSync(file, 0o755);
   return file;
+}
+
+async function rejectedMessage(operation) {
+  try {
+    await operation();
+  } catch (error) {
+    return error.message;
+  }
+  return undefined;
 }
