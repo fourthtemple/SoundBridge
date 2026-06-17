@@ -48,9 +48,10 @@ export function createDaemonNormalizers(options = {}) {
     const maxPlain = finiteNumber(parameter.maxPlain, 1);
     const plainValue = finiteNumber(parameter.plainValue, minPlain + (maxPlain - minPlain) * normalizedValue);
 
+    const name = truncateText(parameter.name, limits.maxPluginParameterTextBytes);
     const normalized = {
       id,
-      name: truncateText(parameter.name, limits.maxPluginParameterTextBytes) || id,
+      name: name || id,
       normalizedValue,
       defaultNormalizedValue,
       displayValue: truncateText(parameter.displayValue, limits.maxPluginParameterTextBytes) || undefined,
@@ -62,7 +63,7 @@ export function createDaemonNormalizers(options = {}) {
       stepCount: Math.max(0, Math.min(1_000_000, Math.floor(Number(parameter.stepCount ?? 0)))),
       readOnly: Boolean(parameter.readOnly)
     };
-    if (parameter.nameFallback === true) {
+    if (parameter.nameFallback === true || !name) {
       normalized.nameFallback = true;
     }
     const vst3Unit = normalizeVst3Unit(parameter.vst3Unit);
@@ -146,13 +147,13 @@ export function createDaemonNormalizers(options = {}) {
         if (index === undefined) {
           return undefined;
         }
-        const name = truncateText(program.name ?? `Program ${index + 1}`, limits.maxPluginParameterTextBytes) || `Program ${index + 1}`;
+        const name = truncateText(program.name, limits.maxPluginParameterTextBytes);
         const normalized = {
           index,
-          name,
+          name: name || `Program ${index + 1}`,
           normalizedValue: clamp01(Number(program.normalizedValue))
         };
-        if (program.nameFallback === true) {
+        if (program.nameFallback === true || !name) {
           normalized.nameFallback = true;
         }
         return normalized;
@@ -165,12 +166,13 @@ export function createDaemonNormalizers(options = {}) {
     if (id === undefined) {
       return undefined;
     }
+    const name = truncateText(programList.name, limits.maxPluginParameterTextBytes);
     const normalized = {
       id,
-      name: truncateText(programList.name ?? "Programs", limits.maxPluginParameterTextBytes) || "Programs",
+      name: name || "Programs",
       programs
     };
-    if (programList.nameFallback === true) {
+    if (programList.nameFallback === true || !name) {
       normalized.nameFallback = true;
     }
     if (programList.unitId !== undefined) {
@@ -291,7 +293,7 @@ export function createDaemonNormalizers(options = {}) {
     if (!Number.isInteger(rawTypeId) || rawTypeId < 0 || rawTypeId > 4_294_967_295) {
       return undefined;
     }
-    const name = truncateText(expression.name ?? `Expression ${rawTypeId}`, limits.maxPluginParameterTextBytes);
+    const name = truncateText(expression.name, limits.maxPluginParameterTextBytes);
     const minValue = clamp01(Number(expression.minValue));
     const maxValue = Math.max(minValue, clamp01(Number(expression.maxValue)));
     const normalized = {
@@ -316,7 +318,7 @@ export function createDaemonNormalizers(options = {}) {
         normalized.unitId = unitId;
       }
     }
-    if (expression.nameFallback === true) normalized.nameFallback = true;
+    if (expression.nameFallback === true || !name) normalized.nameFallback = true;
     if (expression.bipolar === true) normalized.bipolar = true;
     if (expression.oneShot === true) normalized.oneShot = true;
     if (expression.absolute === true) normalized.absolute = true;

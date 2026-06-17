@@ -295,7 +295,6 @@ const responses = {
       {
         id: "cutoff",
         name: "",
-        nameFallback: true,
         normalizedValue: "not-a-number",
         defaultNormalizedValue: 3,
         displayValue: longText,
@@ -322,7 +321,7 @@ const responses = {
           programDataSupported: false,
           programs: [
             { index: "bad", name: "broken", normalizedValue: 0.5 },
-            { name: "", normalizedValue: 2, nameFallback: true }
+            { name: "", normalizedValue: 2 }
           ]
         }
       },
@@ -353,11 +352,10 @@ const responses = {
       {
         id: 2147483647,
         name: "",
-        nameFallback: true,
         unitId: "bad",
         programDataSupported: true,
         programs: [
-          { name: "", normalizedValue: 2, nameFallback: true },
+          { name: "", normalizedValue: 2 },
           { index: -5, name: "broken", normalizedValue: 0.5 },
           { index: 255, name: null, normalizedValue: -1 }
         ]
@@ -372,7 +370,6 @@ const responses = {
       {
         typeId: 6,
         name: "",
-        nameFallback: true,
         shortName: "txt",
         unit: "",
         defaultValue: 2,
