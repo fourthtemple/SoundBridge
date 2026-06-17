@@ -234,6 +234,13 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     "daemon VST3 program-data helper rejects other-plugin envelopes"
   );
   check(
+    (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", programEnvelope({ pluginId: undefined }), {}))) ===
+      "bad_program_data" &&
+      (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", programEnvelope({ pluginId: 7 }), {}))) ===
+        "bad_program_data",
+    "daemon VST3 program-data helper rejects missing or non-string plugin ids"
+  );
+  check(
     (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", "not-base64!!", {}))) === "bad_program_data" &&
       (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", base64Text("not-json"), {}))) === "bad_program_data" &&
       (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", base64Json([]), {}))) === "bad_program_data",
