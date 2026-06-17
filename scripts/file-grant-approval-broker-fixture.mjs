@@ -34,6 +34,10 @@ process.stdin.on("data", (chunk) => {
         process.stdout.write(`${JSON.stringify({ error: "fixture_file_grant_denied" })}\n`);
         continue;
       }
+      if (mode === "request-path-error") {
+        process.stdout.write(`${JSON.stringify({ error: "denied while opening /tmp/private-license.lic" })}\n`);
+        continue;
+      }
       if (mode === "missing-path") {
         process.stdout.write(`${JSON.stringify({ ok: true })}\n`);
         continue;

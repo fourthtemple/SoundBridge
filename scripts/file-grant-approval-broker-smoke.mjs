@@ -80,10 +80,17 @@ try {
   await assertRejectsBroker("malformed-ready", "malformed ready handshakes are rejected", "stdout_malformed");
   await assertRejectsBroker("ready-timeout", "missing ready handshakes time out", "ready_timeout");
   await assertRejectsBroker("request-error", "approval broker denials are rejected", "fixture_file_grant_denied");
+  await assertRejectsBroker(
+    "request-path-error",
+    "approval broker denials redact local paths",
+    "[local-path]",
+    "/tmp/private-license.lic"
+  );
   await assertRejectsBroker("missing-path", "approval broker responses must include a path", "missing_path");
   await assertRejectsBroker("malformed-request", "malformed command responses are rejected", "stdout_malformed");
   await assertRejectsBroker("oversized-request", "oversized command responses are rejected", "line_too_large");
   await assertRejectsBroker("request-timeout", "missing command responses time out", "command_timeout");
+  await assertMissingBrokerExecutableRedactsPath();
   await assertDaemonBrokerFailureStaysPathFree();
 
   console.log("File grant approval broker IPC smoke test passed.");
@@ -124,7 +131,7 @@ function assertThrows(callback, message) {
   assert(threw, message);
 }
 
-async function assertRejectsBroker(mode, message, expectedErrorText) {
+async function assertRejectsBroker(mode, message, expectedErrorText, forbiddenErrorText = "") {
   try {
     await brokerFor(mode).requestFileGrant({
       request: { purpose: "sample", access: "read", kind: "file" },
@@ -133,12 +140,37 @@ async function assertRejectsBroker(mode, message, expectedErrorText) {
   } catch (error) {
     const errorText = String(error?.message ?? error);
     assert(
-      errorText.includes(expectedErrorText) || errorText.includes("file_grant_broker_exited"),
+      (errorText.includes(expectedErrorText) || errorText.includes("file_grant_broker_exited")) &&
+        (!forbiddenErrorText || !errorText.includes(forbiddenErrorText)),
       `${message}: ${errorText}`
     );
     return;
   }
   throw new Error(message);
+}
+
+async function assertMissingBrokerExecutableRedactsPath() {
+  const missingPath = "/tmp/soundbridge-missing-file-grant-broker.lic";
+  const missingBroker = new FileGrantApprovalBroker({
+    executablePath: missingPath,
+    limits: {
+      workerReadyTimeoutMs: 250,
+      workerTerminationGraceMs: 10
+    }
+  });
+  const error = await rejectedError(() =>
+    missingBroker.requestFileGrant({
+      request: { purpose: "sample", access: "read", kind: "file" },
+      session: { origin: "http://127.0.0.1:5173" }
+    })
+  );
+  const errorText = String(error?.message ?? error);
+  assert(
+    errorText.includes("spawn") &&
+      errorText.includes("[local-path]") &&
+      !errorText.includes(missingPath),
+    `missing approval broker executable errors redact local paths: ${errorText}`
+  );
 }
 
 async function assertDaemonBrokerFailureStaysPathFree() {

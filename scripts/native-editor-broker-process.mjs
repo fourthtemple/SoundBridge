@@ -104,7 +104,9 @@ class NativeEditorBrokerSession {
     this.process.stderr.setEncoding("utf8");
     this.process.stdout.on("data", (chunk) => this.handleStdout(chunk));
     this.process.stderr.on("data", (chunk) => this.handleStderr(chunk));
-    this.process.on("error", (error) => this.rejectAll(error));
+    this.process.on("error", (error) => {
+      this.rejectAll(new Error(sanitizeDiagnostic(error?.message ?? error, this.limits.maxDiagnosticChars)));
+    });
     this.process.on("exit", (code, signal) => {
       this.rejectAll(new Error(`native_editor_broker_exited: code=${code ?? "none"} signal=${signal ?? "none"}`));
     });

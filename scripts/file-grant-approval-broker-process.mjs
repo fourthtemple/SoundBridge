@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
+import { redactLocalPaths } from "./local-path-redaction.mjs";
 
 const DEFAULT_MAX_STDOUT_LINE_BYTES = 1024 * 1024;
 const DEFAULT_MAX_COMMAND_BYTES = 1024 * 1024;
@@ -90,7 +91,9 @@ class FileGrantApprovalBrokerSession {
     this.process.stderr.setEncoding("utf8");
     this.process.stdout.on("data", (chunk) => this.handleStdout(chunk));
     this.process.stderr.on("data", (chunk) => this.handleStderr(chunk));
-    this.process.on("error", (error) => this.rejectAll(error));
+    this.process.on("error", (error) => {
+      this.rejectAll(new Error(sanitizeDiagnostic(error?.message ?? error, this.limits.maxDiagnosticChars)));
+    });
     this.process.on("exit", (code, signal) => {
       this.rejectAll(new Error(`file_grant_broker_exited: code=${code ?? "none"} signal=${signal ?? "none"}`));
     });
@@ -177,7 +180,7 @@ class FileGrantApprovalBrokerSession {
     }
     clearTimeout(pending.timeout);
     if (parsed.error) {
-      pending.reject(new Error(String(parsed.error)));
+      pending.reject(new Error(sanitizeDiagnostic(parsed.error, this.limits.maxDiagnosticChars)));
     } else {
       pending.resolve(parsed);
     }
@@ -280,8 +283,9 @@ function nonNegativeInt(value, fallback) {
 }
 
 function sanitizeDiagnostic(value, maxChars) {
+  const text = redactLocalPaths(value);
   let sanitized = "";
-  for (const char of String(value ?? "")) {
+  for (const char of text) {
     const codePoint = char.codePointAt(0);
     sanitized += codePoint < 0x20 || codePoint === 0x7f
       ? `\\u${codePoint.toString(16).padStart(4, "0")}`

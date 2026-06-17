@@ -329,6 +329,7 @@ await assertRejectsBroker("oversized-session-id", "broker session ids must stay 
 await assertRejectsBroker("malformed-open", "malformed command responses are rejected", "stdout_malformed");
 await assertRejectsBroker("oversized-open", "oversized command responses are rejected", "line_too_large");
 await assertRejectsBroker("open-timeout", "missing command responses time out", "command_timeout");
+await assertMissingBrokerExecutableRedactsPath();
 
 const editors = new Map();
 const session = {
@@ -512,4 +513,28 @@ async function assertRejectsBroker(mode, message, expectedErrorText, forbiddenEr
     return;
   }
   throw new Error(message);
+}
+
+async function assertMissingBrokerExecutableRedactsPath() {
+  const missingPath = "/tmp/soundbridge-missing-native-editor-broker.vst3";
+  const missingBroker = new NativeEditorBroker({
+    executablePath: missingPath,
+    limits: {
+      workerReadyTimeoutMs: 250,
+      workerTerminationGraceMs: 10
+    }
+  });
+  const error = await rejectedError(() =>
+    missingBroker.openEditor({
+      editor: fixtureEditor,
+      instance: fixtureInstance
+    })
+  );
+  const errorText = String(error?.message ?? error);
+  assert(
+    errorText.includes("spawn") &&
+      errorText.includes("[local-path]") &&
+      !errorText.includes(missingPath),
+    `missing native editor broker executable errors redact local paths: ${errorText}`
+  );
 }
