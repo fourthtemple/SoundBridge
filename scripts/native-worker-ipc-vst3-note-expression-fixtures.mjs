@@ -19,24 +19,27 @@ export async function exerciseVst3NoteExpressionNativeWorker({
 
   try {
     await noteExpressionWorker.ready;
-    await noteExpressionWorker.sendMidiEvents([
+    const routed = await noteExpressionWorker.sendMidiEvents([
       { type: "noteOn", note: 60, velocity: 0.8, channel: 1, time: 0, noteId: 42, busIndex: 2 },
       { type: "noteExpression", typeId: 0, value: 0.5, noteId: 42, channel: 1, time: 2, busIndex: 2 },
       { type: "noteExpressionText", typeId: 6, text: "bow", noteId: 42, channel: 1, time: 4, busIndex: 2 }
     ]);
-    await noteExpressionWorker.sendMidiEvents([
+    const bounded = await noteExpressionWorker.sendMidiEvents([
       { type: "noteOn", note: 64, velocity: 0.5, channel: 15, time: 0, noteId: 2147483647 },
       { type: "noteExpression", typeId: 4294967295, value: 1, noteId: 2147483647, channel: 15, time: 1 },
       { type: "noteExpressionText", typeId: 6, text: "\u00b5-tilt", noteId: 2147483647, channel: 15, time: 2 },
-      { type: "noteExpressionText", typeId: 6, text: "x".repeat(256), noteId: 2147483647, channel: 15, time: 3 }
+      { type: "noteExpressionText", typeId: 6, text: "x".repeat(256), noteId: 2147483647, channel: 15, time: 7 }
     ]);
-    await noteExpressionWorker.sendMidiEvents([
+    const minimum = await noteExpressionWorker.sendMidiEvents([
       { type: "noteOn", note: 0, velocity: 0.1, channel: 0, time: 0, noteId: 0 },
       { type: "noteExpression", typeId: 1, value: 0, noteId: 0, channel: 0, time: 0 },
       { type: "noteExpressionText", typeId: 6, text: "z", noteId: 0, channel: 0, time: 1 }
     ]);
-    check(true, "native VST3 workers encode bounded note-expression value/text event lists");
-    check(true, "native VST3 workers encode minimum note-expression value/text boundaries");
+    check(
+      routed.eventCount === 3 && bounded.eventCount === 4,
+      "native VST3 workers encode bounded note-expression value/text event lists"
+    );
+    check(minimum.eventCount === 3, "native VST3 workers encode minimum note-expression value/text boundaries");
   } finally {
     noteExpressionWorker.destroy();
   }
@@ -93,7 +96,7 @@ const expectedCommands = new Set([
     "midi on:64:0.5:15:0:2147483647",
     "expr:4294967295:1:2147483647:15:1",
     \`exprText:6:\${Buffer.from(utf8Text, "utf8").toString("base64")}:2147483647:15:2\`,
-    \`exprText:6:\${Buffer.from(maxText, "utf8").toString("base64")}:2147483647:15:3\`
+    \`exprText:6:\${Buffer.from(maxText, "utf8").toString("base64")}:2147483647:15:7\`
   ].join(";"),
   "midi on:0:0.1:0:0:0;expr:1:0:0:0:0;exprText:6:eg==:0:0:1"
 ]);
