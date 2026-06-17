@@ -95,6 +95,9 @@ export function midiTimingStatus(result) {
   if (result.midiTimingProfile?.category) {
     return result.midiTimingProfile.category;
   }
+  if (hasFailedPhase(result, ["createInstance", "sendMidiEvents", "sendMidiNoteOff"])) {
+    return "failed";
+  }
   return Number.isInteger(result.midiEventCount) ? "unprofiled" : "missing";
 }
 

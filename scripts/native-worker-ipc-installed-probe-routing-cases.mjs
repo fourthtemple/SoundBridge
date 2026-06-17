@@ -586,8 +586,10 @@ function exerciseProbeMidiCoverage({ check }) {
       !invalidProgramChangeProfile.flags.includes("non-main-channel") &&
       failedMidiSummary.coverage.vst3MidiControllerEvents.failed === 1 &&
       failedMidiSummary.coverage.vst3MidiProgramChangeEvents.failed === 1 &&
+      failedMidiSummary.coverage.midiTiming.failed === 1 &&
       failedMidiSummary.matrix[0].vst3MidiControllerEvents === "failed" &&
       failedMidiSummary.matrix[0].vst3MidiProgramChangeEvents === "failed" &&
+      failedMidiSummary.matrix[0].midiTiming === "failed" &&
       failedMidiSummary.matrix[0].featureStatus.midiEvents === "failed" &&
       midiEventsForBlock("au", 64, 64).every((event) => !event.type.startsWith("noteExpression")),
     "installed plugin probe sends VST3 note-expression, MIDI-controller, and program-change coverage"
