@@ -510,12 +510,32 @@ function exerciseRenderLayoutValidation({ check }) {
   } catch (error) {
     duplicateBusCode = error.code;
   }
+  const malformedBusCodes = [];
+  for (const outputBuses of [
+    [null],
+    [{ index: 32, channels: [[0, 0]] }],
+    [
+      { index: 0, channels: [[0, 0], [0.1, 0.1]] },
+      { index: 2, channels: [0.2, 0.2] }
+    ]
+  ]) {
+    try {
+      assertProbeRenderMatchesLayout({
+        channels: [[0, 0], [0.1, 0.1]],
+        outputBuses
+      }, multiOutputLayout, 2);
+      malformedBusCodes.push("ok");
+    } catch (error) {
+      malformedBusCodes.push(error.code);
+    }
+  }
   check(
     goodMultiOutputCode === "ok" &&
       missingBusCode === "bad_render_layout" &&
       mismatchedMainCode === "bad_render_layout" &&
       mismatchedAuxCode === "bad_render_layout" &&
-      duplicateBusCode === "bad_render_layout",
+      duplicateBusCode === "bad_render_layout" &&
+      malformedBusCodes.every((code) => code === "bad_render_layout"),
     "installed plugin probe validates negotiated output-bus render layouts"
   );
 }
