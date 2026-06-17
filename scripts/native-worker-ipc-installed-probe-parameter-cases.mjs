@@ -10,7 +10,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
         id: 1,
         programs: [{ index: 0, name: "Program 1" }]
       },
-      vst3Unit: { id: 2, programListId: 1 },
+      vst3Unit: { id: 2, nameFallback: true, programListId: 1 },
       vst3MidiMappings: [
         { busIndex: 0, channel: 0, controller: 1 },
         { busIndex: 1, channel: 2, controller: 74 },
@@ -43,6 +43,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile.programChangeWithoutListCount === 1 &&
       parameterProfile.vst3UnitCount === 2 &&
       parameterProfile.nameFallbackCount === 1 &&
+      parameterProfile.vst3UnitNameFallbackCount === 1 &&
       parameterProfile.vst3UnitProgramListLinkCount === 1 &&
       parameterProfile.invalidVst3UnitProgramListLinkCount === 1 &&
       parameterProfile.vst3MidiMappedParameterCount === 1 &&
@@ -53,6 +54,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile.flags.includes("program-change") &&
       parameterProfile.flags.includes("parameter-name-fallback") &&
       parameterProfile.flags.includes("program-change-without-list") &&
+      parameterProfile.flags.includes("vst3-unit-name-fallback") &&
       parameterProfile.flags.includes("vst3-unit-program-list-link") &&
       parameterProfile.flags.includes("invalid-vst3-unit-program-list-link") &&
       parameterProfile.flags.includes("vst3-midi-mapping") &&
@@ -61,6 +63,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile.flags.includes("vst3-midi-mapping-non-main-channel") &&
       matrix.parameterProgramChangeCount === 2 &&
       matrix.parameterNameFallbackCount === 1 &&
+      matrix.parameterVst3UnitNameFallbackCount === 1 &&
       matrix.parameterProgramChangeWithoutListCount === 1 &&
       matrix.parameterVst3UnitProgramListLinkCount === 1 &&
       matrix.parameterInvalidVst3UnitProgramListLinkCount === 1 &&

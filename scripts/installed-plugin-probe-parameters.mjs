@@ -61,6 +61,7 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
       programChangeCount: 0,
       programChangeWithoutListCount: 0,
       vst3UnitCount: 0,
+      vst3UnitNameFallbackCount: 0,
       vst3UnitProgramListLinkCount: 0,
       invalidVst3UnitProgramListLinkCount: 0,
       vst3MidiMappedParameterCount: 0,
@@ -90,6 +91,7 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     programChangeCount: 0,
     programChangeWithoutListCount: 0,
     vst3UnitCount: 0,
+    vst3UnitNameFallbackCount: 0,
     vst3UnitProgramListLinkCount: 0,
     invalidVst3UnitProgramListLinkCount: 0,
     vst3MidiMappedParameterCount: 0,
@@ -141,6 +143,9 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     }
     if (isVst3 && parameter?.vst3Unit && typeof parameter.vst3Unit === "object") {
       profile.vst3UnitCount += 1;
+      if (parameter.vst3Unit.nameFallback === true) {
+        profile.vst3UnitNameFallbackCount += 1;
+      }
       const programListId = boundedVst3ProgramListId(parameter.vst3Unit.programListId);
       if (programListId !== undefined) {
         profile.vst3UnitProgramListLinkCount += 1;
@@ -224,6 +229,9 @@ function parameterProfileFlags(profile, { atLimit, isVst3 }) {
   }
   if (isVst3 && profile.vst3UnitCount > 0) {
     flags.push("vst3-units");
+  }
+  if (isVst3 && profile.vst3UnitNameFallbackCount > 0) {
+    flags.push("vst3-unit-name-fallback");
   }
   if (isVst3 && profile.vst3UnitProgramListLinkCount > 0) {
     flags.push("vst3-unit-program-list-link");

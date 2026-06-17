@@ -220,6 +220,7 @@ function summarizeCompatibilityMatrix(results, options) {
       parameterProgramChangeCount: safeMatrixInteger(result.parameterProfile?.programChangeCount, 0, 1024),
       parameterProgramChangeWithoutListCount: safeMatrixInteger(result.parameterProfile?.programChangeWithoutListCount, 0, 1024),
       parameterVst3UnitCount: safeMatrixInteger(result.parameterProfile?.vst3UnitCount, 0, 1024),
+      parameterVst3UnitNameFallbackCount: safeMatrixInteger(result.parameterProfile?.vst3UnitNameFallbackCount, 0, 1024),
       parameterVst3UnitProgramListLinkCount: safeMatrixInteger(result.parameterProfile?.vst3UnitProgramListLinkCount, 0, 1024),
       parameterInvalidVst3UnitProgramListLinkCount: safeMatrixInteger(result.parameterProfile?.invalidVst3UnitProgramListLinkCount, 0, 1024),
       parameterVst3MidiMappedParameterCount: safeMatrixInteger(result.parameterProfile?.vst3MidiMappedParameterCount, 0, 1024),

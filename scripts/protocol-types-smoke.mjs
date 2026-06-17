@@ -41,6 +41,10 @@ assert(
   "protocol messages type optional VST3 parameter fallback and MIDI-controller mappings"
 );
 assert(
+  /interface PluginVst3Unit\s*{[\s\S]*nameFallback\?: boolean;[\s\S]*programListId\?: number;[\s\S]*}/.test(messages),
+  "protocol messages type optional VST3 unit name fallbacks"
+);
+assert(
   /interface PluginBusLayout\s*{[\s\S]*nameFallback\?: boolean;[\s\S]*active: boolean;[\s\S]*}/.test(messages),
   "protocol messages type optional plugin bus-layout name fallbacks"
 );

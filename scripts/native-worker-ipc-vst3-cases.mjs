@@ -13,6 +13,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       id: 2,
       parentUnitId: 0,
       name: "1234567890",
+      nameFallback: true,
       programListId: 7
     }
   });
@@ -20,7 +21,8 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     unitParameter?.vst3Unit?.id === 2 &&
       unitParameter.vst3Unit.parentUnitId === 0 &&
       unitParameter.vst3Unit.programListId === 7 &&
-      unitParameter.vst3Unit.name === "12345678",
+      unitParameter.vst3Unit.name === "12345678" &&
+      unitParameter.vst3Unit.nameFallback === true,
     "daemon normalizers bound VST3 unit metadata"
   );
   const invalidUnitLink = unitNormalizers.normalizeWorkerParameter({
@@ -35,8 +37,12 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
   });
   check(
     invalidUnitLink?.vst3Unit?.id === 3 &&
+      invalidUnitLink.vst3Unit.name === "Unit 3" &&
+      invalidUnitLink.vst3Unit.nameFallback === true &&
       !Object.hasOwn(invalidUnitLink.vst3Unit, "programListId") &&
       sentinelUnitLink?.vst3Unit?.id === 4 &&
+      sentinelUnitLink.vst3Unit.name === "Unit 4" &&
+      sentinelUnitLink.vst3Unit.nameFallback === true &&
       !Object.hasOwn(sentinelUnitLink.vst3Unit, "programListId"),
     "daemon normalizers omit invalid VST3 unit program-list links"
   );

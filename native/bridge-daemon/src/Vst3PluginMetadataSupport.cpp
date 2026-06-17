@@ -109,14 +109,15 @@ std::string unitInfoToJson(
   if (!unitInfoForParameter(parameter, unitInfo, unit)) {
     return "";
   }
-  auto name = cappedString(VST3::StringConvert::convert(unit.name));
-  if (name.empty()) {
-    name = "Unit " + std::to_string(unit.id);
-  }
+  const auto name = cappedString(VST3::StringConvert::convert(unit.name));
+  const bool nameFallback = name.empty();
   std::ostringstream output;
   output << "{\"id\":" << unit.id
          << ",\"parentUnitId\":" << unit.parentUnitId
-         << ",\"name\":\"" << jsonEscape(name) << "\"";
+         << ",\"name\":\"" << jsonEscape(nameFallback ? "Unit " + std::to_string(unit.id) : name) << "\"";
+  if (nameFallback) {
+    output << ",\"nameFallback\":true";
+  }
   if (unit.programListId != Steinberg::Vst::kNoProgramListId) {
     output << ",\"programListId\":" << unit.programListId;
   }

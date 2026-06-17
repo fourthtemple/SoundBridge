@@ -44,8 +44,9 @@ assert(
 );
 const pluginVst3Unit = resolveRef(schema.$defs?.pluginVst3Unit?.$ref, SCHEMA_URL);
 assert(
-  pluginVst3Unit?.properties?.programListId?.not?.const === -1,
-  "protocol schema excludes the VST3 no-program-list unit sentinel"
+  pluginVst3Unit?.properties?.programListId?.not?.const === -1 &&
+    pluginVst3Unit.properties?.nameFallback?.type === "boolean",
+  "protocol schema declares VST3 unit fallbacks and excludes the no-program-list sentinel"
 );
 const pluginVst3MidiMapping = resolveRef(schema.$defs?.pluginVst3MidiMapping?.$ref, SCHEMA_URL);
 const pluginParameter = resolveRef(schema.$defs?.pluginParameter?.$ref, SCHEMA_URL);

@@ -45,6 +45,7 @@
         "id": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "parentUnitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "name": { "type": "string", "maxLength": 160 },
+        "nameFallback": { "type": "boolean" },
         "programListId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "not": { "const": -1 } }
       }
     },

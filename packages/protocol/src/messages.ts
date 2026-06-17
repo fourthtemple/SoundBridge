@@ -174,6 +174,7 @@ export interface PluginVst3Unit {
   id: number;
   parentUnitId: number;
   name: string;
+  nameFallback?: boolean;
   programListId?: number;
 }
 

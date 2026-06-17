@@ -164,12 +164,17 @@ export function createDaemonNormalizers(options = {}) {
       return undefined;
     }
     const id = rawId;
-    const name = truncateText(unit.name ?? `Unit ${id}`, limits.maxPluginParameterTextBytes) || `Unit ${id}`;
+    const fallbackName = `Unit ${id}`;
+    const name = truncateText(unit.name, limits.maxPluginParameterTextBytes);
+    const nameFallback = unit.nameFallback === true || !name;
     const normalized = {
       id,
       parentUnitId: normalizeInt(unit.parentUnitId, -2147483648, 2147483647, 0),
-      name
+      name: name || fallbackName
     };
+    if (nameFallback) {
+      normalized.nameFallback = true;
+    }
     if (unit.programListId !== undefined) {
       const programListId = normalizeSignedInt32(unit.programListId);
       if (programListId !== undefined && programListId !== vst3NoProgramListId) {
