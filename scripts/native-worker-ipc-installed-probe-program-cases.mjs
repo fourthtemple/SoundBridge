@@ -11,6 +11,12 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
     "installed plugin probe selects bounded listed presets"
   );
 
+  const sentinelProgramTarget = firstVst3ProgramDataTarget({
+    vst3ProgramLists: [
+      { id: -1, programDataSupported: true, programs: [{ index: 0 }] },
+      { id: 8, programDataSupported: true, programs: [{ index: 1 }] }
+    ]
+  });
   const programTarget = firstVst3ProgramDataTarget({
     vst3ProgramLists: [
       { id: 1, programDataSupported: false, programs: [{ index: 0 }] },
@@ -23,7 +29,9 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
     ]
   });
   check(
-    programTarget?.programListId === 2 &&
+    sentinelProgramTarget?.programListId === 8 &&
+      sentinelProgramTarget.programIndex === 1 &&
+      programTarget?.programListId === 2 &&
       programTarget.programIndex === 3 &&
       uniqueFallbackProgramTarget?.programListId === 3 &&
       uniqueFallbackProgramTarget.programIndex === 2 &&
@@ -57,6 +65,7 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
     format: "vst3",
     vst3ProgramLists: [
       { id: "bad", programDataSupported: true, programs: [{ index: 0 }] },
+      { id: -1, programDataSupported: true, programs: [{ index: 1 }] },
       { id: 4, programDataSupported: true, programs: [] },
       { id: 4, programDataSupported: true, programs: [] },
       { id: 5, programDataSupported: true, programs: [{ index: 256 }] }
@@ -95,7 +104,7 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       targetedProgramDataProfile.duplicateProgramIndexCount === 1 &&
       targetedProgramDataProfile.flags.includes("duplicate-program-index") &&
       weirdProgramDataProfile.category === "no-valid-programs" &&
-      weirdProgramDataProfile.invalidProgramListCount === 1 &&
+      weirdProgramDataProfile.invalidProgramListCount === 2 &&
       weirdProgramDataProfile.emptyProgramListCount === 2 &&
       weirdProgramDataProfile.invalidProgramIndexCount === 1 &&
       weirdProgramDataProfile.duplicateProgramListIdCount === 1 &&

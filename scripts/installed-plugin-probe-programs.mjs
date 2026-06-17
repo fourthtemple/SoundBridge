@@ -4,6 +4,7 @@ const MAX_PLUGIN_PARAMETERS = 1024;
 const MAX_PLUGIN_PROGRAMS = 256;
 const MAX_PLUGIN_PROGRAM_LISTS = 256;
 const MAX_PLUGIN_PROGRAM_DATA_BYTES = 384 * 1024;
+const VST3_NO_PROGRAM_LIST_ID = -1;
 
 export async function probeListedPreset({
   assertProbe,
@@ -295,7 +296,8 @@ function vst3ProgramLists(plugin) {
 }
 
 function boundedProgramListId(value) {
-  return boundedInt(value, -2147483648, 2147483647);
+  const id = boundedInt(value, -2147483648, 2147483647);
+  return id === VST3_NO_PROGRAM_LIST_ID ? undefined : id;
 }
 
 function boundedProgramIndex(value) {
