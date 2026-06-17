@@ -5,6 +5,7 @@ import {
   safeMatrixIntegerArray,
   safeMatrixText
 } from "./installed-plugin-probe-reporting-safety.mjs";
+import { vst3EventMatrixFields } from "./installed-plugin-probe-vst3-events-matrix.mjs";
 
 const REPORT_MODES = new Set(["full", "summary", "json", "matrix"]);
 const KNOWN_FILE_GRANT_OPERATIONS = new Set([
@@ -155,33 +156,7 @@ function summarizeCompatibilityMatrix(results, options) {
       busOutputCountMismatch: typeof result.busProfile?.outputBusCountMismatch === "boolean"
         ? result.busProfile.outputBusCountMismatch
         : undefined,
-      vst3EventCategory: safeMatrixText(
-        result.vst3EventProfile?.category ??
-          (String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format"),
-        64
-      ),
-      vst3EventFlags: safeMatrixArray(result.vst3EventProfile?.flags, 64),
-      vst3NoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.noteExpressionCount, 0, 256),
-      vst3ValueNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.valueExpressionCount, 0, 256),
-      vst3TextNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.textExpressionCount, 0, 256),
-      vst3InvalidAssociatedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.invalidAssociatedParameterCount, 0, 256),
-      vst3InvalidNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.invalidNoteExpressionCount, 0, 256),
-      vst3InvalidNoteExpressionRouteCount: safeMatrixInteger(result.vst3EventProfile?.invalidNoteExpressionRouteCount, 0, 256),
-      vst3InvalidNoteExpressionValueMetadataCount: safeMatrixInteger(result.vst3EventProfile?.invalidNoteExpressionValueMetadataCount, 0, 256),
-      vst3InvalidUnitLinkedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.invalidNoteExpressionUnitLinkCount, 0, 256),
-      vst3DuplicateNoteExpressionTypeIdCount: safeMatrixInteger(result.vst3EventProfile?.duplicateNoteExpressionTypeIdCount, 0, 256),
-      vst3AssociatedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.associatedParameterCount, 0, 256),
-      vst3UnitLinkedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.unitLinkedExpressionCount, 0, 256),
-      vst3FixedNoteExpressionValueRangeCount: safeMatrixInteger(result.vst3EventProfile?.fixedValueRangeCount, 0, 256),
-      vst3SteppedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.steppedExpressionCount, 0, 256),
-      vst3BipolarNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.bipolarExpressionCount, 0, 256),
-      vst3OneShotNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.oneShotExpressionCount, 0, 256),
-      vst3AbsoluteNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.absoluteExpressionCount, 0, 256),
-      vst3NoteExpressionMetadataAtLimit:
-        typeof result.vst3EventProfile?.metadataAtLimit === "boolean" ? result.vst3EventProfile.metadataAtLimit : undefined,
-      vst3NoteExpressionTypeIds: safeMatrixIntegerArray(result.vst3EventProfile?.typeIds, 0, 4_294_967_295),
-      vst3EventBuses: safeMatrixIntegerArray(result.vst3EventProfile?.eventBuses, 0, 31),
-      vst3EventChannels: safeMatrixIntegerArray(result.vst3EventProfile?.channels, 0, 15),
+      ...vst3EventMatrixFields(result),
       latencyTail: safeMatrixText(latencyTailStatus(result), 64),
       pluginLatencySamples: safeMatrixInteger(result.pluginLatencySamples, 0, 1_048_576),
       transportLatencySamples: safeMatrixInteger(result.transportLatencySamples, 0, 1_048_576),
