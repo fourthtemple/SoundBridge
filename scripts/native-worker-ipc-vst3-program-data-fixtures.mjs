@@ -21,6 +21,9 @@ export async function exerciseVst3ProgramDataNativeWorker({
     await programDataWorker.ready;
     const exported = await programDataWorker.getVst3ProgramData(2147483647, 255);
     const exportedBytes = await programDataWorker.getVst3ProgramData(7, 2);
+    const badExportMessage = await rejectedMessage(() =>
+      programDataWorker.getVst3ProgramData(8, 0)
+    );
     check(
       exported?.programListId === 2147483647 &&
         exported.programIndex === 255 &&
@@ -34,6 +37,10 @@ export async function exerciseVst3ProgramDataNativeWorker({
         exportedBytes.size === 2 &&
         exportedBytes.data === "YWI=",
       "native VST3 workers derive program-data export sizes from bounded bytes"
+    );
+    check(
+      badExportMessage === "VST3 program data was not valid base64.",
+      "native VST3 workers reject invalid program-data exports"
     );
 
     const restoredEmpty = await programDataWorker.setVst3ProgramData(-2147483648, 0, "");
@@ -113,6 +120,7 @@ const responses = new Map([
     "getProgramData 7 2",
     { programData: { format: "vst3", programListId: 7, programIndex: 2, size: 999, data: "YWI=" } }
   ],
+  ["getProgramData 8 0", { programData: { format: "vst3", programListId: 8, programIndex: 0, data: "not-base64" } }],
   ["setProgramData -2147483648 0 -", { ok: true, restored: "empty" }],
   ["setProgramData 7 2 YWI=", { ok: true, restored: "bytes" }],
   ["setProgramData 7 3 YWI=", { ok: false }],
