@@ -6,6 +6,7 @@ import {
   FileGrantApprovalBroker,
   createConfiguredFileGrantApprovalBroker
 } from "./file-grant-approval-broker-process.mjs";
+import { createDaemonFileGrants } from "./daemon-file-grants.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const fixturePath = path.join(scriptDir, "file-grant-approval-broker-fixture.mjs");
@@ -83,6 +84,7 @@ try {
   await assertRejectsBroker("malformed-request", "malformed command responses are rejected", "stdout_malformed");
   await assertRejectsBroker("oversized-request", "oversized command responses are rejected", "line_too_large");
   await assertRejectsBroker("request-timeout", "missing command responses time out", "command_timeout");
+  await assertDaemonBrokerFailureStaysPathFree();
 
   console.log("File grant approval broker IPC smoke test passed.");
 } finally {
@@ -137,4 +139,59 @@ async function assertRejectsBroker(mode, message, expectedErrorText) {
     return;
   }
   throw new Error(message);
+}
+
+async function assertDaemonBrokerFailureStaysPathFree() {
+  const fileGrants = new Map();
+  const session = {
+    sessionToken: "session-token",
+    origin: "http://127.0.0.1:5173",
+    expiresAt: Date.now() + 60_000,
+    fileGrants: new Set()
+  };
+  const support = createDaemonFileGrants({
+    approvalBroker: {
+      available: true,
+      async requestFileGrant() {
+        throw new Error(`approval failed for ${approvedFile}`);
+      }
+    },
+    fileGrants,
+    sessions: new Map([[session.sessionToken, session]]),
+    roots: [root],
+    limits: {
+      fileGrantTtlMs: 60_000,
+      maxFileGrantDisplayNameBytes: 64,
+      maxFileGrantPathBytes: 4096,
+      maxFileGrantsPerSession: 4,
+      maxTotalFileGrants: 16
+    },
+    makeProtocolError
+  });
+  const error = await rejectedError(() =>
+    support.createFileGrant({ purpose: "sample", access: "read", kind: "file" }, session)
+  );
+  assert(
+    error?.code === "file_grant_broker_failed" &&
+      !String(error.message).includes(approvedFile) &&
+      fileGrants.size === 0 &&
+      session.fileGrants.size === 0,
+    "daemon file grant approval failures stay generic, path-free, and unrecorded"
+  );
+}
+
+function makeProtocolError(code, message, details) {
+  const error = new Error(message);
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+async function rejectedError(operation) {
+  try {
+    await operation();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }
