@@ -209,6 +209,9 @@ export function createDaemonNormalizers(options = {}) {
     if (value == null) {
       return normalizeInt(fallbackIndex, 0, limits.maxPluginPrograms - 1, 0);
     }
+    if (typeof value !== "number" && typeof value !== "string") {
+      return undefined;
+    }
     if (typeof value === "string" && value.trim() === "") {
       return undefined;
     }

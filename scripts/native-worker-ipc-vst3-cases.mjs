@@ -85,7 +85,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       nameFallback: true,
       unitId: "2",
       programDataSupported: true,
-      programs: [{ index: 0, name: "1234567890", normalizedValue: 0.5, nameFallback: true }]
+      programs: [{ index: "0", name: "1234567890", normalizedValue: 0.5, nameFallback: true }]
     }
   ]);
   check(
@@ -94,6 +94,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       unitProgramList.programDataSupported === true &&
       unitProgramList.name === "12345678" &&
       unitProgramList.nameFallback === true &&
+      unitProgramList.programs?.[0]?.index === 0 &&
       unitProgramList.programs?.[0]?.name === "12345678" &&
       unitProgramList.programs?.[0]?.nameFallback === true,
     "daemon normalizers bound VST3 program-list metadata"
@@ -115,6 +116,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       programs: [
         { index: "bad", name: "Broken", normalizedValue: 0.25 },
         { name: "Fallback", normalizedValue: 0.5 },
+        { index: false, name: "Boolean", normalizedValue: 0.25 },
         { index: 255, name: "Boundary", normalizedValue: 1 },
         { index: 256, name: "Out of Range", normalizedValue: 0.75 }
       ]
