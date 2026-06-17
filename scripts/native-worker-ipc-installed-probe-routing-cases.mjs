@@ -313,6 +313,15 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       { index: 2, channels: 1, active: true }
     ]
   });
+  const extraOnlyOutputSignalProfile = summarizeProbeOutputBusSignal({
+    channels: [[0, 0]],
+    outputBuses: [
+      { index: 4, channels: [[0.2, 0.4]] }
+    ]
+  }, {
+    outputChannels: 1,
+    outputBusLayouts: [{ index: 0, channels: 1, active: true }]
+  });
   const missingOutputSignalMatrix = summarizeProbeResults([{
     ok: true,
     outputBusSignalProfile: missingOutputSignalProfile
@@ -324,6 +333,10 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
   const auxOnlyOutputSignalMatrix = summarizeProbeResults([{
     ok: true,
     outputBusSignalProfile: auxOnlyOutputSignalProfile
+  }]).matrix[0];
+  const extraOnlyOutputSignalMatrix = summarizeProbeResults([{
+    ok: true,
+    outputBusSignalProfile: extraOnlyOutputSignalProfile
   }]).matrix[0];
   check(
     outputBusSignalProfile.category === "main-aux-signal" &&
@@ -338,10 +351,11 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       JSON.stringify(outputBusSignalProfile.silentOutputBusIndexes) === JSON.stringify([1]) &&
       JSON.stringify(outputBusSignalProfile.extraOutputBusIndexes) === JSON.stringify([4, 5]) &&
       JSON.stringify(outputBusSignalProfile.extraSignalOutputBusIndexes) === JSON.stringify([4]) &&
-      inactiveOutputSignalProfile.category === "silent" &&
+      inactiveOutputSignalProfile.category === "extra-signal" &&
       inactiveOutputSignalProfile.outputBusCount === 1 &&
       inactiveOutputSignalProfile.signalOutputBusCount === 0 &&
       inactiveOutputSignalProfile.silentOutputBusCount === 1 &&
+      inactiveOutputSignalProfile.extraSignalOutputBusCount === 1 &&
       !inactiveOutputSignalProfile.flags.includes("aux-signal") &&
       auxOnlyOutputSignalProfile.category === "aux-signal" &&
       auxOnlyOutputSignalProfile.signalOutputBusCount === 1 &&
@@ -353,6 +367,15 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       auxOnlyOutputSignalMatrix.outputBusSignalCount === 1 &&
       auxOnlyOutputSignalMatrix.outputBusSilentCount === 2 &&
       JSON.stringify(auxOnlyOutputSignalMatrix.outputBusSignalIndexes) === JSON.stringify([1]) &&
+      extraOnlyOutputSignalProfile.category === "extra-signal" &&
+      extraOnlyOutputSignalProfile.signalOutputBusCount === 0 &&
+      extraOnlyOutputSignalProfile.missingOutputBusCount === 1 &&
+      extraOnlyOutputSignalProfile.extraSignalOutputBusCount === 1 &&
+      extraOnlyOutputSignalProfile.flags.includes("extra-output-bus-signal") &&
+      extraOnlyOutputSignalMatrix.outputBusSignal === "extra-signal" &&
+      extraOnlyOutputSignalMatrix.outputBusMissingCount === 1 &&
+      extraOnlyOutputSignalMatrix.outputBusExtraSignalCount === 1 &&
+      JSON.stringify(extraOnlyOutputSignalMatrix.outputBusExtraSignalIndexes) === JSON.stringify([4]) &&
       failedRenderSummary.coverage.renderSignals.failed === 1 &&
       failedRenderSummary.coverage.hostTransport.failed === 1 &&
       failedRenderSummary.matrix[0].renderSignal === "failed" &&

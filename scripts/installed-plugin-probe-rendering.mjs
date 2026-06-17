@@ -101,7 +101,14 @@ export function summarizeProbeOutputBusSignal(rendered, layout) {
     flags.push("silent");
   }
   return {
-    category: outputBusSignalCategory({ activeBuses, auxSignal, mainSignal, missingOutputBusIndexes, signalOutputBusIndexes }),
+    category: outputBusSignalCategory({
+      activeBuses,
+      auxSignal,
+      extraSignalOutputBusIndexes,
+      mainSignal,
+      missingOutputBusIndexes,
+      signalOutputBusIndexes
+    }),
     flags,
     outputBusCount: activeBuses.length,
     signalOutputBusCount: signalOutputBusIndexes.length,
@@ -135,8 +142,19 @@ function indexedOutputBuses(outputBuses) {
   return byIndex;
 }
 
-function outputBusSignalCategory({ activeBuses, auxSignal, mainSignal, missingOutputBusIndexes, signalOutputBusIndexes }) {
-  if (activeBuses.length > 0 && missingOutputBusIndexes.length === activeBuses.length) {
+function outputBusSignalCategory({
+  activeBuses,
+  auxSignal,
+  extraSignalOutputBusIndexes,
+  mainSignal,
+  missingOutputBusIndexes,
+  signalOutputBusIndexes
+}) {
+  if (
+    activeBuses.length > 0 &&
+    missingOutputBusIndexes.length === activeBuses.length &&
+    extraSignalOutputBusIndexes.length === 0
+  ) {
     return "missing";
   }
   if (mainSignal && auxSignal) {
@@ -147,6 +165,9 @@ function outputBusSignalCategory({ activeBuses, auxSignal, mainSignal, missingOu
   }
   if (mainSignal) {
     return "main-signal";
+  }
+  if (extraSignalOutputBusIndexes.length > 0) {
+    return "extra-signal";
   }
   return signalOutputBusIndexes.length > 0 ? "signal" : "silent";
 }
