@@ -1,3 +1,5 @@
+import { createMidiEventEncoder } from "./daemon-midi-event-encoding.mjs";
+
 export function createDaemonNormalizers(options = {}) {
   const vst3NoParamId = "4294967295";
   const vst3NoProgramListId = -1;
@@ -20,104 +22,7 @@ export function createDaemonNormalizers(options = {}) {
     maxSampleRate: positiveInteger(options.maxSampleRate, 384000)
   };
   const protocolError = options.makeProtocolError ?? defaultProtocolError;
-
-  function encodeMidiEvents(events, format = "unknown") {
-    if (!Array.isArray(events) || events.length === 0) {
-      return "-";
-    }
-
-    return events
-      .map((event) => {
-        if (event.type === "noteOn") {
-          return vst3NoteEventToken("on", event, event.velocity, format);
-        }
-        if (event.type === "noteOff") {
-          return vst3NoteEventToken("off", event, event.velocity, format);
-        }
-        if (event.type === "controlChange") {
-          return vst3BusEventToken(["cc", event.controller, event.value, event.channel, event.time], event, format);
-        }
-        if (event.type === "pitchBend") {
-          return vst3BusEventToken(["bend", event.value, event.channel, event.time], event, format);
-        }
-        if (event.type === "channelPressure") {
-          return vst3BusEventToken(["pressure", event.pressure, event.channel, event.time], event, format);
-        }
-        if (event.type === "polyPressure") {
-          return vst3NoteEventToken("poly", event, event.pressure, format);
-        }
-        if (event.type === "programChange") {
-          return vst3BusEventToken(["program", event.program, event.channel, event.time], event, format);
-        }
-        if (event.type === "noteExpression" && format === "vst3") {
-          return vst3BusEventToken([
-            "expr",
-            boundedVst3NoteExpressionInteger(event.typeId, 0, 4_294_967_295, "typeId"),
-            boundedVst3NoteExpressionValue(event.value),
-            boundedVst3NoteExpressionInteger(event.noteId, 0, 2_147_483_647, "noteId"),
-            event.channel,
-            event.time
-          ], event, format);
-        }
-        if (event.type === "noteExpressionText" && format === "vst3") {
-          const encodedText = encodeVst3NoteExpressionText(event.text);
-          return vst3BusEventToken([
-            "exprText",
-            boundedVst3NoteExpressionInteger(event.typeId, 0, 4_294_967_295, "typeId"),
-            encodedText,
-            boundedVst3NoteExpressionInteger(event.noteId, 0, 2_147_483_647, "noteId"),
-            event.channel,
-            event.time
-          ], event, format);
-        }
-        throw protocolError("invalid_argument", `Unsupported MIDI event type: ${event.type}`);
-      })
-      .join(";");
-  }
-
-  function encodeVst3NoteExpressionText(value) {
-    if (typeof value !== "string") {
-      throw protocolError("invalid_argument", "VST3 note-expression text must be a string.");
-    }
-    const byteLength = Buffer.byteLength(value, "utf8");
-    if (byteLength === 0 || byteLength > limits.maxPluginNoteExpressionTextBytes || value.includes("\u0000")) {
-      throw protocolError(
-        "invalid_argument",
-        `VST3 note-expression text must be 1..${limits.maxPluginNoteExpressionTextBytes} UTF-8 bytes without NUL characters.`
-      );
-    }
-    return Buffer.from(value, "utf8").toString("base64");
-  }
-
-  function boundedVst3NoteExpressionInteger(value, min, max, field) {
-    if (!Number.isInteger(value) || value < min || value > max) {
-      throw protocolError("invalid_argument", `VST3 note-expression ${field} must be an integer in ${min}..${max}.`);
-    }
-    return value;
-  }
-
-  function boundedVst3NoteExpressionValue(value) {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-      throw protocolError("invalid_argument", "VST3 note-expression value must be a number in 0..1.");
-    }
-    return value;
-  }
-
-  function vst3NoteEventToken(kind, event, value, format) {
-    const token = [kind, event.note, value, event.channel, event.time];
-    if (format === "vst3" && Number.isInteger(event.noteId)) {
-      token.push(event.noteId);
-    }
-    return vst3BusEventToken(token, event, format);
-  }
-
-  function vst3BusEventToken(parts, event, format) {
-    const token = [...parts];
-    if (format === "vst3" && Number.isInteger(event.busIndex)) {
-      token.push(`bus=${event.busIndex}`);
-    }
-    return token.join(":");
-  }
+  const { encodeMidiEvents } = createMidiEventEncoder({ limits, protocolError });
 
   function normalizeWorkerParameters(parameters) {
     if (!Array.isArray(parameters)) {

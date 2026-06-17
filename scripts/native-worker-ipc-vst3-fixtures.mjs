@@ -44,6 +44,25 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
     const badAckMessage = await rejectedMessage(() =>
       midiWorker.sendMidiEvents([{ type: "controlChange", controller: 2, value: 0.5, channel: 0, time: 0 }])
     );
+    const invalidControllerMessages = await Promise.all([
+      rejectedMessage(() =>
+        midiWorker.sendMidiEvents([{ type: "controlChange", controller: -1, value: 0.5, channel: 0, time: 0 }])
+      ),
+      rejectedMessage(() =>
+        midiWorker.sendMidiEvents([{ type: "controlChange", controller: 1, value: 2, channel: 0, time: 0 }])
+      ),
+      rejectedMessage(() =>
+        midiWorker.sendMidiEvents([{ type: "pitchBend", value: 2, channel: 0, time: 0 }])
+      ),
+      rejectedMessage(() =>
+        midiWorker.sendMidiEvents([{ type: "programChange", program: 128, channel: 0, time: 0 }])
+      ),
+      rejectedMessage(() =>
+        midiWorker.sendMidiEvents([
+          { type: "controlChange", controller: 1, value: 0.5, channel: 0, time: 0, busIndex: 32 }
+        ])
+      )
+    ]);
     check(
       routed.eventCount === 4 && mainBus.eventCount === 4,
       "native VST3 workers encode explicit-bus and main-bus MIDI-controller/program-change events"
@@ -52,6 +71,16 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
     check(
       badAckMessage === "worker returned invalid MIDI acknowledgement",
       "native host workers reject mismatched MIDI acknowledgements"
+    );
+    check(
+      JSON.stringify(invalidControllerMessages) === JSON.stringify([
+        "MIDI controller must be an integer in 0..127.",
+        "MIDI value must be a number in 0..1.",
+        "MIDI pitch bend value must be a number in -1..1.",
+        "MIDI program must be an integer in 0..127.",
+        "MIDI busIndex must be an integer in 0..31."
+      ]),
+      "native VST3 workers reject malformed MIDI-controller/program-change events before IPC"
     );
   } finally {
     midiWorker.destroy();
