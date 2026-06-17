@@ -226,6 +226,19 @@ export async function exerciseVst3MultiBusNativeWorker({
         JSON.stringify(legacyBusRendered.outputBuses[0].channels) === JSON.stringify(legacyBusRendered.channels),
       "native VST3 workers synthesize main output buses for legacy render responses"
     );
+    const emptyOutputBusesRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0.1, 0.3], [0.5, 0.7]],
+      transport: { samplePosition: 184 }
+    });
+    check(
+      JSON.stringify(emptyOutputBusesRendered.channels) === JSON.stringify([[0.1, 0.3], [0.5, 0.7]]) &&
+        emptyOutputBusesRendered.outputBuses?.length === 1 &&
+        emptyOutputBusesRendered.outputBuses[0]?.index === 0 &&
+        JSON.stringify(emptyOutputBusesRendered.outputBuses[0].channels) === JSON.stringify(emptyOutputBusesRendered.channels),
+      "native VST3 workers synthesize main output buses for empty bus responses"
+    );
   } finally {
     busWorker.destroy();
   }
@@ -616,6 +629,16 @@ process.stdin.on("data", (chunk) => {
       JSON.stringify(channels) === JSON.stringify([[0.4, 0.2], [0.1, 0]]);
     if (legacyOutputBusRequestMatched) {
       process.stdout.write(JSON.stringify({ channels }) + "\\n");
+      continue;
+    }
+
+    const emptyOutputBusRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[4] === "-" &&
+      parts[5] === "sample=184" &&
+      JSON.stringify(channels) === JSON.stringify([[0.1, 0.3], [0.5, 0.7]]);
+    if (emptyOutputBusRequestMatched) {
+      process.stdout.write(JSON.stringify({ channels, outputBuses: [] }) + "\\n");
       continue;
     }
 
