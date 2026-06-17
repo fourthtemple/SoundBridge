@@ -674,7 +674,7 @@ export function createNativeWorkerProcesses({
 
   function normalizeWorkerOutputBuses(value, mainChannels, layout, frames) {
     if (!Array.isArray(value)) {
-      return undefined;
+      return [{ index: 0, channels: mainChannels }];
     }
     const byIndex = new Map();
     for (const bus of value.slice(0, limits.maxPluginBuses)) {

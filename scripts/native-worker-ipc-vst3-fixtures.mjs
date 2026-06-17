@@ -115,6 +115,19 @@ export async function exerciseVst3MultiBusNativeWorker({
         JSON.stringify(weirdBuses.get(31)) === JSON.stringify([[-0.2, -0.4]]),
       "native VST3 workers normalize weird output-bus render responses"
     );
+    const legacyBusRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0.4, 0.2], [0.1, 0]],
+      transport: { samplePosition: 136 }
+    });
+    check(
+      JSON.stringify(legacyBusRendered.channels) === JSON.stringify([[0.4, 0.2], [0.1, 0]]) &&
+        legacyBusRendered.outputBuses?.length === 1 &&
+        legacyBusRendered.outputBuses[0]?.index === 0 &&
+        JSON.stringify(legacyBusRendered.outputBuses[0].channels) === JSON.stringify(legacyBusRendered.channels),
+      "native VST3 workers synthesize main output buses for legacy render responses"
+    );
   } finally {
     busWorker.destroy();
   }
@@ -692,6 +705,16 @@ process.stdin.on("data", (chunk) => {
           { index: 99, channels: [[-0.2, -0.4]] }
         ]
       }) + "\\n");
+      continue;
+    }
+
+    const legacyOutputBusRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[4] === "-" &&
+      parts[5] === "sample=136" &&
+      JSON.stringify(channels) === JSON.stringify([[0.4, 0.2], [0.1, 0]]);
+    if (legacyOutputBusRequestMatched) {
+      process.stdout.write(JSON.stringify({ channels }) + "\\n");
       continue;
     }
 
