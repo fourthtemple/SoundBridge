@@ -354,55 +354,25 @@ const nativeInstance = {
     bundlePath: "/tmp/fixture.vst3"
   }
 };
-const editorSupport = createDaemonEditors({
-  cleanupExpiredEditors() {},
-  clonePluginMetadata(plugin) {
-    const { nativeHost, diagnostics, bundlePath, ...publicPlugin } = plugin;
-    return publicPlugin;
-  },
-  destroyEditorRecord(editor) {
-    editor.close?.();
-    editors.delete(editor.editorId);
-    session.editors.delete(editor.editorId);
-  },
-  editors,
-  formatCategory(format) {
-    return String(format).toUpperCase();
-  },
-  getInstance(instanceId, ownerSession) {
-    assert(instanceId === nativeInstance.instanceId, "daemon editor test requested known instance");
-    assert(ownerSession.sessionToken === session.sessionToken, "daemon editor test preserves session ownership");
-    return nativeInstance;
-  },
-  limits: {
-    editorSessionTtlMs: 60_000,
-    maxEditorsPerSession: 8,
-    maxTotalEditors: 32
-  },
-  makeProtocolError(code, message, details) {
-    const error = new Error(message);
-    error.code = code;
-    error.details = details;
-    return error;
-  },
-  nativeEditorBroker: grantAwareConfigured,
-  resolveNativeFileGrants() {
-    return [fixtureFileGrant];
-  },
-  resolvePlugin() {
-    return {
-      pluginId: nativeInstance.pluginId,
-      format: nativeInstance.format,
-      name: "Fixture VST3",
-      vendor: "SoundBridge",
-      category: "Effect",
-      kind: nativeInstance.kind,
-      source: "scan",
-      inputs: 2,
-      outputs: 2
-    };
+
+const failingEditorSupport = createEditorSupport({
+  available: true,
+  async openEditor() {
+    throw new Error("fixture broker failed while opening /tmp/private-plugin.vst3");
   }
 });
+const failedNativeEditor = await rejectedError(() =>
+  failingEditorSupport.openEditor({ instanceId: nativeInstance.instanceId, mode: "native" }, session)
+);
+assert(
+  failedNativeEditor?.code === "editor_broker_failed" &&
+    !failedNativeEditor.message.includes("/tmp/private-plugin.vst3") &&
+    editors.size === 0 &&
+    session.editors.size === 0,
+  "daemon editor support keeps failed native broker opens generic and unrecorded"
+);
+
+const editorSupport = createEditorSupport(grantAwareConfigured);
 const nativeEditor = await editorSupport.openEditor({ instanceId: nativeInstance.instanceId, mode: "native" }, session);
 assert(nativeEditor.kind === "native-window", "daemon editor support returns native-window kind");
 assert(nativeEditor.native === true, "daemon editor support marks native editor sessions");
@@ -435,6 +405,58 @@ function assertThrows(callback, message) {
   assert(threw, message);
 }
 
+function createEditorSupport(nativeEditorBroker) {
+  return createDaemonEditors({
+    cleanupExpiredEditors() {},
+    clonePluginMetadata(plugin) {
+      const { nativeHost, diagnostics, bundlePath, ...publicPlugin } = plugin;
+      return publicPlugin;
+    },
+    destroyEditorRecord(editor) {
+      editor.close?.();
+      editors.delete(editor.editorId);
+      session.editors.delete(editor.editorId);
+    },
+    editors,
+    formatCategory(format) {
+      return String(format).toUpperCase();
+    },
+    getInstance(instanceId, ownerSession) {
+      assert(instanceId === nativeInstance.instanceId, "daemon editor test requested known instance");
+      assert(ownerSession.sessionToken === session.sessionToken, "daemon editor test preserves session ownership");
+      return nativeInstance;
+    },
+    limits: {
+      editorSessionTtlMs: 60_000,
+      maxEditorsPerSession: 8,
+      maxTotalEditors: 32
+    },
+    makeProtocolError(code, message, details) {
+      const error = new Error(message);
+      error.code = code;
+      error.details = details;
+      return error;
+    },
+    nativeEditorBroker,
+    resolveNativeFileGrants() {
+      return [fixtureFileGrant];
+    },
+    resolvePlugin() {
+      return {
+        pluginId: nativeInstance.pluginId,
+        format: nativeInstance.format,
+        name: "Fixture VST3",
+        vendor: "SoundBridge",
+        category: "Effect",
+        kind: nativeInstance.kind,
+        source: "scan",
+        inputs: 2,
+        outputs: 2
+      };
+    }
+  });
+}
+
 function hasPrivatePathFields(value) {
   if (!value || typeof value !== "object") {
     return false;
@@ -448,6 +470,15 @@ function hasPrivatePathFields(value) {
     }
   }
   return false;
+}
+
+async function rejectedError(operation) {
+  try {
+    await operation();
+  } catch (error) {
+    return error;
+  }
+  return undefined;
 }
 
 async function assertRejectsBroker(mode, message, expectedErrorText) {
