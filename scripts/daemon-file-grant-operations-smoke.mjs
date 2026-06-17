@@ -36,6 +36,7 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     absolutePath: `${absolutePath}.license`
   });
   let observedAbsolutePath;
+  let observedSampleAbsolutePath;
   const observedOperations = [];
   const instance = {
     instanceId: "inst-test",
@@ -45,6 +46,9 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     worker: {
       async useFileGrant({ operation, grant: workerGrant }) {
         observedAbsolutePath = workerGrant.absolutePath;
+        if (operation === "loadSample") {
+          observedSampleAbsolutePath = workerGrant.absolutePath;
+        }
         observedOperations.push({ operation, grant: workerGrant });
         const status = operation === "loadSample" ? `loaded ${workerGrant.absolutePath}` : `${operation}-ok`;
         return { applied: operation !== "other", status, absolutePath: workerGrant.absolutePath };
@@ -309,7 +313,7 @@ export async function exerciseDaemonFileGrantOperation({ absolutePath, check, pr
     "daemon file grant operations keep worker-refused advanced grants path-free"
   );
 
-  return { response, observedAbsolutePath };
+  return { response, observedAbsolutePath: observedSampleAbsolutePath };
 }
 
 function grantFixture(base, overrides) {
