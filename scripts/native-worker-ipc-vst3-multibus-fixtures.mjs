@@ -59,6 +59,22 @@ export async function exerciseVst3MultiBusNativeWorker({
         JSON.stringify(sidechainRendered.outputBuses?.[2]?.channels) === JSON.stringify([[-0.1, -0.3]]),
       "native VST3 workers route explicit sidechain buses independently of legacy channels"
     );
+    const auxOnlyInputRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0.2, 0.1], [0.4, 0.3]],
+      inputBuses: [{ index: 1, channels: [[0.05, 0.15]] }],
+      transport: { samplePosition: 104 }
+    });
+    const auxOnlyInputBuses = new Map((auxOnlyInputRendered.outputBuses ?? []).map((bus) => [bus.index, bus.channels]));
+    check(
+      auxOnlyInputRendered.outputBuses?.length === 3 &&
+        JSON.stringify(auxOnlyInputRendered.channels) === JSON.stringify([[0.25, 0.25], [0.4, 0.3]]) &&
+        JSON.stringify(auxOnlyInputBuses.get(0)) === JSON.stringify(auxOnlyInputRendered.channels) &&
+        JSON.stringify(auxOnlyInputBuses.get(1)) === JSON.stringify([[0.05, 0.15]]) &&
+        JSON.stringify(auxOnlyInputBuses.get(2)) === JSON.stringify([[-0.05, -0.15]]),
+      "native VST3 workers preserve legacy main input when only aux input buses are explicit"
+    );
     const multiAuxRendered = await busWorker.render({
       frames: 2,
       sampleRate: 48000,
@@ -411,6 +427,26 @@ process.stdin.on("data", (chunk) => {
           { index: 0, channels: sidechainMainOutput },
           { index: 1, channels: [[0.1, 0.3]] },
           { index: 2, channels: [[-0.1, -0.3]] }
+        ]
+      }) + "\\n");
+      continue;
+    }
+
+    const auxOnlyInputLegacyChannels = [[0.2, 0.1], [0.4, 0.3]];
+    const auxOnlyInputBuses = [{ index: 1, channels: [[0.05, 0.15]] }];
+    const auxOnlyInputRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[5] === "sample=104" &&
+      JSON.stringify(channels) === JSON.stringify(auxOnlyInputLegacyChannels) &&
+      JSON.stringify(inputBuses) === JSON.stringify(auxOnlyInputBuses);
+    if (auxOnlyInputRequestMatched) {
+      const auxOnlyInputMainOutput = [[0.25, 0.25], [0.4, 0.3]];
+      process.stdout.write(JSON.stringify({
+        channels: auxOnlyInputMainOutput,
+        outputBuses: [
+          { index: 0, channels: auxOnlyInputMainOutput },
+          { index: 1, channels: [[0.05, 0.15]] },
+          { index: 2, channels: [[-0.05, -0.15]] }
         ]
       }) + "\\n");
       continue;
