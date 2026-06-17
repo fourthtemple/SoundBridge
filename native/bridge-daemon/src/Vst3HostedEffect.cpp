@@ -278,6 +278,13 @@ std::string HostedVst3Effect::setParameter(Steinberg::Vst::ParamID id, double va
   if (!controller_) {
     throw std::runtime_error("VST3 plugin does not expose an edit controller.");
   }
+  Steinberg::Vst::ParameterInfo info {};
+  if (!parameterInfoForId(id, info)) {
+    throw std::runtime_error("unknown_parameter");
+  }
+  if ((info.flags & Steinberg::Vst::ParameterInfo::kIsReadOnly) != 0) {
+    throw std::runtime_error("parameter_read_only");
+  }
   const auto normalizedValue = std::clamp(value, 0.0, 1.0);
   if (controller_->setParamNormalized(id, normalizedValue) != Steinberg::kResultOk) {
     throw std::runtime_error("VST3 controller rejected parameter value.");
@@ -290,24 +297,21 @@ std::string HostedVst3Effect::setParameter(Steinberg::Vst::ParamID id, double va
       normalizedValue,
       std::clamp<std::uint32_t>(sampleOffset, 0, kMaxWorkerFrames - 1)});
 
-  Steinberg::Vst::ParameterInfo info {};
-  const auto count = std::clamp<Steinberg::int32>(
-      controller_->getParameterCount(),
-      0,
-      static_cast<Steinberg::int32>(kMaxWorkerParameters));
-  for (Steinberg::int32 index = 0; index < count; ++index) {
-    if (controller_->getParameterInfo(index, info) == Steinberg::kResultOk && info.id == id) {
-      return std::string("{\"parameter\":") +
-          vst3_worker::parameterInfoToJson(info, controller_, unitInfo_, programListData_) +
-          "}";
-    }
-  }
-  throw std::runtime_error("unknown_parameter");
+  return std::string("{\"parameter\":") +
+      vst3_worker::parameterInfoToJson(info, controller_, unitInfo_, programListData_) +
+      "}";
 }
 
 std::string HostedVst3Effect::setParameterDisplayValue(Steinberg::Vst::ParamID id, const std::string& displayValue) {
   if (!controller_) {
     throw std::runtime_error("VST3 plugin does not expose an edit controller.");
+  }
+  Steinberg::Vst::ParameterInfo info {};
+  if (!parameterInfoForId(id, info)) {
+    throw std::runtime_error("unknown_parameter");
+  }
+  if ((info.flags & Steinberg::Vst::ParameterInfo::kIsReadOnly) != 0) {
+    throw std::runtime_error("parameter_read_only");
   }
   Steinberg::Vst::String128 text {};
   if (!VST3::StringConvert::convert(displayValue, text)) {
