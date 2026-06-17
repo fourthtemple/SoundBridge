@@ -231,6 +231,12 @@ function* renderSamples(rendered) {
 }
 
 function clampInt(value, min, max, fallback) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return fallback;
+  }
+  if (typeof value === "string" && value.trim().length === 0) {
+    return fallback;
+  }
   const number = Number(value);
   return Number.isInteger(number) ? Math.max(min, Math.min(max, number)) : fallback;
 }

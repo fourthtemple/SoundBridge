@@ -540,6 +540,42 @@ function exerciseRenderLayoutValidation({ check }) {
   } catch (error) {
     duplicateBusCode = error.code;
   }
+  let typedLayoutCode = "ok";
+  try {
+    assertProbeRenderMatchesLayout({
+      channels: [[0, 0], [0.1, 0.1]],
+      outputBuses: [
+        { index: 0, channels: [[0, 0], [0.1, 0.1]] },
+        { index: 2, channels: [[0.2, 0.2]] }
+      ]
+    }, {
+      outputChannels: "2",
+      outputBusLayouts: [
+        { index: "0", channels: "2", active: true },
+        { index: "2", channels: "1", active: true }
+      ]
+    }, "2");
+  } catch (error) {
+    typedLayoutCode = error.code;
+  }
+  let booleanLayoutCode = "ok";
+  try {
+    assertProbeRenderMatchesLayout({
+      channels: [[0, 0], [0.1, 0.1]],
+      outputBuses: [
+        { index: 0, channels: [[0, 0], [0.1, 0.1]] },
+        { index: 2, channels: [[0.2, 0.2]] }
+      ]
+    }, {
+      outputChannels: true,
+      outputBusLayouts: [
+        { index: true, channels: "2", active: true },
+        { index: "", channels: true, active: true }
+      ]
+    }, "2");
+  } catch (error) {
+    booleanLayoutCode = error.code;
+  }
   const malformedBusCodes = [];
   for (const outputBuses of [
     [null],
@@ -565,6 +601,8 @@ function exerciseRenderLayoutValidation({ check }) {
       mismatchedMainCode === "bad_render_layout" &&
       mismatchedAuxCode === "bad_render_layout" &&
       duplicateBusCode === "bad_render_layout" &&
+      typedLayoutCode === "ok" &&
+      booleanLayoutCode === "bad_render_layout" &&
       malformedBusCodes.every((code) => code === "bad_render_layout"),
     "installed plugin probe validates negotiated output-bus render layouts"
   );
