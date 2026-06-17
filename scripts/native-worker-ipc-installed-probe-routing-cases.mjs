@@ -690,7 +690,7 @@ function exerciseProbeMidiCoverage({ check }) {
       vst3MidiControllerProfile.flags.includes("negative-controller-value") &&
       vst3MidiControllerProfile.flags.includes("positive-controller-value") &&
       JSON.stringify(vst3MidiControllerProfile.types) === JSON.stringify(["controlChange", "pitchBend", "channelPressure"]) &&
-      JSON.stringify(vst3MidiControllerProfile.controllers) === JSON.stringify([1, 74]) &&
+      JSON.stringify(vst3MidiControllerProfile.controllers) === JSON.stringify([1, 74, 128, 129]) &&
       JSON.stringify(vst3MidiControllerProfile.channels) === JSON.stringify([0, 2]) &&
       JSON.stringify(vst3MidiControllerProfile.eventBuses) === JSON.stringify([0, 1]) &&
       vst3MidiProgramChangeProfile.eventCount === 2 &&
@@ -713,10 +713,10 @@ function exerciseProbeMidiCoverage({ check }) {
       controllerBoundaryProfile.flags.includes("max-controller-value") &&
       controllerBoundaryProfile.flags.includes("negative-controller-value") &&
       controllerBoundaryProfile.flags.includes("invalid-controller-value") &&
-      JSON.stringify(controllerBoundaryProfile.controllers) === JSON.stringify([0, 1, 74, 127]) &&
+      JSON.stringify(controllerBoundaryProfile.controllers) === JSON.stringify([0, 1, 74, 127, 128, 129]) &&
       controllerBoundaryMatrix.midiControllerDefaultRouteCount === 2 &&
       controllerBoundaryMatrix.midiControllerInvalidValueCount === 1 &&
-      JSON.stringify(controllerBoundaryMatrix.midiControllerNumbers) === JSON.stringify([0, 1, 74, 127]) &&
+      JSON.stringify(controllerBoundaryMatrix.midiControllerNumbers) === JSON.stringify([0, 1, 74, 127, 128, 129]) &&
       controllerBoundaryMatrix.midiControllerFlags.includes("max-controller-value") &&
       invalidProgramChangeProfile.invalidProgramNumberCount === 2 &&
       invalidProgramChangeProfile.invalidProgramRouteCount === 2 &&

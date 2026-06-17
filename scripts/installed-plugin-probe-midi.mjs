@@ -1,3 +1,6 @@
+const VST3_MIDI_AFTERTOUCH_CONTROLLER = 128;
+const VST3_MIDI_PITCH_BEND_CONTROLLER = 129;
+
 export function midiEventsForBlock(format, frames = 64, maxBlockSize = 64) {
   const frameLimit = clampInt(maxBlockSize, 1, 8192, 64);
   const boundedFrames = clampInt(frames, 1, frameLimit, frameLimit);
@@ -64,7 +67,7 @@ export function summarizeProbeMidiControllerEvents(events) {
       invalidControllerValueCount
     }),
     types,
-    controllers: uniqueSortedIntegers(controllerEvents.map((event) => event.controller), 0, 127),
+    controllers: uniqueSortedIntegers(controllerEvents.map(controllerNumber), 0, VST3_MIDI_PITCH_BEND_CONTROLLER),
     channels: uniqueSortedIntegers(controllerEvents.map((event) => event.channel ?? 0), 0, 15),
     eventBuses: uniqueSortedIntegers(controllerEvents.map((event) => event.busIndex ?? 0), 0, 31)
   };
@@ -263,6 +266,16 @@ function midiTimingFlags(times, blockSize, invalidTimeCount) {
 
 function invalidControllerNumber(event) {
   return event?.type === "controlChange" && boundedInt(event.controller, 0, 127) === undefined;
+}
+
+function controllerNumber(event) {
+  if (event?.type === "channelPressure") {
+    return VST3_MIDI_AFTERTOUCH_CONTROLLER;
+  }
+  if (event?.type === "pitchBend") {
+    return VST3_MIDI_PITCH_BEND_CONTROLLER;
+  }
+  return event?.controller;
 }
 
 function invalidControllerValue(event) {
