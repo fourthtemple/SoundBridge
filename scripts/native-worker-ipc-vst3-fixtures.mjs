@@ -19,19 +19,19 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
 
   try {
     await midiWorker.ready;
-    await midiWorker.sendMidiEvents([
+    const routed = await midiWorker.sendMidiEvents([
       { type: "controlChange", controller: 74, value: 0.25, channel: 2, time: 3, busIndex: 1 },
       { type: "pitchBend", value: -0.5, channel: 2, time: 4, busIndex: 1 },
       { type: "channelPressure", pressure: 0.75, channel: 2, time: 5, busIndex: 1 },
       { type: "programChange", program: 7, channel: 2, time: 6, busIndex: 1 }
     ]);
-    await midiWorker.sendMidiEvents([
+    const mainBus = await midiWorker.sendMidiEvents([
       { type: "controlChange", controller: 1, value: 0.4, channel: 0, time: 0 },
       { type: "pitchBend", value: 0.1, channel: 0, time: 1 },
       { type: "channelPressure", pressure: 0.3, channel: 0, time: 2 },
       { type: "programChange", program: 2, channel: 0, time: 3 }
     ]);
-    await midiWorker.sendMidiEvents([
+    const boundaries = await midiWorker.sendMidiEvents([
       { type: "controlChange", controller: 0, value: 0, channel: 0, time: 0, busIndex: 0 },
       { type: "controlChange", controller: 127, value: 1, channel: 15, time: 7, busIndex: 31 },
       { type: "pitchBend", value: -1, channel: 0, time: 1, busIndex: 0 },
@@ -44,8 +44,11 @@ export async function exerciseVst3MidiControllerMappingNativeWorker({
     const badAckMessage = await rejectedMessage(() =>
       midiWorker.sendMidiEvents([{ type: "controlChange", controller: 2, value: 0.5, channel: 0, time: 0 }])
     );
-    check(true, "native VST3 workers encode explicit-bus and main-bus MIDI-controller/program-change events");
-    check(true, "native VST3 workers encode MIDI-controller/program-change boundary routes");
+    check(
+      routed.eventCount === 4 && mainBus.eventCount === 4,
+      "native VST3 workers encode explicit-bus and main-bus MIDI-controller/program-change events"
+    );
+    check(boundaries.eventCount === 8, "native VST3 workers encode MIDI-controller/program-change boundary routes");
     check(
       badAckMessage === "worker returned invalid MIDI acknowledgement",
       "native host workers reject mismatched MIDI acknowledgements"
