@@ -1,5 +1,6 @@
 import { summarizeParameterProfile } from "./installed-plugin-probe-parameters.mjs";
 import { summarizeProbeResults } from "./installed-plugin-probe-reporting.mjs";
+import { parameterDisplayInputStatus } from "./installed-plugin-probe-status.mjs";
 
 export function exerciseInstalledProbeParameterSupport({ check }) {
   const parameterProfile = summarizeParameterProfile([
@@ -76,6 +77,17 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       { name: "setAutomationLane", ok: false, error: { code: "bad_automation_lane" } }
     ]
   }]);
+  const failedDisplayInputResult = {
+    ok: false,
+    format: "vst3",
+    pluginId: "vst3:display-input-failed",
+    phases: [
+      { name: "createInstance", ok: true },
+      { name: "getParameters", ok: true },
+      { name: "setParameterDisplayValue", ok: false, error: { code: "bad_parameter_display_input" } }
+    ]
+  };
+  const failedDisplayInputSummary = summarizeProbeResults([failedDisplayInputResult]);
 
   check(
     parameterProfile.category === "writable" &&
@@ -139,7 +151,11 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       failedParameterSummary.matrix[1].featureStatus.parameters === "failed" &&
       failedAutomationSummary.coverage.automationLanes.failed === 1 &&
       failedAutomationSummary.matrix[0].automation === "failed" &&
-      failedAutomationSummary.matrix[0].featureStatus.automation === "failed",
-    "installed plugin probe reports VST3 parameter metadata, mappings, automation, and failures"
+      failedAutomationSummary.matrix[0].featureStatus.automation === "failed" &&
+      parameterDisplayInputStatus(failedDisplayInputResult) === "failed" &&
+      failedDisplayInputSummary.coverage.parameterDisplayInput.failed === 1 &&
+      failedDisplayInputSummary.matrix[0].parameterDisplayInput === "failed" &&
+      failedDisplayInputSummary.matrix[0].featureStatus.parameters === "failed",
+    "installed plugin probe reports VST3 parameter metadata, mappings, display input, automation, and failures"
   );
 }

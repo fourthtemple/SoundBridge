@@ -74,6 +74,16 @@ export function parameterProfileStatus(result) {
     : "missing";
 }
 
+export function parameterDisplayInputStatus(result) {
+  if (result.parameterDisplayInput !== undefined) {
+    return String(result.parameterDisplayInput);
+  }
+  if (hasFailedPhase(result, ["setParameterDisplayValue"])) {
+    return "failed";
+  }
+  return "missing";
+}
+
 export function stateProfileStatus(result) {
   if (result.stateProfile?.category) {
     return result.stateProfile.category;
