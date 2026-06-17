@@ -21,6 +21,7 @@ export async function exerciseVst3ProgramDataNativeWorker({
     await programDataWorker.ready;
     const exported = await programDataWorker.getVst3ProgramData(2147483647, 255);
     const exportedBytes = await programDataWorker.getVst3ProgramData(7, 2);
+    const exportedBinaryBytes = await programDataWorker.getVst3ProgramData(11, 4);
     const badExportMessage = await rejectedMessage(() =>
       programDataWorker.getVst3ProgramData(8, 0)
     );
@@ -41,8 +42,12 @@ export async function exerciseVst3ProgramDataNativeWorker({
       exportedBytes?.programListId === 7 &&
         exportedBytes.programIndex === 2 &&
         exportedBytes.size === 2 &&
-        exportedBytes.data === "YWI=",
-      "native VST3 workers derive program-data export sizes from bounded bytes"
+        exportedBytes.data === "YWI=" &&
+        exportedBinaryBytes?.programListId === 11 &&
+        exportedBinaryBytes.programIndex === 4 &&
+        exportedBinaryBytes.size === 2 &&
+        exportedBinaryBytes.data === "AAE=",
+      "native VST3 workers derive program-data export sizes from bounded binary bytes"
     );
     check(
       badExportMessage === "VST3 program data was not valid base64.",
@@ -56,6 +61,7 @@ export async function exerciseVst3ProgramDataNativeWorker({
 
     const restoredEmpty = await programDataWorker.setVst3ProgramData(-2147483648, 0, "");
     const restoredBytes = await programDataWorker.setVst3ProgramData(7, 2, "YWI=");
+    const restoredBinaryBytes = await programDataWorker.setVst3ProgramData(11, 4, "AAE=");
     const restoredPaddedBytes = await programDataWorker.setVst3ProgramData(2147483647, 255, "+/8=");
     const sentinelRestoreMessage = await rejectedMessage(() =>
       programDataWorker.setVst3ProgramData(-1, 0, "YWI=")
@@ -69,8 +75,9 @@ export async function exerciseVst3ProgramDataNativeWorker({
     check(
       restoredEmpty?.restored === "empty" &&
         restoredBytes?.restored === "bytes" &&
+        restoredBinaryBytes?.restored === "binary-bytes" &&
         restoredPaddedBytes?.restored === "padded-bytes",
-      "native VST3 workers encode signed, empty, and padded program-data restore commands"
+      "native VST3 workers encode signed, empty, binary, and padded program-data restore commands"
     );
     check(
       sentinelRestoreMessage === "VST3 program data cannot use the no-program-list sentinel." &&
@@ -135,11 +142,16 @@ const responses = new Map([
     "getProgramData 7 2",
     { programData: { format: "vst3", programListId: 7, programIndex: 2, size: 999, data: "YWI=" } }
   ],
+  [
+    "getProgramData 11 4",
+    { programData: { format: "vst3", programListId: 11, programIndex: 4, data: "AAE=" } }
+  ],
   ["getProgramData 8 0", { programData: { format: "vst3", programListId: 8, programIndex: 0, data: "not-base64" } }],
   ["getProgramData 9 0", { programData: { format: "vst3", programListId: 9, programIndex: 0 } }],
   ["getProgramData 10 0", { programData: { format: "au", programListId: 10, programIndex: 0, data: "YWI=" } }],
   ["setProgramData -2147483648 0 -", { ok: true, restored: "empty" }],
   ["setProgramData 7 2 YWI=", { ok: true, restored: "bytes" }],
+  ["setProgramData 11 4 AAE=", { ok: true, restored: "binary-bytes" }],
   ["setProgramData 7 3 YWI=", { ok: false }],
   ["setProgramData 2147483647 255 +/8=", { ok: true, restored: "padded-bytes" }]
 ]);
