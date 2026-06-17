@@ -27,6 +27,11 @@
         "stepCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
         "readOnly": { "type": "boolean" },
         "vst3Unit": { "$ref": "#/$defs/pluginVst3Unit" },
+        "vst3MidiMappings": {
+          "type": "array",
+          "maxItems": 256,
+          "items": { "$ref": "#/$defs/pluginVst3MidiMapping" }
+        },
         "programChange": { "type": "boolean" },
         "programList": { "$ref": "#/$defs/pluginProgramList" }
       }
@@ -40,6 +45,16 @@
         "parentUnitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "name": { "type": "string", "maxLength": 160 },
         "programListId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647, "not": { "const": -1 } }
+      }
+    },
+    "pluginVst3MidiMapping": {
+      "type": "object",
+      "required": ["busIndex", "channel", "controller"],
+      "additionalProperties": false,
+      "properties": {
+        "busIndex": { "type": "integer", "minimum": 0, "maximum": 31 },
+        "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
+        "controller": { "type": "integer", "minimum": 0, "maximum": 129 }
       }
     },
     "pluginProgram": {

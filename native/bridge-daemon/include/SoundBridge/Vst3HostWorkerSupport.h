@@ -6,6 +6,7 @@
 #include "pluginterfaces/vst/ivstaudioprocessor.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivsteditcontroller.h"
+#include "pluginterfaces/vst/ivstmidicontrollers.h"
 #include "pluginterfaces/vst/ivstnoteexpression.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "pluginterfaces/vst/ivstunits.h"
@@ -28,6 +29,7 @@ constexpr Steinberg::int32 kMaxWorkerProgramsPerParameter = 256;
 constexpr std::size_t kMaxWorkerProgramDataBytes = 384 * 1024;
 constexpr Steinberg::int32 kMaxWorkerUnits = 1024;
 constexpr Steinberg::int32 kMaxWorkerNoteExpressionTypes = 256;
+constexpr std::size_t kMaxWorkerMidiMappings = 256;
 constexpr std::size_t kMaxWorkerNoteExpressionTextBytes = 256;
 constexpr std::size_t kMaxWorkerStateBytes = 384 * 1024;
 constexpr std::uint32_t kMaxWorkerLatencySamples = 1'048'576;
@@ -69,6 +71,13 @@ struct PendingParameterChange {
   Steinberg::Vst::ParamID id = 0;
   Steinberg::Vst::ParamValue value = 0.0;
   std::uint32_t sampleOffset = 0;
+};
+
+struct Vst3MidiMappingAssignment {
+  Steinberg::Vst::ParamID parameterId = 0;
+  Steinberg::int32 busIndex = 0;
+  Steinberg::int16 channel = 0;
+  Steinberg::Vst::CtrlNumber controller = 0;
 };
 
 struct IndexedAudioBus {
@@ -130,6 +139,9 @@ std::string setProgramData(
 std::string noteExpressionsToJson(
     Steinberg::Vst::IComponent* component,
     Steinberg::Vst::INoteExpressionController* noteExpressionController);
+std::vector<Vst3MidiMappingAssignment> vst3MidiMappingAssignments(
+    Steinberg::Vst::IComponent* component,
+    Steinberg::Vst::IMidiMapping* midiMapping);
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels);
 std::string renderedAudioToJson(const RenderedAudio& rendered);
 bool parameterIsAutomatable(const Steinberg::Vst::ParameterInfo& info);
@@ -171,7 +183,8 @@ std::string parameterInfoToJson(
     const Steinberg::Vst::ParameterInfo& info,
     Steinberg::Vst::IEditController* controller,
     Steinberg::Vst::IUnitInfo* unitInfo,
-    Steinberg::Vst::IProgramListData* programListData);
+    Steinberg::Vst::IProgramListData* programListData,
+    const std::vector<Vst3MidiMappingAssignment>& midiMappings);
 
 } // namespace soundbridge::vst3_worker
 

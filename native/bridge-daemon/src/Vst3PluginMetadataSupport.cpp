@@ -7,6 +7,7 @@
 #include "public.sdk/source/vst/hosting/stringconvert.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <sstream>
 
@@ -25,6 +26,9 @@ std::string programListInfoToJson(
     const Steinberg::Vst::ProgramListInfo& programList,
     Steinberg::Vst::IUnitInfo* unitInfo,
     Steinberg::Vst::IProgramListData* programListData);
+std::string midiMappingsToJson(
+    const Steinberg::Vst::ParameterInfo& info,
+    const std::vector<Vst3MidiMappingAssignment>& midiMappings);
 
 bool programListForParameter(
     const Steinberg::Vst::ParameterInfo& parameter,
@@ -238,6 +242,32 @@ std::string noteExpressionInfoToJson(
   return output.str();
 }
 
+std::string midiMappingsToJson(
+    const Steinberg::Vst::ParameterInfo& info,
+    const std::vector<Vst3MidiMappingAssignment>& midiMappings) {
+  std::ostringstream output;
+  output << "[";
+  bool first = true;
+  for (const auto& mapping : midiMappings) {
+    if (mapping.parameterId != info.id) {
+      continue;
+    }
+    if (!first) {
+      output << ",";
+    }
+    output << "{\"busIndex\":" << mapping.busIndex
+           << ",\"channel\":" << mapping.channel
+           << ",\"controller\":" << mapping.controller
+           << "}";
+    first = false;
+  }
+  if (first) {
+    return "";
+  }
+  output << "]";
+  return output.str();
+}
+
 std::string parameterDisplayValue(
     const Steinberg::Vst::ParameterInfo& info,
     Steinberg::Vst::IEditController* controller,
@@ -320,11 +350,51 @@ std::string noteExpressionsToJson(
   return output.str();
 }
 
+std::vector<Vst3MidiMappingAssignment> vst3MidiMappingAssignments(
+    Steinberg::Vst::IComponent* component,
+    Steinberg::Vst::IMidiMapping* midiMapping) {
+  std::vector<Vst3MidiMappingAssignment> assignments;
+  if (component == nullptr || midiMapping == nullptr) {
+    return assignments;
+  }
+
+  constexpr std::array<Steinberg::Vst::CtrlNumber, 4> probeControllers {
+      Steinberg::Vst::kCtrlModWheel,
+      Steinberg::Vst::kCtrlFilterResonance,
+      Steinberg::Vst::kAfterTouch,
+      Steinberg::Vst::kPitchBend};
+  const auto eventBusCount = std::clamp<Steinberg::int32>(
+      component->getBusCount(Steinberg::Vst::kEvent, Steinberg::Vst::kInput),
+      1,
+      static_cast<Steinberg::int32>(kMaxWorkerChannels));
+  for (Steinberg::int32 busIndex = 0; busIndex < eventBusCount; ++busIndex) {
+    for (Steinberg::int16 channel = 0; channel < 16; ++channel) {
+      for (const auto controllerNumber : probeControllers) {
+        Steinberg::Vst::ParamID parameterId = 0;
+        if (midiMapping->getMidiControllerAssignment(busIndex, channel, controllerNumber, parameterId) != Steinberg::kResultOk ||
+            parameterId == Steinberg::Vst::kNoParamId) {
+          continue;
+        }
+        assignments.push_back(Vst3MidiMappingAssignment{
+            parameterId,
+            busIndex,
+            channel,
+            controllerNumber});
+        if (assignments.size() >= kMaxWorkerMidiMappings) {
+          return assignments;
+        }
+      }
+    }
+  }
+  return assignments;
+}
+
 std::string parameterInfoToJson(
     const Steinberg::Vst::ParameterInfo& info,
     Steinberg::Vst::IEditController* controller,
     Steinberg::Vst::IUnitInfo* unitInfo,
-    Steinberg::Vst::IProgramListData* programListData) {
+    Steinberg::Vst::IProgramListData* programListData,
+    const std::vector<Vst3MidiMappingAssignment>& midiMappings) {
   const auto normalizedValue = std::clamp(controller->getParamNormalized(info.id), 0.0, 1.0);
   const auto defaultValue = std::clamp(info.defaultNormalizedValue, 0.0, 1.0);
   const auto name = cappedString(VST3::StringConvert::convert(info.title));
@@ -354,6 +424,10 @@ std::string parameterInfoToJson(
   const auto vst3Unit = unitInfoToJson(info, unitInfo);
   if (!vst3Unit.empty()) {
     output << ",\"vst3Unit\":" << vst3Unit;
+  }
+  const auto midiMappingsJson = midiMappingsToJson(info, midiMappings);
+  if (!midiMappingsJson.empty()) {
+    output << ",\"vst3MidiMappings\":" << midiMappingsJson;
   }
   output << ",\"stepCount\":" << std::max<Steinberg::int32>(0, info.stepCount)
          << ",\"readOnly\":" << ((info.flags & Steinberg::Vst::ParameterInfo::kIsReadOnly) ? "true" : "false");

@@ -85,6 +85,7 @@
     },
     "pluginParameter": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginParameter" },
     "pluginVst3Unit": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginVst3Unit" },
+    "pluginVst3MidiMapping": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginVst3MidiMapping" },
     "pluginProgram": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginProgram" },
     "pluginProgramList": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginProgramList" },
     "pluginVst3NoteExpression": { "$ref": "./defs/plugin-metadata.schema.json#/$defs/pluginVst3NoteExpression" },

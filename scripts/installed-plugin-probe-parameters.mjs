@@ -1,4 +1,5 @@
 const MAX_PLUGIN_PARAMETERS = 1024;
+const MAX_VST3_MIDI_MAPPINGS = 256;
 
 export function assertParameterDisplayMetadata({ assertProbe, parameters, plugin }) {
   if (!Array.isArray(parameters)) {
@@ -61,6 +62,14 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
       vst3UnitCount: 0,
       vst3UnitProgramListLinkCount: 0,
       invalidVst3UnitProgramListLinkCount: 0,
+      vst3MidiMappedParameterCount: 0,
+      vst3MidiMappingCount: 0,
+      vst3MidiMappingControllerCount: 0,
+      vst3MidiMappingBusCount: 0,
+      vst3MidiMappingChannelCount: 0,
+      vst3MidiMappingControllers: [],
+      vst3MidiMappingBuses: [],
+      vst3MidiMappingChannels: [],
       duplicateParameterIdCount: 0
     };
   }
@@ -81,10 +90,21 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     vst3UnitCount: 0,
     vst3UnitProgramListLinkCount: 0,
     invalidVst3UnitProgramListLinkCount: 0,
+    vst3MidiMappedParameterCount: 0,
+    vst3MidiMappingCount: 0,
+    vst3MidiMappingControllerCount: 0,
+    vst3MidiMappingBusCount: 0,
+    vst3MidiMappingChannelCount: 0,
+    vst3MidiMappingControllers: [],
+    vst3MidiMappingBuses: [],
+    vst3MidiMappingChannels: [],
     duplicateParameterIdCount: 0
   };
 
   const seenIds = new Set();
+  const midiMappingControllers = new Set();
+  const midiMappingBuses = new Set();
+  const midiMappingChannels = new Set();
   for (const parameter of bounded) {
     const parameterId = typeof parameter?.id === "string" ? parameter.id : "";
     if (parameterId) {
@@ -123,8 +143,27 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
         profile.invalidVst3UnitProgramListLinkCount += 1;
       }
     }
+    const remainingMidiMappings = MAX_VST3_MIDI_MAPPINGS - profile.vst3MidiMappingCount;
+    const midiMappings = isVst3 && remainingMidiMappings > 0
+      ? validVst3MidiMappings(parameter?.vst3MidiMappings, remainingMidiMappings)
+      : [];
+    if (midiMappings.length > 0) {
+      profile.vst3MidiMappedParameterCount += 1;
+      profile.vst3MidiMappingCount += midiMappings.length;
+      for (const mapping of midiMappings) {
+        midiMappingControllers.add(mapping.controller);
+        midiMappingBuses.add(mapping.busIndex);
+        midiMappingChannels.add(mapping.channel);
+      }
+    }
   }
 
+  profile.vst3MidiMappingControllers = sortedIntegers(midiMappingControllers);
+  profile.vst3MidiMappingBuses = sortedIntegers(midiMappingBuses);
+  profile.vst3MidiMappingChannels = sortedIntegers(midiMappingChannels);
+  profile.vst3MidiMappingControllerCount = profile.vst3MidiMappingControllers.length;
+  profile.vst3MidiMappingBusCount = profile.vst3MidiMappingBuses.length;
+  profile.vst3MidiMappingChannelCount = profile.vst3MidiMappingChannels.length;
   profile.category = parameterProfileCategory(profile);
   profile.flags = parameterProfileFlags(profile, { atLimit, isVst3 });
   return profile;
@@ -184,10 +223,46 @@ function parameterProfileFlags(profile, { atLimit, isVst3 }) {
   if (isVst3 && profile.invalidVst3UnitProgramListLinkCount > 0) {
     flags.push("invalid-vst3-unit-program-list-link");
   }
+  if (isVst3 && profile.vst3MidiMappingCount > 0) {
+    flags.push("vst3-midi-mapping");
+    if (profile.vst3MidiMappingControllerCount > 1) {
+      flags.push("vst3-midi-mapping-multi-controller");
+    }
+    if (profile.vst3MidiMappingBuses.some((busIndex) => busIndex > 0)) {
+      flags.push("vst3-midi-mapping-non-main-event-bus");
+    }
+    if (profile.vst3MidiMappingChannels.some((channel) => channel > 0)) {
+      flags.push("vst3-midi-mapping-non-main-channel");
+    }
+    if (profile.vst3MidiMappingCount >= MAX_VST3_MIDI_MAPPINGS) {
+      flags.push("vst3-midi-mapping-at-limit");
+    }
+  }
   if (profile.duplicateParameterIdCount > 0) {
     flags.push("duplicate-parameter-id");
   }
   return flags;
+}
+
+function validVst3MidiMappings(mappings, limit = MAX_VST3_MIDI_MAPPINGS) {
+  if (!Array.isArray(mappings)) {
+    return [];
+  }
+  return mappings.slice(0, limit).filter((mapping) =>
+    Number.isInteger(mapping?.busIndex) &&
+      mapping.busIndex >= 0 &&
+      mapping.busIndex <= 31 &&
+      Number.isInteger(mapping.channel) &&
+      mapping.channel >= 0 &&
+      mapping.channel <= 15 &&
+      Number.isInteger(mapping.controller) &&
+      mapping.controller >= 0 &&
+      mapping.controller <= 129
+  );
+}
+
+function sortedIntegers(values) {
+  return [...values].sort((left, right) => left - right);
 }
 
 function boundedVst3ProgramListId(value) {

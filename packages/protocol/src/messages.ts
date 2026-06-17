@@ -164,6 +164,7 @@ export interface PluginParameter {
   stepCount?: number;
   readOnly?: boolean;
   vst3Unit?: PluginVst3Unit;
+  vst3MidiMappings?: PluginVst3MidiMapping[];
   programChange?: boolean;
   programList?: PluginProgramList;
 }
@@ -173,6 +174,12 @@ export interface PluginVst3Unit {
   parentUnitId: number;
   name: string;
   programListId?: number;
+}
+
+export interface PluginVst3MidiMapping {
+  busIndex: number;
+  channel: number;
+  controller: number;
 }
 
 export interface PluginProgram {

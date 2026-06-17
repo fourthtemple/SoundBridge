@@ -227,6 +227,7 @@ std::vector<std::string> HostedVst3Effect::parameterJsonList() const {
       controller_->getParameterCount(),
       0,
       static_cast<Steinberg::int32>(kMaxWorkerParameters));
+  const auto midiMappings = vst3MidiMappingAssignments(component_, midiMapping_);
   parameters.reserve(static_cast<std::size_t>(count));
   for (Steinberg::int32 index = 0; index < count; ++index) {
     Steinberg::Vst::ParameterInfo info {};
@@ -234,7 +235,7 @@ std::vector<std::string> HostedVst3Effect::parameterJsonList() const {
       continue;
     }
     parameters.push_back(
-        vst3_worker::parameterInfoToJson(info, controller_, unitInfo_, programListData_));
+        vst3_worker::parameterInfoToJson(info, controller_, unitInfo_, programListData_, midiMappings));
   }
   return parameters;
 }
@@ -298,7 +299,12 @@ std::string HostedVst3Effect::setParameter(Steinberg::Vst::ParamID id, double va
       std::clamp<std::uint32_t>(sampleOffset, 0, kMaxWorkerFrames - 1)});
 
   return std::string("{\"parameter\":") +
-      vst3_worker::parameterInfoToJson(info, controller_, unitInfo_, programListData_) +
+      vst3_worker::parameterInfoToJson(
+          info,
+          controller_,
+          unitInfo_,
+          programListData_,
+          vst3MidiMappingAssignments(component_, midiMapping_)) +
       "}";
 }
 

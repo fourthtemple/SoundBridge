@@ -9,6 +9,7 @@ export function createDaemonNormalizers(options = {}) {
     maxPluginParameters: positiveInteger(options.maxPluginParameters, 1024),
     maxPluginParameterTextBytes: positiveInteger(options.maxPluginParameterTextBytes, 160),
     maxPluginNoteExpressions: positiveInteger(options.maxPluginNoteExpressions, 256),
+    maxPluginMidiMappings: positiveInteger(options.maxPluginMidiMappings, 256),
     maxPluginProgramDataBytes: positiveInteger(options.maxPluginProgramDataBytes, 384 * 1024),
     maxPluginProgramLists: positiveInteger(options.maxPluginProgramLists, 256),
     maxPluginPrograms: positiveInteger(options.maxPluginPrograms, 256),
@@ -117,6 +118,10 @@ export function createDaemonNormalizers(options = {}) {
     if (vst3Unit) {
       normalized.vst3Unit = vst3Unit;
     }
+    const vst3MidiMappings = normalizeVst3MidiMappings(parameter.vst3MidiMappings);
+    if (vst3MidiMappings.length > 0) {
+      normalized.vst3MidiMappings = vst3MidiMappings;
+    }
     if (parameter.programChange === true) {
       normalized.programChange = true;
       const programList = normalizeProgramList(parameter.programList);
@@ -125,6 +130,26 @@ export function createDaemonNormalizers(options = {}) {
       }
     }
     return normalized;
+  }
+
+  function normalizeVst3MidiMappings(mappings) {
+    if (!Array.isArray(mappings)) {
+      return [];
+    }
+    return mappings
+      .slice(0, limits.maxPluginMidiMappings)
+      .map((mapping) => {
+        if (!mapping || typeof mapping !== "object") {
+          return undefined;
+        }
+        const busIndex = boundedInteger(mapping.busIndex, 0, limits.maxPluginBuses - 1);
+        const channel = boundedInteger(mapping.channel, 0, 15);
+        const controller = boundedInteger(mapping.controller, 0, 129);
+        return busIndex === undefined || channel === undefined || controller === undefined
+          ? undefined
+          : { busIndex, channel, controller };
+      })
+      .filter(Boolean);
   }
 
   function normalizeVst3Unit(unit) {
@@ -574,6 +599,11 @@ export function createDaemonNormalizers(options = {}) {
       return min;
     }
     return Math.max(min, Math.min(max, candidate));
+  }
+
+  function boundedInteger(value, min, max) {
+    const number = Number(value);
+    return Number.isInteger(number) && number >= min && number <= max ? number : undefined;
   }
 
   function truncateText(value, maxBytes) {

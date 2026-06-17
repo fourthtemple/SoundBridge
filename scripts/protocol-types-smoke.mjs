@@ -34,6 +34,11 @@ assert(
     messages.includes("Vst3EventBusIndex"),
   "protocol messages re-export MIDI event types"
 );
+assert(
+  messages.includes("interface PluginVst3MidiMapping") &&
+    messages.includes("vst3MidiMappings?: PluginVst3MidiMapping[];"),
+  "protocol messages type optional VST3 MIDI-controller parameter mappings"
+);
 
 console.log("Protocol type smoke checks passed.");
 
