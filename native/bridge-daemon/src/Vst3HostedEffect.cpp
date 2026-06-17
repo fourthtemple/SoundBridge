@@ -356,6 +356,24 @@ std::string HostedVst3Effect::layoutToJson() const {
   return output.str();
 }
 
+bool HostedVst3Effect::parameterInfoForId(Steinberg::Vst::ParamID id, Steinberg::Vst::ParameterInfo& info) const {
+  if (!controller_) {
+    return false;
+  }
+  const auto count = std::clamp<Steinberg::int32>(
+      controller_->getParameterCount(),
+      0,
+      static_cast<Steinberg::int32>(kMaxWorkerParameters));
+  for (Steinberg::int32 index = 0; index < count; ++index) {
+    Steinberg::Vst::ParameterInfo candidate {};
+    if (controller_->getParameterInfo(index, candidate) == Steinberg::kResultOk && candidate.id == id) {
+      info = candidate;
+      return true;
+    }
+  }
+  return false;
+}
+
 bool HostedVst3Effect::midiEventToParameterChange(
     const PendingMidiEvent& event,
     PendingParameterChange& parameterChange) {
@@ -391,6 +409,11 @@ bool HostedVst3Effect::midiEventToParameterChange(
     return false;
   }
   if (id == Steinberg::Vst::kNoParamId) {
+    return false;
+  }
+  Steinberg::Vst::ParameterInfo info {};
+  if (!parameterInfoForId(id, info) ||
+      (info.flags & Steinberg::Vst::ParameterInfo::kIsReadOnly) != 0) {
     return false;
   }
 

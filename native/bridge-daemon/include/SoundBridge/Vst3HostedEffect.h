@@ -62,6 +62,7 @@ public:
   std::string layoutToJson() const;
 
 private:
+  bool parameterInfoForId(Steinberg::Vst::ParamID id, Steinberg::Vst::ParameterInfo& info) const;
   bool midiEventToParameterChange(const PendingMidiEvent& event, PendingParameterChange& parameterChange);
   void initializeController();
   void connectController();
