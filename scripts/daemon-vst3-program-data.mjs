@@ -1,5 +1,7 @@
 import { applyNativeParameterSnapshot } from "./daemon-parameter-snapshots.mjs";
 
+const VST3_NO_PROGRAM_LIST_ID = -1;
+
 export function createDaemonVst3ProgramData({
   getInstance,
   limits,
@@ -19,7 +21,7 @@ export function createDaemonVst3ProgramData({
 
   async function getVst3ProgramData(instanceId, programListId, programIndex, session) {
     const instance = requireVst3ProgramDataInstance(instanceId, session, "getVst3ProgramData");
-    const safeProgramListId = requireIntInRange(programListId, -2147483648, 2147483647, "programListId");
+    const safeProgramListId = requireRequestProgramListId(programListId);
     const safeProgramIndex = requireIntInRange(programIndex, 0, maxPluginPrograms - 1, "programIndex");
     assertListedProgramData(instance, safeProgramListId, safeProgramIndex);
 
@@ -123,7 +125,7 @@ export function createDaemonVst3ProgramData({
       return {
         pluginId: envelope.pluginId,
         format: "vst3",
-        programListId: strictInteger(envelope.programListId, -2147483648, 2147483647, "programListId"),
+        programListId: strictProgramListId(envelope.programListId),
         programIndex: strictInteger(envelope.programIndex, 0, maxPluginPrograms - 1, "programIndex"),
         data: envelope.data
       };
@@ -140,6 +142,22 @@ export function createDaemonVst3ProgramData({
       throw protocolError("bad_program_data", `Program data ${label} was out of range.`);
     }
     return value;
+  }
+
+  function strictProgramListId(value) {
+    const id = strictInteger(value, -2147483648, 2147483647, "programListId");
+    if (id === VST3_NO_PROGRAM_LIST_ID) {
+      throw protocolError("bad_program_data", "Program data cannot use the VST3 no-program-list sentinel.");
+    }
+    return id;
+  }
+
+  function requireRequestProgramListId(value) {
+    const id = requireIntInRange(value, -2147483648, 2147483647, "programListId");
+    if (id === VST3_NO_PROGRAM_LIST_ID) {
+      throw protocolError("invalid_argument", "programListId cannot use the VST3 no-program-list sentinel.");
+    }
+    return id;
   }
 
   function assertProgramDataMatch(programData, programListId, programIndex) {

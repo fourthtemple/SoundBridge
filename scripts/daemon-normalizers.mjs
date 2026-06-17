@@ -254,12 +254,7 @@ export function createDaemonNormalizers(options = {}) {
         maxProgramDataBytes: limits.maxPluginProgramDataBytes
       });
     }
-    const programListId = requireVst3ProgramDataInteger(
-      programData.programListId,
-      -2147483648,
-      2147483647,
-      "programListId"
-    );
+    const programListId = requireVst3ProgramDataProgramListId(programData.programListId);
     const programIndex = requireVst3ProgramDataInteger(
       programData.programIndex,
       0,
@@ -280,6 +275,14 @@ export function createDaemonNormalizers(options = {}) {
       throw protocolError("bad_program_data", `VST3 program data ${label} was out of range.`);
     }
     return value;
+  }
+
+  function requireVst3ProgramDataProgramListId(value) {
+    const id = requireVst3ProgramDataInteger(value, -2147483648, 2147483647, "programListId");
+    if (id === vst3NoProgramListId) {
+      throw protocolError("bad_program_data", "VST3 program data cannot use the no-program-list sentinel.");
+    }
+    return id;
   }
 
   function normalizeVst3NoteExpressions(expressions) {

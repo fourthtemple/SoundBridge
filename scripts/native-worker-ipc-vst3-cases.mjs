@@ -130,6 +130,12 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       )) === "bad_program_data",
     "daemon normalizers reject missing VST3 program-data target metadata"
   );
+  check(
+    (await rejectedCode(() =>
+      unitNormalizers.normalizeVst3ProgramData({ programListId: -1, programIndex: 0, data: "YWI=" })
+    )) === "bad_program_data",
+    "daemon normalizers reject VST3 no-program-list program-data targets"
+  );
 
   const fakeInstance = vst3ProgramDataInstance();
   const programDataSupport = createProgramDataSupport({
@@ -240,6 +246,13 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     (await rejectedCode(() => programDataSupport.setVst3ProgramData("inst-test", programEnvelope({ programListId: 8 }), {}))) ===
       "program_data_not_supported",
     "daemon VST3 program-data helper rejects unlisted restore targets"
+  );
+  check(
+    (await rejectedCode(() => programDataSupport.getVst3ProgramData("inst-test", -1, 0, {}))) === "invalid_argument" &&
+      (await rejectedCode(() =>
+        programDataSupport.setVst3ProgramData("inst-test", programEnvelope({ programListId: -1 }), {})
+      )) === "bad_program_data",
+    "daemon VST3 program-data helper rejects no-program-list sentinel targets"
   );
 
   const originalProgramLists = fakeInstance.vst3ProgramLists;
