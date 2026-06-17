@@ -38,7 +38,7 @@ export function summarizeProbeVst3Events(plugin) {
   });
 
   return {
-    category: expressionCategory(expressions, eventBuses, channels, invalidExpressionCount),
+    category: expressionCategory(expressions, eventBuses, channels, invalidExpressionCount, invalidRouteExpressionCount),
     flags,
     noteExpressionCount: expressions.length,
     valueExpressionCount: expressions.length - textExpressionCount,
@@ -172,7 +172,7 @@ function isTextExpression(expression) {
   return expression.typeId === TEXT_NOTE_EXPRESSION_TYPE_ID;
 }
 
-function expressionCategory(expressions, eventBuses, channels, invalidExpressionCount) {
+function expressionCategory(expressions, eventBuses, channels, invalidExpressionCount, invalidRouteExpressionCount) {
   if (expressions.length === 0) {
     return invalidExpressionCount > 0 ? "invalid-metadata" : "no-note-expressions";
   }
@@ -181,6 +181,9 @@ function expressionCategory(expressions, eventBuses, channels, invalidExpression
   }
   if (channels.some((channel) => channel > 0)) {
     return "non-main-channel";
+  }
+  if (invalidRouteExpressionCount > 0) {
+    return "invalid-route-metadata";
   }
   return "main-event-bus";
 }

@@ -167,6 +167,15 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     format: "vst3",
     vst3NoteExpressions: [{ typeId: "bad" }]
   });
+  const invalidRouteOnlyVst3EventProfile = summarizeProbeVst3Events({
+    format: "vst3",
+    vst3NoteExpressions: [{ typeId: 11, busIndex: 99, channel: "bad" }]
+  });
+  const invalidRouteOnlyVst3EventSummary = summarizeProbeResults([{
+    ok: true,
+    format: "vst3",
+    vst3EventProfile: invalidRouteOnlyVst3EventProfile
+  }]);
   const cappedVst3EventProfile = summarizeProbeVst3Events({
     format: "vst3",
     vst3NoteExpressions: Array.from({ length: 256 }, (_, index) => ({ typeId: index }))
@@ -236,6 +245,13 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       invalidVst3EventProfile.category === "invalid-metadata" &&
       invalidVst3EventProfile.invalidNoteExpressionCount === 1 &&
       invalidVst3EventProfile.flags.includes("no-valid-note-expressions") &&
+      invalidRouteOnlyVst3EventProfile.category === "invalid-route-metadata" &&
+      invalidRouteOnlyVst3EventProfile.invalidNoteExpressionRouteCount === 1 &&
+      invalidRouteOnlyVst3EventProfile.eventBuses.length === 1 &&
+      invalidRouteOnlyVst3EventProfile.eventBuses[0] === 0 &&
+      invalidRouteOnlyVst3EventSummary.coverage.vst3EventProfiles["invalid-route-metadata"] === 1 &&
+      invalidRouteOnlyVst3EventSummary.matrix[0].vst3EventCategory === "invalid-route-metadata" &&
+      invalidRouteOnlyVst3EventSummary.matrix[0].vst3InvalidNoteExpressionRouteCount === 1 &&
       cappedVst3EventProfile.noteExpressionCount === 256 &&
       cappedVst3EventProfile.metadataAtLimit === true &&
       cappedVst3EventProfile.flags.includes("metadata-at-limit"),
