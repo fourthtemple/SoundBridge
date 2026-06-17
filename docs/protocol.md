@@ -674,119 +674,25 @@ The response includes an `editorId`, the owning `instanceId`, `kind`, `transport
 
 File grants are the protocol foundation for preset files, samples, caches, licenses, and other plugin files that cannot safely be represented as small in-protocol preset snapshots. The reference daemon keeps this disabled unless it is started with explicit broker roots in `SOUNDBRIDGE_FILE_GRANT_ROOTS`.
 
-Configured roots alone do not authorize arbitrary browser-supplied path strings. Production-style grants omit `path`; the daemon asks an explicitly configured native approval broker (`SOUNDBRIDGE_FILE_GRANT_BROKER_PATH`) to select or deny the local path, then validates the approved path against the configured roots. See [File Grant Approval Broker](file-grant-approval-broker.md) for the broker line protocol.
+Configured roots alone do not authorize arbitrary browser-supplied path strings. Production-style grants omit `path`; the daemon asks an explicitly configured native approval broker (`SOUNDBRIDGE_FILE_GRANT_BROKER_PATH`) to select or deny the local path, then validates the approved path against the configured roots. See [File Grant Approval Broker](file-grant-approval-broker.md) for the broker line protocol and [Protocol File Grants](protocol-file-grants.md) for request/response examples.
 
-```json
-{
-  "purpose": "sample",
-  "access": "read",
-  "kind": "file"
-}
-```
-
-The reference daemon only accepts the browser-supplied `path` form below when `SOUNDBRIDGE_FILE_GRANT_ALLOW_BROWSER_PATHS=1` is set for development or test harnesses.
-
-```json
-{
-  "path": "/absolute/user-approved/path/Kick.wav",
-  "purpose": "sample",
-  "access": "read",
-  "kind": "file"
-}
-```
-
-In both modes, `createFileGrant` resolves the approved absolute path through the configured roots, rejects paths outside those roots, rejects symlink escapes after `realpath`, enforces per-session and total grant caps, and returns only a path-free grant:
-
-```json
-{
-  "grantId": "filegrant-...",
-  "purpose": "sample",
-  "access": "read",
-  "kind": "file",
-  "displayName": "Kick.wav",
-  "createdAt": 1710000000000,
-  "expiresAt": 1710000600000
-}
-```
-
-`listFileGrants` returns only grants owned by the paired session. `revokeFileGrant` takes `{ "grantId": "filegrant-..." }` and requires the same session that created the grant. Browser-facing grant responses must not include absolute paths, configured root paths, scanner diagnostics, or native launch details.
+In both brokered and development-path modes, `createFileGrant` resolves the approved absolute path through the configured roots, rejects paths outside those roots, rejects symlink escapes after `realpath`, enforces per-session and total grant caps, and returns only a path-free grant. `listFileGrants` returns only grants owned by the paired session. `revokeFileGrant` takes `{ "grantId": "filegrant-..." }` and requires the same session that created the grant. Browser-facing grant responses must not include absolute paths, configured root paths, scanner diagnostics, or native launch details.
 
 ### `attachFileGrant` / `listInstanceFileGrants` / `detachFileGrant`
 
 Plugin instances can hold path-free references to session-owned file grants. This is the handoff point for preset, sample, cache, license, and state flows that need native-side code to use a local file without exposing the path to browser code.
 
-```json
-{
-  "instanceId": "inst-...",
-  "grantId": "filegrant-...",
-  "purpose": "sample",
-  "access": "read",
-  "kind": "file"
-}
-```
-
-`attachFileGrant` requires the same paired session to own both the plugin instance and the file grant. Optional `purpose`, `access`, and `kind` fields are constraints: the daemon rejects mismatches before an attachment is recorded. The response is still path-free:
-
-```json
-{
-  "attached": true,
-  "instanceId": "inst-...",
-  "grant": {
-    "grantId": "filegrant-...",
-    "purpose": "sample",
-    "access": "read",
-    "kind": "file",
-    "displayName": "Kick.wav",
-    "createdAt": 1710000000000,
-    "expiresAt": 1710000600000,
-    "attachedAt": 1710000001000
-  }
-}
-```
-
-`listInstanceFileGrants` takes `{ "instanceId": "inst-..." }` and returns only that session-owned instance's live, path-free attachments. `detachFileGrant` takes `{ "instanceId": "inst-...", "grantId": "filegrant-..." }`. Native editor brokers receive attached grants only over daemon-to-broker IPC.
+`attachFileGrant` requires the same paired session to own both the plugin instance and the file grant. Optional `purpose`, `access`, and `kind` fields are constraints: the daemon rejects mismatches before an attachment is recorded. `listInstanceFileGrants` takes `{ "instanceId": "inst-..." }` and returns only that session-owned instance's live, path-free attachments. `detachFileGrant` takes `{ "instanceId": "inst-...", "grantId": "filegrant-..." }`. Native editor brokers receive attached grants only over daemon-to-broker IPC.
 
 ### `useFileGrant`
 
 `useFileGrant` asks a compatible native worker to consume an already attached grant for a known operation. The browser supplies only the instance id, grant id, required operation name, and optional constraints:
-
-```json
-{
-  "instanceId": "inst-...",
-  "grantId": "filegrant-...",
-  "operation": "loadSample",
-  "purpose": "sample",
-  "access": "read",
-  "kind": "file"
-}
-```
 
 Supported operation names are `loadPreset`, `loadSample`, `openCacheDirectory`, `loadLicense`, `restoreState`, `saveStateDirectory`, and `other`. Operation names imply conservative purpose/access/kind constraints where possible; for example, `loadSample` requires a read-only sample file and `openCacheDirectory` requires a read/write cache directory. The generic `other` operation is allowed only when `purpose`, `access`, and `kind` are all supplied explicitly. The daemon must reject mismatches before worker dispatch.
 
 Hosts should check the selected plugin's `fileGrantOperations` metadata before offering a file-backed action. The daemon still revalidates the operation against the live worker and returns `unsupported_file_grant_operation` when the operation is known to the protocol but unavailable for that plugin or worker profile.
 
 The reference VST3/AU/LV2 native workers implement `restoreState` for bounded worker-native state files, `loadPreset` for bounded worker-native preset-state snapshot files, and `saveStateDirectory` for writing worker-native state into a granted state directory. AU and LV2 state/preset files contain one base64 native-state token. VST3 state/preset files contain a component-state token and optional controller-state token separated by whitespace; the missing controller token is represented internally as empty state. Saved state files use daemon-chosen filenames and are written through bounded native-worker file IO; browser responses do not include absolute paths. These files are daemon-to-worker interchange data, not a general browser-facing state format or a parser for arbitrary vendor preset formats.
-
-The daemon resolves the absolute path only after verifying that the paired session owns the instance, owns the grant, and has attached that grant to the instance. Browser responses stay path-free:
-
-```json
-{
-  "accepted": true,
-  "applied": true,
-  "instanceId": "inst-...",
-  "operation": "loadSample",
-  "grant": {
-    "grantId": "filegrant-...",
-    "purpose": "sample",
-    "access": "read",
-    "kind": "file",
-    "displayName": "Kick.wav",
-    "createdAt": 1710000000000,
-    "expiresAt": 1710000600000
-  },
-  "workerStatus": "ok"
-}
-```
 
 The reference daemon sends the absolute path only over bounded daemon-to-worker IPC, base64-encoded inside the worker line protocol. Workers that do not implement a file-grant operation return `unsupported_file_grant_operation`; plugin-specific VST3/AU/LV2 handlers beyond state save/restore should add only the operations they can implement with explicit bounds and ownership checks.
 

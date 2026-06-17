@@ -17,7 +17,7 @@ SoundBridge already has the core security and host shape in place:
 - generic parameter editor sessions
 - opt-in file grant broker foundation with path-free browser responses
 - native worker IPC limits for command size, pending commands, stdout/stderr lines, diagnostics, startup, timeout, and termination
-- source-size guardrails: source files must stay below 800 lines, with a 750-line near-limit threshold and zero reviewed exceptions
+- source-size guardrails: source, schema, config, and documentation files must stay below 800 lines, with a 750-line near-limit threshold and zero reviewed exceptions
 
 ## Near-Term Core Hosting Work
 

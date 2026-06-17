@@ -7,7 +7,7 @@ const NEAR_LIMIT_LINES = 750;
 
 const NEAR_LIMIT_BUDGETS = new Map([]);
 
-const SOURCE_EXTENSIONS = new Set([
+const CHECKED_EXTENSIONS = new Set([
   ".c",
   ".cc",
   ".cpp",
@@ -15,10 +15,13 @@ const SOURCE_EXTENSIONS = new Set([
   ".hpp",
   ".js",
   ".json",
+  ".md",
   ".mjs",
   ".mm",
   ".ts",
-  ".tsx"
+  ".tsx",
+  ".yaml",
+  ".yml"
 ]);
 
 const IGNORED_DIRS = new Set([
@@ -33,17 +36,17 @@ function shouldSkipDirectory(name) {
   return IGNORED_DIRS.has(name) || name.endsWith(".build");
 }
 
-function sourceFiles(directory) {
+function checkedFiles(directory) {
   const files = [];
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const fullPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       if (!shouldSkipDirectory(entry.name)) {
-        files.push(...sourceFiles(fullPath));
+        files.push(...checkedFiles(fullPath));
       }
       continue;
     }
-    if (entry.isFile() && SOURCE_EXTENSIONS.has(path.extname(entry.name))) {
+    if (entry.isFile() && CHECKED_EXTENSIONS.has(path.extname(entry.name))) {
       files.push(fullPath);
     }
   }
@@ -63,7 +66,7 @@ function lineCount(file) {
 }
 
 const failures = [];
-for (const file of sourceFiles(ROOT)) {
+for (const file of checkedFiles(ROOT)) {
   const relative = repoRelative(file);
   const lines = lineCount(file);
   const nearLimitBudget = NEAR_LIMIT_BUDGETS.get(relative);
