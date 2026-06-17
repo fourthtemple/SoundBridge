@@ -75,7 +75,7 @@ export function sendError(send, id, code, message, details) {
 
 export function createDaemonValidators({ minSampleRate, maxSampleRate, makeProtocolError = protocolError }) {
   function requireIntInRange(value, min, max, label) {
-    const number = Math.floor(Number(value));
+    const number = Math.floor(requestNumber(value));
     if (!Number.isFinite(number) || number < min || number > max) {
       throw makeProtocolError("invalid_argument", `${label} must be an integer in ${min}..${max}.`, {
         value
@@ -85,7 +85,7 @@ export function createDaemonValidators({ minSampleRate, maxSampleRate, makeProto
   }
 
   function requireIntegerInRange(value, min, max, label) {
-    const number = Number(value);
+    const number = requestNumber(value);
     if (!Number.isInteger(number) || number < min || number > max) {
       throw makeProtocolError("invalid_argument", `${label} must be an integer in ${min}..${max}.`, {
         value
@@ -95,7 +95,7 @@ export function createDaemonValidators({ minSampleRate, maxSampleRate, makeProto
   }
 
   function requireSampleRate(value, label = "sampleRate") {
-    const number = Number(value);
+    const number = requestNumber(value);
     if (!Number.isFinite(number) || number < minSampleRate || number > maxSampleRate) {
       throw makeProtocolError("invalid_argument", `${label} must be a number in ${minSampleRate}..${maxSampleRate} Hz.`, {
         value
@@ -105,7 +105,7 @@ export function createDaemonValidators({ minSampleRate, maxSampleRate, makeProto
   }
 
   function requireNumberInRange(value, min, max, label) {
-    const number = Number(value);
+    const number = requestNumber(value);
     if (!Number.isFinite(number) || number < min || number > max) {
       throw makeProtocolError("invalid_argument", `${label} must be a number in ${min}..${max}.`, {
         value
@@ -121,6 +121,16 @@ export function createDaemonValidators({ minSampleRate, maxSampleRate, makeProto
       });
     }
     return value;
+  }
+
+  function requestNumber(value) {
+    if (typeof value !== "number" && typeof value !== "string") {
+      return Number.NaN;
+    }
+    if (typeof value === "string" && value.trim().length === 0) {
+      return Number.NaN;
+    }
+    return Number(value);
   }
 
   return {

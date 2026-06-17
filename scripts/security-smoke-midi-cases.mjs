@@ -37,6 +37,15 @@ export function createSecurityMidiCases({ check, request }) {
       socket,
       session,
       instanceId,
+      [{ type: "noteOn", note: 60, velocity: 0.8, channel: true }],
+      "invalid_argument",
+      "sendMidiEvents rejects boolean MIDI channel fields"
+    );
+
+    await expectMidiError(
+      socket,
+      session,
+      instanceId,
       [{ type: "controlChange", controller: 999, value: 0.5 }],
       "invalid_argument",
       "sendMidiEvents rejects out-of-range MIDI CC fields"
@@ -49,6 +58,15 @@ export function createSecurityMidiCases({ check, request }) {
       [{ type: "noteOn", note: 60, velocity: 0.8, busIndex: 999 }],
       "invalid_argument",
       "sendMidiEvents rejects out-of-range VST3 event-bus fields"
+    );
+
+    await expectMidiError(
+      socket,
+      session,
+      instanceId,
+      [{ type: "noteOn", note: 60, velocity: 0.8, busIndex: "" }],
+      "invalid_argument",
+      "sendMidiEvents rejects blank VST3 event-bus fields"
     );
 
     await expectMidiError(
@@ -76,6 +94,15 @@ export function createSecurityMidiCases({ check, request }) {
       [{ type: "noteExpression", typeId: 0, noteId: -1, value: 0.5 }],
       "invalid_argument",
       "sendMidiEvents rejects out-of-range VST3 note-expression fields"
+    );
+
+    await expectMidiError(
+      socket,
+      session,
+      instanceId,
+      [{ type: "noteExpression", typeId: true, noteId: 1, value: 0.5 }],
+      "invalid_argument",
+      "sendMidiEvents rejects boolean VST3 note-expression ids"
     );
 
     await expectMidiError(
