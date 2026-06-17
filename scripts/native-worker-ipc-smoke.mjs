@@ -54,7 +54,7 @@ function protocolError(code, message, details) {
 }
 
 try {
-  exerciseInstalledProbeSupport({ check });
+  await exerciseInstalledProbeSupport({ check });
   exerciseInstalledProbeParameterSupport({ check });
   exerciseInstalledProbeStateSupport({ check });
 

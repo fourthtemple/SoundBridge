@@ -63,8 +63,8 @@ export async function probeVst3ProgramData({
     return;
   }
 
-  const exported = await phase(result, "getVst3ProgramData", () =>
-    request(
+  const exported = await phase(result, "getVst3ProgramData", async () => {
+    const response = await request(
       socket,
       "getVst3ProgramData",
       {
@@ -74,37 +74,39 @@ export async function probeVst3ProgramData({
       },
       true,
       session
-    )
-  );
-  assertProbe(exported.format === "vst3", "bad_vst3_program_data", "VST3 program data reported the wrong format");
-  assertProbe(exported.programListId === target.programListId, "bad_vst3_program_data", "VST3 program data reported the wrong program list");
-  assertProbe(exported.programIndex === target.programIndex, "bad_vst3_program_data", "VST3 program data reported the wrong program index");
-  assertProbe(
-    Number.isInteger(exported.size) && exported.size >= 0 && exported.size <= MAX_PLUGIN_PROGRAM_DATA_BYTES,
-    "bad_vst3_program_data",
-    "VST3 program data size is not bounded"
-  );
-  assertProbe(typeof exported.data === "string", "bad_vst3_program_data", "VST3 raw program data is missing");
-  assertProbe(
-    vst3ProgramDataByteLength(exported.data) === exported.size,
-    "bad_vst3_program_data",
-    "VST3 raw program data did not match its reported size"
-  );
-  assertProbe(
-    typeof exported.programData === "string" && exported.programData.length > 0,
-    "bad_vst3_program_data",
-    "VST3 restore envelope is missing"
-  );
-  assertNoNativeLaunchData(exported, "VST3 program data response", assertProbe);
+    );
+    assertProbe(response.format === "vst3", "bad_vst3_program_data", "VST3 program data reported the wrong format");
+    assertProbe(response.programListId === target.programListId, "bad_vst3_program_data", "VST3 program data reported the wrong program list");
+    assertProbe(response.programIndex === target.programIndex, "bad_vst3_program_data", "VST3 program data reported the wrong program index");
+    assertProbe(
+      Number.isInteger(response.size) && response.size >= 0 && response.size <= MAX_PLUGIN_PROGRAM_DATA_BYTES,
+      "bad_vst3_program_data",
+      "VST3 program data size is not bounded"
+    );
+    assertProbe(typeof response.data === "string", "bad_vst3_program_data", "VST3 raw program data is missing");
+    assertProbe(
+      vst3ProgramDataByteLength(response.data) === response.size,
+      "bad_vst3_program_data",
+      "VST3 raw program data did not match its reported size"
+    );
+    assertProbe(
+      typeof response.programData === "string" && response.programData.length > 0,
+      "bad_vst3_program_data",
+      "VST3 restore envelope is missing"
+    );
+    assertNoNativeLaunchData(response, "VST3 program data response", assertProbe);
+    return response;
+  });
 
-  const restored = await phase(result, "setVst3ProgramData", () =>
-    request(socket, "setVst3ProgramData", { instanceId, programData: exported.programData }, true, session)
-  );
-  assertProbe(restored.restored === true, "bad_vst3_program_data_restore", "VST3 program data restore was not applied");
-  assertProbe(restored.programListId === target.programListId, "bad_vst3_program_data_restore", "VST3 restore reported the wrong program list");
-  assertProbe(restored.programIndex === target.programIndex, "bad_vst3_program_data_restore", "VST3 restore reported the wrong program index");
-  assertBoundedParameterSnapshot(restored, assertProbe, "VST3 program data restore response");
-  assertNoNativeLaunchData(restored, "VST3 program data restore response", assertProbe);
+  const restored = await phase(result, "setVst3ProgramData", async () => {
+    const response = await request(socket, "setVst3ProgramData", { instanceId, programData: exported.programData }, true, session);
+    assertProbe(response.restored === true, "bad_vst3_program_data_restore", "VST3 program data restore was not applied");
+    assertProbe(response.programListId === target.programListId, "bad_vst3_program_data_restore", "VST3 restore reported the wrong program list");
+    assertProbe(response.programIndex === target.programIndex, "bad_vst3_program_data_restore", "VST3 restore reported the wrong program index");
+    assertBoundedParameterSnapshot(response, assertProbe, "VST3 program data restore response");
+    assertNoNativeLaunchData(response, "VST3 program data restore response", assertProbe);
+    return response;
+  });
   result.vst3ProgramData = "restored";
   result.vst3ProgramDataSize = exported.size;
 }

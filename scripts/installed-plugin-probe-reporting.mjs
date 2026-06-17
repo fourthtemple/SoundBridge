@@ -20,6 +20,7 @@ import {
   summarizeFeatureStatus,
   vst3MidiControllerEventStatus,
   vst3MidiProgramChangeEventStatus,
+  vst3ProgramDataStatus,
   vst3ProgramDataProfileStatus,
   vst3ProgramListStatus
 } from "./installed-plugin-probe-status.mjs";
@@ -183,7 +184,7 @@ function summarizeCompatibilityMatrix(results, options) {
       infiniteTail: typeof result.infiniteTail === "boolean" ? result.infiniteTail : undefined,
       listedPreset: safeMatrixText(result.listedPreset ?? "missing", 64),
       listedPresetParameterCount: safeMatrixInteger(result.listedPresetParameterCount, 0, 1024),
-      vst3ProgramData: safeMatrixText(result.vst3ProgramData ?? "missing", 64),
+      vst3ProgramData: safeMatrixText(vst3ProgramDataStatus(result), 64),
       vst3ProgramDataBytes: safeMatrixInteger(result.vst3ProgramDataSize, 0, MAX_PLUGIN_PROGRAM_DATA_BYTES),
       vst3ProgramDataTarget: safeMatrixText(vst3ProgramDataProfileStatus(result), 64),
       vst3ProgramDataFlags: safeMatrixArray(result.vst3ProgramDataProfile?.flags, 64),
@@ -309,7 +310,7 @@ function summarizeCompatibilityMatrix(results, options) {
 function summarizeFeatureCoverage(results, options) {
   return {
     listedPresets: countStatuses(results, "listedPreset"),
-    vst3ProgramData: countStatuses(results, "vst3ProgramData"),
+    vst3ProgramData: countBy(results, vst3ProgramDataStatus),
     vst3ProgramDataTargets: countBy(results, vst3ProgramDataProfileStatus),
     vst3ProgramLists: countVst3ProgramLists(results),
     parameterMetadata: countParameterMetadata(results),

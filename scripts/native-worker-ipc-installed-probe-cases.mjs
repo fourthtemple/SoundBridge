@@ -10,7 +10,7 @@ import {
   summarizeProbeResults
 } from "./installed-plugin-probe-reporting.mjs";
 
-export function exerciseInstalledProbeSupport({ check }) {
+export async function exerciseInstalledProbeSupport({ check }) {
   check(
     JSON.stringify([...installedProbeFormats({})]) === JSON.stringify(["vst3", "au", "lv2"]),
     "installed plugin probe includes VST3, AU, and LV2 by default"
@@ -681,7 +681,7 @@ export function exerciseInstalledProbeSupport({ check }) {
     nativeLaunchLeakCode = error.code;
   }
   check(nativeLaunchLeakCode === "native_editor_launch_data_leak", "installed plugin probe rejects native launch data leaks");
-  exerciseInstalledProbeProgramSupport({ check });
+  await exerciseInstalledProbeProgramSupport({ check });
   const parameterProfile = summarizeParameterProfile([
     {
       id: "cutoff",

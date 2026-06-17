@@ -1,12 +1,14 @@
 import {
   firstListedPreset,
   firstVst3ProgramDataTarget,
+  probeVst3ProgramData,
   summarizeVst3ProgramDataProfile,
   vst3ProgramDataByteLength
 } from "./installed-plugin-probe-programs.mjs";
 import { summarizeProbeResults } from "./installed-plugin-probe-reporting.mjs";
+import { vst3ProgramDataStatus } from "./installed-plugin-probe-status.mjs";
 
-export function exerciseInstalledProbeProgramSupport({ check }) {
+export async function exerciseInstalledProbeProgramSupport({ check }) {
   check(
     firstListedPreset({ presets: [{ id: "init", name: "Init" }] })?.id === "init" &&
       firstListedPreset({ presets: [{ id: "x".repeat(65) }] }) === undefined,
@@ -225,4 +227,101 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       cappedProgramDataProfile.flags.includes("program-metadata-at-limit"),
     "installed plugin probe classifies VST3 program-data target edge cases"
   );
+
+  await exerciseVst3ProgramDataFailureReporting({ check });
+}
+
+async function exerciseVst3ProgramDataFailureReporting({ check }) {
+  const restoreResult = { phases: [] };
+  let restoreFailureCode = "";
+  try {
+    await probeVst3ProgramData({
+      assertProbe,
+      createdPlugin: {
+        vst3ProgramLists: [
+          { id: 7, programDataSupported: true, programs: [{ index: 2 }] }
+        ]
+      },
+      instanceId: "inst-program-data",
+      phase: recordPhase,
+      plugin: { format: "vst3" },
+      request: mismatchedRestoreRequest,
+      result: restoreResult,
+      session: "session",
+      socket: {}
+    });
+  } catch (error) {
+    restoreFailureCode = error.code;
+  }
+
+  const failedProgramDataSummary = summarizeProbeResults([
+    {
+      ok: false,
+      format: "vst3",
+      pluginId: "vst3:export-failed",
+      phases: [{ name: "getVst3ProgramData", ok: false, error: { code: "bad_vst3_program_data" } }]
+    },
+    {
+      ok: false,
+      format: "vst3",
+      pluginId: "vst3:restore-failed",
+      phases: [{ name: "setVst3ProgramData", ok: false, error: { code: "bad_vst3_program_data_restore" } }]
+    }
+  ]);
+  check(
+    restoreFailureCode === "bad_vst3_program_data_restore" &&
+      restoreResult.phases.some((phase) => phase.name === "getVst3ProgramData" && phase.ok === true) &&
+      restoreResult.phases.some((phase) => phase.name === "setVst3ProgramData" && phase.ok === false) &&
+      vst3ProgramDataStatus(restoreResult) === "restore-failed" &&
+      failedProgramDataSummary.coverage.vst3ProgramData["export-failed"] === 1 &&
+      failedProgramDataSummary.coverage.vst3ProgramData["restore-failed"] === 1 &&
+      failedProgramDataSummary.matrix[0].vst3ProgramData === "export-failed" &&
+      failedProgramDataSummary.matrix[0].featureStatus.vst3ProgramData === "export-failed" &&
+      failedProgramDataSummary.matrix[1].vst3ProgramData === "restore-failed" &&
+      failedProgramDataSummary.matrix[1].featureStatus.vst3ProgramData === "restore-failed",
+    "installed plugin probe reports VST3 program-data export and restore failures"
+  );
+}
+
+function assertProbe(ok, code, message) {
+  if (ok) {
+    return;
+  }
+  const error = new Error(message);
+  error.code = code;
+  throw error;
+}
+
+async function recordPhase(result, name, operation) {
+  try {
+    const value = await operation();
+    result.phases.push({ name, ok: true });
+    return value;
+  } catch (error) {
+    result.phases.push({ name, ok: false, error: { code: error.code ?? error.message } });
+    throw error;
+  }
+}
+
+async function mismatchedRestoreRequest(_socket, method) {
+  if (method === "getVst3ProgramData") {
+    return {
+      format: "vst3",
+      programListId: 7,
+      programIndex: 2,
+      size: 2,
+      data: "YWI=",
+      programData: "opaque-program-data-envelope"
+    };
+  }
+  if (method === "setVst3ProgramData") {
+    return {
+      restored: true,
+      programListId: 7,
+      programIndex: 3,
+      parameterCount: 0,
+      parameters: []
+    };
+  }
+  throw new Error(`unexpected method ${method}`);
 }

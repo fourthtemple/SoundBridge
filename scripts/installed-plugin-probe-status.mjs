@@ -8,7 +8,7 @@ export function summarizeFeatureStatus(result, options) {
     instantiation: phaseGroupStatus(result, ["createInstance"]),
     parameters: parameterFeatureStatus(result),
     presetSnapshots: safeMatrixText(result.listedPreset ?? "missing", 64),
-    vst3ProgramData: safeMatrixText(result.vst3ProgramData ?? "missing", 64),
+    vst3ProgramData: safeMatrixText(vst3ProgramDataStatus(result), 64),
     state: phaseGroupStatus(result, ["getState", "setState"]),
     fileGrants: fileGrantFeatureStatus(result),
     midiEvents: phaseGroupStatus(result, ["sendMidiEvents", "sendMidiNoteOff"]),
@@ -91,6 +91,19 @@ export function vst3ProgramDataProfileStatus(result) {
     return result.vst3ProgramDataProfile.category;
   }
   return String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format";
+}
+
+export function vst3ProgramDataStatus(result) {
+  if (result.vst3ProgramData !== undefined) {
+    return String(result.vst3ProgramData);
+  }
+  if (hasFailedPhase(result, ["setVst3ProgramData"])) {
+    return "restore-failed";
+  }
+  if (hasFailedPhase(result, ["getVst3ProgramData"])) {
+    return "export-failed";
+  }
+  return "missing";
 }
 
 export function vst3ProgramListStatus(result) {
