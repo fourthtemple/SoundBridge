@@ -189,8 +189,8 @@ export function createDaemonNormalizers(options = {}) {
         normalized.unitId = unitId;
       }
     }
-    if (programList.programDataSupported === true) {
-      normalized.programDataSupported = true;
+    if (programList.programDataSupported === true || programList.programDataSupported === false) {
+      normalized.programDataSupported = programList.programDataSupported;
     }
     return normalized;
   }

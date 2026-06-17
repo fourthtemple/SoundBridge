@@ -150,9 +150,9 @@ std::string programListInfoToJson(
   if (unitIdForProgramList(unitInfo, programList.id, unitId)) {
     output << ",\"unitId\":" << unitId;
   }
-  if (programListData != nullptr &&
-      programListData->programDataSupported(programList.id) == Steinberg::kResultTrue) {
-    output << ",\"programDataSupported\":true";
+  if (programListData != nullptr) {
+    output << ",\"programDataSupported\":"
+           << (programListData->programDataSupported(programList.id) == Steinberg::kResultTrue ? "true" : "false");
   }
   output << ",\"programs\":[";
   for (Steinberg::int32 programIndex = 0; programIndex < programCount; ++programIndex) {

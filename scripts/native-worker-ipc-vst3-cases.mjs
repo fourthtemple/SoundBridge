@@ -51,6 +51,13 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       unitProgramList.programs?.[0]?.name === "12345678",
     "daemon normalizers bound VST3 program-list metadata"
   );
+  const [unsupportedProgramDataList] = unitNormalizers.normalizeVst3ProgramLists([
+    { id: 9, programDataSupported: false, programs: [{ index: 0, name: "Init", normalizedValue: 0 }] }
+  ]);
+  check(
+    unsupportedProgramDataList?.programDataSupported === false,
+    "daemon normalizers preserve explicit VST3 program-data unsupported metadata"
+  );
   const [partialProgramList] = unitNormalizers.normalizeVst3ProgramLists([
     { id: "bad", programs: [{ index: 0, name: "Broken", normalizedValue: 0.25 }] },
     {
