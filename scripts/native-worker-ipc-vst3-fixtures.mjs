@@ -218,7 +218,7 @@ export async function exerciseVst3WeirdMetadataNativeWorker({
       programLists.length === 1 &&
         programLists[0].id === 2147483647 &&
         programLists[0].name === "Programs" &&
-        programLists[0].unitId === -1 &&
+        !Object.hasOwn(programLists[0], "unitId") &&
         programLists[0].programDataSupported === true &&
         programLists[0].programs?.[0]?.index === 0 &&
         programLists[0].programs?.[0]?.name === "Program 1" &&

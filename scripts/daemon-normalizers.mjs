@@ -141,7 +141,10 @@ export function createDaemonNormalizers(options = {}) {
       name
     };
     if (unit.programListId !== undefined) {
-      normalized.programListId = normalizeInt(unit.programListId, -2147483648, 2147483647, 0);
+      const programListId = normalizeSignedInt32(unit.programListId);
+      if (programListId !== undefined) {
+        normalized.programListId = programListId;
+      }
     }
     return normalized;
   }
@@ -181,7 +184,10 @@ export function createDaemonNormalizers(options = {}) {
       programs
     };
     if (programList.unitId !== undefined) {
-      normalized.unitId = normalizeInt(programList.unitId, -2147483648, 2147483647, -1);
+      const unitId = normalizeSignedInt32(programList.unitId);
+      if (unitId !== undefined) {
+        normalized.unitId = unitId;
+      }
     }
     if (programList.programDataSupported === true) {
       normalized.programDataSupported = true;
@@ -190,6 +196,10 @@ export function createDaemonNormalizers(options = {}) {
   }
 
   function normalizeProgramListId(value) {
+    return normalizeSignedInt32(value);
+  }
+
+  function normalizeSignedInt32(value) {
     const number = Number(value);
     if (!Number.isInteger(number) || number < -2147483648 || number > 2147483647) {
       return undefined;
