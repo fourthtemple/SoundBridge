@@ -136,12 +136,12 @@ export function firstVst3ProgramDataTarget(plugin) {
     ) {
       continue;
     }
-    const programIndexCounts = boundedProgramIndexCounts(programList.programs);
+    const programIndexResolutions = boundedProgramIndexResolutions(programList.programs);
     const program = programList.programs
       .slice(0, MAX_PLUGIN_PROGRAMS)
       .find((candidate) => {
         const programIndex = boundedProgramIndex(candidate?.index);
-        return programIndex !== undefined && programIndexCounts.get(programIndex) === 1;
+        return programIndex !== undefined && programIndexResolutions.targetIndexes.has(programIndex);
       });
     if (program) {
       return {
@@ -169,6 +169,7 @@ export function summarizeVst3ProgramDataProfile(plugin) {
       invalidProgramValueCount: 0,
       minProgramValueCount: 0,
       maxProgramValueCount: 0,
+      consistentDuplicateProgramIndexCount: 0,
       programListMetadataAtLimit: false,
       programMetadataAtLimit: false,
       ambiguousProgramIndexCount: 0,
@@ -200,6 +201,7 @@ export function summarizeVst3ProgramDataProfile(plugin) {
   let invalidProgramValueCount = 0;
   let minProgramValueCount = 0;
   let maxProgramValueCount = 0;
+  let consistentDuplicateProgramIndexCount = 0;
   let programMetadataAtLimit = false;
 
   if (lists.length === 0) {
@@ -273,8 +275,9 @@ export function summarizeVst3ProgramDataProfile(plugin) {
       continue;
     }
 
-    const programIndexCounts = boundedProgramIndexCounts(programList.programs);
-    ambiguousProgramIndexCount += [...programIndexCounts.values()].filter((count) => count > 1).length;
+    const programIndexResolutions = boundedProgramIndexResolutions(programList.programs);
+    ambiguousProgramIndexCount += programIndexResolutions.ambiguousIndexes.size;
+    consistentDuplicateProgramIndexCount += programIndexResolutions.consistentDuplicateIndexes.size;
     let validProgramIndexCount = 0;
     const seenProgramIndexes = new Set();
     for (const program of programList.programs.slice(0, MAX_PLUGIN_PROGRAMS)) {
@@ -308,7 +311,7 @@ export function summarizeVst3ProgramDataProfile(plugin) {
       continue;
     }
     if (programListIdCounts.get(programListId) === 1) {
-      candidateProgramCount += [...programIndexCounts.values()].filter((count) => count === 1).length;
+      candidateProgramCount += programIndexResolutions.targetIndexes.size;
     }
   }
 
@@ -324,6 +327,9 @@ export function summarizeVst3ProgramDataProfile(plugin) {
   }
   if (ambiguousProgramIndexCount > 0) {
     flags.push("ambiguous-program-index");
+  }
+  if (consistentDuplicateProgramIndexCount > 0) {
+    flags.push("consistent-duplicate-program-index");
   }
   if (duplicateProgramListIdCount > 0) {
     flags.push("duplicate-program-list-id");
@@ -353,6 +359,7 @@ export function summarizeVst3ProgramDataProfile(plugin) {
     invalidProgramValueCount,
     minProgramValueCount,
     maxProgramValueCount,
+    consistentDuplicateProgramIndexCount,
     programListMetadataAtLimit,
     programMetadataAtLimit
   };
@@ -407,18 +414,49 @@ function boundedProgramListIdCounts(programLists) {
   return counts;
 }
 
-function boundedProgramIndexCounts(programs) {
-  const counts = new Map();
+function boundedProgramIndexResolutions(programs) {
+  const groups = new Map();
   if (!Array.isArray(programs)) {
-    return counts;
+    return {
+      targetIndexes: new Set(),
+      ambiguousIndexes: new Set(),
+      consistentDuplicateIndexes: new Set()
+    };
   }
   for (const program of programs.slice(0, MAX_PLUGIN_PROGRAMS)) {
     const programIndex = boundedProgramIndex(program?.index);
-    if (programIndex !== undefined) {
-      counts.set(programIndex, (counts.get(programIndex) ?? 0) + 1);
+    if (programIndex === undefined) {
+      continue;
+    }
+    const group = groups.get(programIndex) ?? {
+      count: 0,
+      normalizedValues: new Set(),
+      unresolvedValue: false
+    };
+    group.count += 1;
+    const programValue = boundedProgramValue(program?.normalizedValue);
+    if (programValue === undefined) {
+      group.unresolvedValue = true;
+    } else {
+      group.normalizedValues.add(programValue);
+    }
+    groups.set(programIndex, group);
+  }
+
+  const targetIndexes = new Set();
+  const ambiguousIndexes = new Set();
+  const consistentDuplicateIndexes = new Set();
+  for (const [programIndex, group] of groups.entries()) {
+    if (group.count === 1) {
+      targetIndexes.add(programIndex);
+    } else if (!group.unresolvedValue && group.normalizedValues.size === 1) {
+      targetIndexes.add(programIndex);
+      consistentDuplicateIndexes.add(programIndex);
+    } else {
+      ambiguousIndexes.add(programIndex);
     }
   }
-  return counts;
+  return { targetIndexes, ambiguousIndexes, consistentDuplicateIndexes };
 }
 
 function boundedInt(value, min, max) {

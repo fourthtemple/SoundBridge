@@ -38,6 +38,11 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       { id: 3, programDataSupported: true, programs: [{ index: 1 }, { index: 1 }, { index: 2 }] }
     ]
   });
+  const consistentDuplicateProgramTarget = firstVst3ProgramDataTarget({
+    vst3ProgramLists: [
+      { id: 9, programDataSupported: true, programs: [{ index: 5, normalizedValue: 0.25 }, { index: 5, normalizedValue: 0.25 }] }
+    ]
+  });
   check(
     sentinelProgramTarget?.programListId === 8 &&
       sentinelProgramTarget.programIndex === 1 &&
@@ -45,6 +50,8 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       programTarget.programIndex === 3 &&
       uniqueFallbackProgramTarget?.programListId === 3 &&
       uniqueFallbackProgramTarget.programIndex === 2 &&
+      consistentDuplicateProgramTarget?.programListId === 9 &&
+      consistentDuplicateProgramTarget.programIndex === 5 &&
       firstVst3ProgramDataTarget({ vst3ProgramLists: [{ id: 4, programDataSupported: true, programs: [] }] }) === undefined &&
       firstVst3ProgramDataTarget({
         vst3ProgramLists: [{ id: "bad", programDataSupported: true, programs: [{ index: 0 }] }]
@@ -108,6 +115,17 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       { id: 8, programDataSupported: true, programs: [{ index: 0, normalizedValue: 0.25 }, { index: 0, normalizedValue: 0.75 }] }
     ]
   });
+  const consistentDuplicateProgramDataProfile = summarizeVst3ProgramDataProfile({
+    format: "vst3",
+    vst3ProgramLists: [
+      { id: 9, programDataSupported: true, programs: [{ index: 5, normalizedValue: 0.25 }, { index: 5, normalizedValue: 0.25 }] }
+    ]
+  });
+  const consistentDuplicateProgramDataMatrix = summarizeProbeResults([{
+    ok: true,
+    format: "vst3",
+    vst3ProgramDataProfile: consistentDuplicateProgramDataProfile
+  }]).matrix[0];
   const missingProgramsProfile = summarizeVst3ProgramDataProfile({
     format: "vst3",
     vst3ProgramLists: [
@@ -183,6 +201,14 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       ambiguousProgramDataProfile.flags.includes("duplicate-program-index") &&
       ambiguousProgramDataProfile.flags.includes("ambiguous-program-index") &&
       ambiguousProgramDataProfile.flags.includes("no-valid-program-data-programs") &&
+      consistentDuplicateProgramDataProfile.category === "targeted" &&
+      consistentDuplicateProgramDataProfile.candidateProgramCount === 1 &&
+      consistentDuplicateProgramDataProfile.duplicateProgramIndexCount === 1 &&
+      consistentDuplicateProgramDataProfile.ambiguousProgramIndexCount === 0 &&
+      consistentDuplicateProgramDataProfile.consistentDuplicateProgramIndexCount === 1 &&
+      consistentDuplicateProgramDataProfile.flags.includes("consistent-duplicate-program-index") &&
+      !consistentDuplicateProgramDataProfile.flags.includes("ambiguous-program-index") &&
+      consistentDuplicateProgramDataMatrix.vst3ProgramDataConsistentDuplicateProgramIndexes === 1 &&
       missingProgramsProfile.category === "no-valid-programs" &&
       missingProgramsProfile.missingProgramArrayCount === 1 &&
       missingProgramsProfile.undisclosedProgramListCount === 1 &&
