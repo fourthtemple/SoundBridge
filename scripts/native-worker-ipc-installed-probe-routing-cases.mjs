@@ -422,6 +422,30 @@ function exerciseRenderPayloadCoverage({ check }) {
     { inputChannels: 1, maxBlockSize: 4096 },
     { maxBlockSize: 64 }
   );
+  const typedPayload = renderPayloadForLayout(
+    "inst-typed",
+    {
+      inputChannels: "2",
+      inputBusLayouts: [
+        { index: "1", channels: "1", active: true },
+        { index: true, channels: 1, active: true },
+        { index: "", channels: "1", active: true },
+        { index: "2", channels: false, active: true },
+        { index: "3", channels: "2", active: true }
+      ],
+      maxBlockSize: "4"
+    },
+    { maxBlockSize: "8", sampleRate: "96000" }
+  );
+  const booleanPayload = renderPayloadForLayout(
+    "inst-boolean",
+    {
+      inputChannels: true,
+      inputBusLayouts: [{ index: true, channels: true, active: true }],
+      maxBlockSize: "4"
+    },
+    { maxBlockSize: "8" }
+  );
   check(
     sidechainPayload.frames === 4 &&
       sidechainPayload.sampleRate === 48000 &&
@@ -438,7 +462,14 @@ function exerciseRenderPayloadCoverage({ check }) {
       sidechainPayload.inputBuses[2].index === 3 &&
       sidechainPayload.inputBuses[2].channels.length === 2 &&
       sidechainPayload.inputBuses[2].channels[0][0] !== sidechainPayload.inputBuses[1].channels[0][0] &&
-      clampedPayload.frames === 64,
+      clampedPayload.frames === 64 &&
+      typedPayload.frames === 4 &&
+      typedPayload.sampleRate === 96000 &&
+      typedPayload.channels.length === 2 &&
+      JSON.stringify(typedPayload.inputBuses.map((bus) => bus.index)) === JSON.stringify([0, 1, 3]) &&
+      typedPayload.inputBuses[2].channels.length === 2 &&
+      booleanPayload.channels.length === 0 &&
+      booleanPayload.inputBuses.length === 0,
     "installed plugin probe builds explicit sidechain render payloads"
   );
 }
