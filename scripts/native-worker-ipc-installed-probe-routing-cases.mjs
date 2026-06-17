@@ -180,6 +180,20 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     format: "vst3",
     vst3NoteExpressions: Array.from({ length: 256 }, (_, index) => ({ typeId: index }))
   });
+  const saturatedVst3EventProfile = summarizeProbeVst3Events({
+    format: "vst3",
+    vst3NoteExpressions: [
+      ...Array.from({ length: 256 }, (_, index) => ({ typeId: index, busIndex: 0, channel: 0 })),
+      { typeId: "bad" },
+      { typeId: 300, busIndex: 99, channel: 0 },
+      { typeId: 301, minValue: 1, maxValue: 0, unitId: "bad", associatedParameterId: "" }
+    ]
+  });
+  const saturatedVst3EventMatrix = summarizeProbeResults([{
+    ok: true,
+    format: "vst3",
+    vst3EventProfile: saturatedVst3EventProfile
+  }]).matrix[0];
   const vst3EventMatrix = summarizeProbeResults([{
     ok: true,
     format: "vst3",
@@ -254,7 +268,25 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       invalidRouteOnlyVst3EventSummary.matrix[0].vst3InvalidNoteExpressionRouteCount === 1 &&
       cappedVst3EventProfile.noteExpressionCount === 256 &&
       cappedVst3EventProfile.metadataAtLimit === true &&
-      cappedVst3EventProfile.flags.includes("metadata-at-limit"),
+      cappedVst3EventProfile.flags.includes("metadata-at-limit") &&
+      saturatedVst3EventProfile.noteExpressionCount === 256 &&
+      saturatedVst3EventProfile.invalidNoteExpressionCount === 1 &&
+      saturatedVst3EventProfile.invalidNoteExpressionRouteCount === 1 &&
+      saturatedVst3EventProfile.invalidNoteExpressionValueMetadataCount === 1 &&
+      saturatedVst3EventProfile.invalidNoteExpressionUnitLinkCount === 1 &&
+      saturatedVst3EventProfile.invalidAssociatedParameterCount === 1 &&
+      saturatedVst3EventProfile.defaultRouteExpressionCount === 1 &&
+      saturatedVst3EventProfile.flags.includes("metadata-at-limit") &&
+      saturatedVst3EventProfile.flags.includes("invalid-note-expression") &&
+      saturatedVst3EventProfile.flags.includes("invalid-note-expression-route") &&
+      saturatedVst3EventProfile.flags.includes("invalid-value-metadata") &&
+      saturatedVst3EventProfile.flags.includes("invalid-unit-link") &&
+      saturatedVst3EventProfile.flags.includes("invalid-associated-parameter") &&
+      saturatedVst3EventMatrix.vst3InvalidNoteExpressionCount === 1 &&
+      saturatedVst3EventMatrix.vst3InvalidNoteExpressionRouteCount === 1 &&
+      saturatedVst3EventMatrix.vst3InvalidNoteExpressionValueMetadataCount === 1 &&
+      saturatedVst3EventMatrix.vst3InvalidUnitLinkedNoteExpressionCount === 1 &&
+      saturatedVst3EventMatrix.vst3InvalidAssociatedNoteExpressionCount === 1,
     "installed plugin probe classifies VST3 event metadata coverage"
   );
   check(

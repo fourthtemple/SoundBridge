@@ -1,4 +1,5 @@
 const MAX_VST3_NOTE_EXPRESSIONS = 256;
+const MAX_VST3_NOTE_EXPRESSION_SCAN = MAX_VST3_NOTE_EXPRESSIONS * 2;
 const MAX_VST3_NOTE_EXPRESSION_STEPS = 1_000_000;
 const VST3_NO_PARAM_IDS = new Set(["4294967295", "-1"]);
 const TEXT_NOTE_EXPRESSION_TYPE_ID = 6;
@@ -210,30 +211,32 @@ function boundedNoteExpressionProfile(value) {
   let invalidValueMetadataCount = 0;
   let invalidUnitLinkCount = 0;
   let noAssociatedParameterSentinelCount = 0;
-  for (const expression of value.slice(0, MAX_VST3_NOTE_EXPRESSIONS)) {
+  for (const expression of value.slice(0, MAX_VST3_NOTE_EXPRESSION_SCAN)) {
     const normalized = normalizeNoteExpression(expression);
     if (normalized) {
-      expressions.push(normalized);
+      if (expressions.length < MAX_VST3_NOTE_EXPRESSIONS) {
+        expressions.push(normalized);
+      }
       if (normalized.invalidRouteMetadata) {
-        invalidRouteExpressionCount += 1;
+        invalidRouteExpressionCount = cappedNoteExpressionCount(invalidRouteExpressionCount + 1);
       }
       if (normalized.defaultRouteMetadata) {
-        defaultRouteExpressionCount += 1;
+        defaultRouteExpressionCount = cappedNoteExpressionCount(defaultRouteExpressionCount + 1);
       }
       if (normalized.invalidValueMetadata) {
-        invalidValueMetadataCount += 1;
+        invalidValueMetadataCount = cappedNoteExpressionCount(invalidValueMetadataCount + 1);
       }
       if (normalized.invalidAssociatedParameterMetadata) {
-        invalidAssociatedParameterCount += 1;
+        invalidAssociatedParameterCount = cappedNoteExpressionCount(invalidAssociatedParameterCount + 1);
       }
       if (normalized.noAssociatedParameterSentinel) {
-        noAssociatedParameterSentinelCount += 1;
+        noAssociatedParameterSentinelCount = cappedNoteExpressionCount(noAssociatedParameterSentinelCount + 1);
       }
       if (normalized.invalidUnitLinkMetadata) {
-        invalidUnitLinkCount += 1;
+        invalidUnitLinkCount = cappedNoteExpressionCount(invalidUnitLinkCount + 1);
       }
     } else {
-      invalidExpressionCount += 1;
+      invalidExpressionCount = cappedNoteExpressionCount(invalidExpressionCount + 1);
     }
   }
   return {
@@ -247,6 +250,10 @@ function boundedNoteExpressionProfile(value) {
     noAssociatedParameterSentinelCount,
     metadataAtLimit: value.length >= MAX_VST3_NOTE_EXPRESSIONS
   };
+}
+
+function cappedNoteExpressionCount(value) {
+  return Math.min(MAX_VST3_NOTE_EXPRESSIONS, value);
 }
 
 function normalizeNoteExpression(expression) {
