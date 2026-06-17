@@ -271,6 +271,7 @@ export interface PluginMetadata {
 export interface PluginVst3NoteExpression {
   typeId: number;
   name: string;
+  nameFallback?: boolean;
   shortName?: string;
   unit?: string;
   unitId?: number;

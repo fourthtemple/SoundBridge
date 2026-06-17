@@ -335,6 +335,7 @@ export function createDaemonNormalizers(options = {}) {
         normalized.unitId = unitId;
       }
     }
+    if (expression.nameFallback === true) normalized.nameFallback = true;
     if (expression.bipolar === true) normalized.bipolar = true;
     if (expression.oneShot === true) normalized.oneShot = true;
     if (expression.absolute === true) normalized.absolute = true;

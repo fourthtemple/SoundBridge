@@ -118,6 +118,7 @@ export async function exerciseVst3WeirdMetadataNativeWorker({
       noteExpressions.length === 1 &&
         noteExpressions[0].typeId === 6 &&
         noteExpressions[0].name === "Expression 6" &&
+        noteExpressions[0].nameFallback === true &&
         noteExpressions[0].shortName === "txt" &&
         noteExpressions[0].defaultValue === 0.75 &&
         noteExpressions[0].minValue === 0.75 &&
@@ -309,6 +310,7 @@ const responses = {
       {
         typeId: 6,
         name: "",
+        nameFallback: true,
         shortName: "txt",
         unit: "",
         defaultValue: 2,

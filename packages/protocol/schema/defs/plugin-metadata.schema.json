@@ -77,6 +77,7 @@
       "properties": {
         "typeId": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
         "name": { "type": "string", "maxLength": 160 },
+        "nameFallback": { "type": "boolean" },
         "shortName": { "type": "string", "maxLength": 160 },
         "unit": { "type": "string", "maxLength": 64 },
         "unitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },

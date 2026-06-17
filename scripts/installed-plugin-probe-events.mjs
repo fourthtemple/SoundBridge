@@ -23,6 +23,7 @@ export function summarizeProbeVst3Events(plugin) {
   const typeIds = uniqueSorted(expressions.map((expression) => expression.typeId));
   const duplicateTypeIdCount = duplicateCount(expressions.map((expression) => expression.typeId));
   const textExpressionCount = expressions.filter(isTextExpression).length;
+  const nameFallbackExpressionCount = expressions.filter((expression) => expression.nameFallback).length;
   const flags = expressionFlags(expressions, eventBuses, channels, {
     defaultRouteExpressionCount,
     duplicateTypeIdCount,
@@ -40,6 +41,7 @@ export function summarizeProbeVst3Events(plugin) {
     noteExpressionCount: expressions.length,
     valueExpressionCount: expressions.length - textExpressionCount,
     textExpressionCount,
+    nameFallbackExpressionCount,
     defaultRouteExpressionCount,
     invalidAssociatedParameterCount,
     invalidNoteExpressionCount: invalidExpressionCount,
@@ -125,6 +127,9 @@ function expressionFlags(
   }
   if (expressions.some((expression) => expression.typeId === TEXT_NOTE_EXPRESSION_TYPE_ID)) {
     flags.push("text-expression");
+  }
+  if (expressions.some((expression) => expression.nameFallback)) {
+    flags.push("note-expression-name-fallback");
   }
   if (expressions.some((expression) => !isTextExpression(expression))) {
     flags.push("value-expression");
@@ -254,6 +259,7 @@ function normalizeNoteExpression(expression) {
     invalidUnitLinkMetadata: hasOwn(expression, "unitId") && unitId === undefined,
     fixedValueRange: valueMetadata.fixedRange,
     steppedValue: valueMetadata.stepped,
+    nameFallback: expression.nameFallback === true,
     hasAssociatedParameter: associatedParameterId !== undefined,
     hasUnitLink: unitId !== undefined,
     bipolar: expression.bipolar === true,

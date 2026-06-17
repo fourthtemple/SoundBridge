@@ -14,6 +14,7 @@ export function vst3EventMatrixFields(result) {
     vst3NoteExpressionCount: safeMatrixInteger(profile?.noteExpressionCount, 0, 256),
     vst3ValueNoteExpressionCount: safeMatrixInteger(profile?.valueExpressionCount, 0, 256),
     vst3TextNoteExpressionCount: safeMatrixInteger(profile?.textExpressionCount, 0, 256),
+    vst3NameFallbackNoteExpressionCount: safeMatrixInteger(profile?.nameFallbackExpressionCount, 0, 256),
     vst3DefaultRoutedNoteExpressionCount: safeMatrixInteger(profile?.defaultRouteExpressionCount, 0, 256),
     vst3InvalidAssociatedNoteExpressionCount: safeMatrixInteger(profile?.invalidAssociatedParameterCount, 0, 256),
     vst3InvalidNoteExpressionCount: safeMatrixInteger(profile?.invalidNoteExpressionCount, 0, 256),

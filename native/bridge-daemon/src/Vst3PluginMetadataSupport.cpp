@@ -195,6 +195,7 @@ std::string noteExpressionInfoToJson(
   const auto name = cappedString(VST3::StringConvert::convert(info.title));
   const auto shortName = cappedString(VST3::StringConvert::convert(info.shortTitle));
   const auto unit = cappedString(VST3::StringConvert::convert(info.units), 64);
+  const bool nameFallback = name.empty();
   const auto minValue = std::clamp(info.valueDesc.minimum, 0.0, 1.0);
   const auto maxValue = std::clamp(info.valueDesc.maximum, minValue, 1.0);
   const auto defaultValue = std::clamp(info.valueDesc.defaultValue, minValue, maxValue);
@@ -208,6 +209,9 @@ std::string noteExpressionInfoToJson(
          << ",\"stepCount\":" << std::max<Steinberg::int32>(0, info.valueDesc.stepCount)
          << ",\"busIndex\":" << busIndex
          << ",\"channel\":" << channel;
+  if (nameFallback) {
+    output << ",\"nameFallback\":true";
+  }
   if (!shortName.empty()) {
     output << ",\"shortName\":\"" << jsonEscape(shortName) << "\"";
   }
