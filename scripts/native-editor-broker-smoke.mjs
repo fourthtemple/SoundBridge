@@ -154,6 +154,36 @@ const grantOpened = await grantAwareBroker.openEditor({
 assert(grantOpened.brokerSessionId.startsWith("fixture-editor-"), "broker receives attached file grants");
 await grantOpened.brokerSession.close("editor-00000000-0000-4000-8000-000000000001");
 
+const nativeHostBroker = new NativeEditorBroker({
+  executablePath: process.execPath,
+  args: [fixturePath, "require-vst3-native-host", fixtureInstance.nativeHost.bundlePath],
+  limits: {
+    maxWorkerStdoutLineBytes: 64 * 1024,
+    maxWorkerCommandBytes: 64 * 1024,
+    maxWorkerStderrLineBytes: 16 * 1024,
+    maxWorkerStderrBytes: 64 * 1024,
+    maxWorkerDiagnosticLogChars: 1024,
+    workerReadyTimeoutMs: 1000,
+    nativeWorkerCommandTimeoutMs: 1000,
+    workerTerminationGraceMs: 50
+  }
+});
+const nativeHostOpened = await nativeHostBroker.openEditor({
+  editor: fixtureEditor,
+  instance: {
+    ...fixtureInstance,
+    nativeHost: {
+      ...fixtureInstance.nativeHost,
+      extraLaunchSecret: "drop-me"
+    }
+  }
+});
+assert(
+  nativeHostOpened.brokerSessionId.startsWith("fixture-editor-"),
+  "broker receives bounded VST3 native host launch descriptors"
+);
+await nativeHostOpened.brokerSession.close("editor-00000000-0000-4000-8000-000000000001");
+
 const configured = createConfiguredNativeEditorBroker({
   env: {
     SOUNDBRIDGE_NATIVE_EDITOR_BROKER_PATH: process.execPath,

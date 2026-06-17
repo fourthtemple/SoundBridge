@@ -62,12 +62,13 @@ Open:
   ],
   "nativeHost": {
     "format": "vst3",
-    "renderEngine": "native-vst3"
+    "renderEngine": "native-vst3",
+    "bundlePath": "/absolute/native-only/plugin.vst3"
   }
 }
 ```
 
-The `capabilityPolicy` object is the daemon's effective allow/deny policy for privileged UI surfaces. Brokers must treat omitted or `false` policy fields as denied, even if the native platform windowing layer could expose the feature. The `nativeHost` object and `fileGrants[].absolutePath` are daemon-to-broker data only. The daemon includes only grants already attached to the owning plugin instance and only after session ownership checks. Browser responses must remain path-free.
+The `capabilityPolicy` object is the daemon's effective allow/deny policy for privileged UI surfaces. Brokers must treat omitted or `false` policy fields as denied, even if the native platform windowing layer could expose the feature. The `nativeHost` object is bounded to known launch fields for the plugin format, and both `nativeHost` and `fileGrants[].absolutePath` are daemon-to-broker data only. The daemon includes only grants already attached to the owning plugin instance and only after session ownership checks. Browser responses must remain path-free.
 
 Open response:
 

@@ -63,7 +63,7 @@ export class NativeEditorBroker {
         maxBlockSize: instance.maxBlockSize,
         capabilityPolicy: { ...this.policy },
         fileGrants: normalizeBrokerFileGrants(fileGrants),
-        nativeHost: instance.nativeHost
+        nativeHost: normalizeBrokerNativeHost(instance.nativeHost)
       });
       const normalized = normalizeOpenResponse(opened, this.policy);
       return {
@@ -334,6 +334,30 @@ function normalizeBrokerFileGrants(fileGrants) {
     createdAt: Number.isFinite(Number(grant?.createdAt)) ? Number(grant.createdAt) : 0,
     expiresAt: Number.isFinite(Number(grant?.expiresAt)) ? Number(grant.expiresAt) : 0
   }));
+}
+
+function normalizeBrokerNativeHost(nativeHost) {
+  if (!nativeHost || typeof nativeHost !== "object") {
+    return undefined;
+  }
+  const format = safeText(nativeHost.format, 16);
+  const normalized = {
+    format,
+    renderEngine: safeText(nativeHost.renderEngine, 32)
+  };
+  if (format === "vst3" || format === "lv2") {
+    normalized.bundlePath = safeText(nativeHost.bundlePath, 4096);
+  }
+  if (format === "au") {
+    normalized.componentType = safeText(nativeHost.componentType, 16);
+    normalized.componentSubType = safeText(nativeHost.componentSubType, 16);
+    normalized.componentManufacturer = safeText(nativeHost.componentManufacturer, 16);
+    normalized.hostProfile = safeText(nativeHost.hostProfile, 64);
+  }
+  if (format === "lv2") {
+    normalized.blockSizeProfile = safeText(nativeHost.blockSizeProfile, 32);
+  }
+  return normalized;
 }
 
 function normalizeLimits(limits) {
