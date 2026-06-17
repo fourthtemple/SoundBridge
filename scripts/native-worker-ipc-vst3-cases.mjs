@@ -123,6 +123,26 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
   );
   delete fakeInstance.workerProgramData;
 
+  const originalBoundaryProgramLists = fakeInstance.vst3ProgramLists;
+  fakeInstance.vst3ProgramLists = [{
+    id: 2147483647,
+    programDataSupported: true,
+    programs: [{ index: 255 }]
+  }];
+  const restoredBoundaryProgramData = await programDataSupport.setVst3ProgramData(
+    "inst-test",
+    programEnvelope({ programListId: 2147483647, programIndex: 255, data: "+/8=" }),
+    {}
+  );
+  check(
+    restoredBoundaryProgramData.restored === true &&
+      restoredBoundaryProgramData.programListId === 2147483647 &&
+      restoredBoundaryProgramData.programIndex === 255 &&
+      fakeInstance.restoredProgramData?.data === "+/8=",
+    "daemon VST3 program-data helper restores boundary-listed envelopes"
+  );
+  fakeInstance.vst3ProgramLists = originalBoundaryProgramLists;
+
   fakeInstance.workerParameters = [
     { id: "program", name: "Program", normalizedValue: 0, defaultNormalizedValue: 0, automatable: true },
     { id: "variant", name: "Variant", normalizedValue: 0.5, defaultNormalizedValue: 0.5, automatable: true }
