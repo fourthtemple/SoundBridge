@@ -14,6 +14,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       vst3MidiMappings: [
         { busIndex: 0, channel: 0, controller: 1 },
         { busIndex: 1, channel: 2, controller: 74 },
+        { busIndex: 1, channel: 2, controller: 74 },
         { busIndex: 99, channel: 0, controller: 1 }
       ]
     },
@@ -47,10 +48,11 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile.vst3UnitProgramListLinkCount === 1 &&
       parameterProfile.invalidVst3UnitProgramListLinkCount === 1 &&
       parameterProfile.vst3MidiMappedParameterCount === 1 &&
-      parameterProfile.vst3MidiMappingCount === 2 &&
+      parameterProfile.vst3MidiMappingCount === 3 &&
       parameterProfile.vst3MidiMappingControllerCount === 2 &&
       parameterProfile.vst3MidiMappingBusCount === 2 &&
       parameterProfile.vst3MidiMappingChannelCount === 2 &&
+      parameterProfile.vst3MidiDuplicateMappingCount === 1 &&
       parameterProfile.flags.includes("program-change") &&
       parameterProfile.flags.includes("parameter-name-fallback") &&
       parameterProfile.flags.includes("program-change-without-list") &&
@@ -61,6 +63,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile.flags.includes("vst3-midi-mapping-multi-controller") &&
       parameterProfile.flags.includes("vst3-midi-mapping-non-main-event-bus") &&
       parameterProfile.flags.includes("vst3-midi-mapping-non-main-channel") &&
+      parameterProfile.flags.includes("vst3-midi-mapping-duplicate") &&
       matrix.parameterProgramChangeCount === 2 &&
       matrix.parameterNameFallbackCount === 1 &&
       matrix.parameterVst3UnitNameFallbackCount === 1 &&
@@ -68,7 +71,8 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       matrix.parameterVst3UnitProgramListLinkCount === 1 &&
       matrix.parameterInvalidVst3UnitProgramListLinkCount === 1 &&
       matrix.parameterVst3MidiMappedParameterCount === 1 &&
-      matrix.parameterVst3MidiMappingCount === 2 &&
+      matrix.parameterVst3MidiMappingCount === 3 &&
+      matrix.parameterVst3MidiDuplicateMappingCount === 1 &&
       JSON.stringify(matrix.parameterVst3MidiMappingControllers) === JSON.stringify([1, 74]) &&
       JSON.stringify(matrix.parameterVst3MidiMappingBuses) === JSON.stringify([0, 1]) &&
       JSON.stringify(matrix.parameterVst3MidiMappingChannels) === JSON.stringify([0, 2]) &&

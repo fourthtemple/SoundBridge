@@ -228,6 +228,7 @@ function summarizeCompatibilityMatrix(results, options) {
       parameterVst3MidiMappingControllerCount: safeMatrixInteger(result.parameterProfile?.vst3MidiMappingControllerCount, 0, 130),
       parameterVst3MidiMappingBusCount: safeMatrixInteger(result.parameterProfile?.vst3MidiMappingBusCount, 0, 32),
       parameterVst3MidiMappingChannelCount: safeMatrixInteger(result.parameterProfile?.vst3MidiMappingChannelCount, 0, 16),
+      parameterVst3MidiDuplicateMappingCount: safeMatrixInteger(result.parameterProfile?.vst3MidiDuplicateMappingCount, 0, 256),
       parameterVst3MidiMappingControllers: safeMatrixIntegerArray(result.parameterProfile?.vst3MidiMappingControllers, 0, 129),
       parameterVst3MidiMappingBuses: safeMatrixIntegerArray(result.parameterProfile?.vst3MidiMappingBuses, 0, 31),
       parameterVst3MidiMappingChannels: safeMatrixIntegerArray(result.parameterProfile?.vst3MidiMappingChannels, 0, 15),
