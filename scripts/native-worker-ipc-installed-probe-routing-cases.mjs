@@ -568,8 +568,10 @@ function exerciseProbeMidiCoverage({ check }) {
     { type: "channelPressure", pressure: 0.25, busIndex: "bad" }
   ]);
   const controllerBoundaryProfile = summarizeProbeMidiControllerEvents([
+    { type: "controlChange", controller: 0, value: 0, channel: 0, busIndex: 0 },
     { type: "controlChange", controller: 1, value: 0, channel: 0 },
     { type: "controlChange", controller: 74, value: 1, channel: 2, busIndex: 1 },
+    { type: "controlChange", controller: 127, value: 1, channel: 15, busIndex: 31 },
     { type: "pitchBend", value: -1, channel: 0 },
     { type: "pitchBend", value: 1, channel: 2, busIndex: 1 },
     { type: "channelPressure", pressure: 2, channel: 16, busIndex: 32 }
@@ -646,8 +648,10 @@ function exerciseProbeMidiCoverage({ check }) {
       controllerBoundaryProfile.flags.includes("max-controller-value") &&
       controllerBoundaryProfile.flags.includes("negative-controller-value") &&
       controllerBoundaryProfile.flags.includes("invalid-controller-value") &&
+      JSON.stringify(controllerBoundaryProfile.controllers) === JSON.stringify([0, 1, 74, 127]) &&
       controllerBoundaryMatrix.midiControllerDefaultRouteCount === 2 &&
       controllerBoundaryMatrix.midiControllerInvalidValueCount === 1 &&
+      JSON.stringify(controllerBoundaryMatrix.midiControllerNumbers) === JSON.stringify([0, 1, 74, 127]) &&
       controllerBoundaryMatrix.midiControllerFlags.includes("max-controller-value") &&
       invalidProgramChangeProfile.invalidProgramNumberCount === 2 &&
       invalidProgramChangeProfile.invalidProgramRouteCount === 2 &&
