@@ -45,6 +45,10 @@ export async function exerciseVst3NoteExpressionNativeWorker({
       { type: "noteOff", note: 67, channel: 0, time: 3, busIndex: 2 },
       { type: "polyPressure", note: 67, pressure: 0.25, channel: 0, time: 4, noteId: 88, busIndex: 2 }
     ]);
+    const identifiedNotes = await noteExpressionWorker.sendMidiEvents([
+      { type: "noteOn", note: 69, velocity: 0.6, channel: 3, time: 1, noteId: 123, busIndex: 4 },
+      { type: "noteOff", note: 69, velocity: 0.2, channel: 3, time: 5, noteId: 123, busIndex: 4 }
+    ]);
     check(
       routed.eventCount === 3 && bounded.eventCount === 5,
       "native VST3 workers encode bounded note-expression value/text event lists"
@@ -52,6 +56,7 @@ export async function exerciseVst3NoteExpressionNativeWorker({
     check(minimum.eventCount === 3, "native VST3 workers encode minimum note-expression value/text boundaries");
     check(delimiterText.eventCount === 2, "native VST3 workers base64-encode delimiter-rich note-expression text");
     check(notes.eventCount === 3, "native VST3 workers encode routed note and poly-pressure event boundaries");
+    check(identifiedNotes.eventCount === 2, "native VST3 workers encode note-off note IDs on routed events");
     const invalidTextMessages = await Promise.all([
       rejectedMessage(() => noteExpressionWorker.sendMidiEvents([
         { type: "noteExpressionText", typeId: 6, text: "", noteId: 1, channel: 0, time: 0 }
@@ -203,7 +208,8 @@ const expectedCommands = new Set([
     "midi on:72:0.7:2:0:99:bus=2",
     \`exprText:6:\${Buffer.from(delimiterText, "utf8").toString("base64")}:99:2:3:bus=2\`
   ].join(";"),
-  "midi on:67:0.8:0:0:bus=2;off:67:0:0:3:bus=2;poly:67:0.25:0:4:88:bus=2"
+  "midi on:67:0.8:0:0:bus=2;off:67:0:0:3:bus=2;poly:67:0.25:0:4:88:bus=2",
+  "midi on:69:0.6:3:1:123:bus=4;off:69:0.2:3:5:123:bus=4"
 ]);
 process.stdout.write(JSON.stringify({ ok: true, ready: true }) + "\\n");
 process.stdin.setEncoding("utf8");
