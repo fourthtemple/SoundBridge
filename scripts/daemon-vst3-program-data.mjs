@@ -108,10 +108,14 @@ export function createDaemonVst3ProgramData({
     const text = String(programDataEnvelope ?? "");
     if (
       text.length === 0 ||
-      Buffer.byteLength(text, "utf8") > maxPluginProgramDataEnvelopeBytes ||
       !isBase64Text(text)
     ) {
       throw protocolError("bad_program_data", "Program data was not valid SoundBridge VST3 program data.");
+    }
+    if (Buffer.byteLength(text, "utf8") > maxPluginProgramDataEnvelopeBytes) {
+      throw protocolError("program_data_too_large", "VST3 program data exceeded the configured envelope limit.", {
+        maxProgramDataEnvelopeBytes: maxPluginProgramDataEnvelopeBytes
+      });
     }
 
     try {

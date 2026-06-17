@@ -324,6 +324,12 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     (await rejectedCode(() => tinyEnvelopeSupport.getVst3ProgramData("inst-test", 7, 0, {}))) === "program_data_too_large",
     "daemon VST3 program-data helper rejects oversized export envelopes"
   );
+  check(
+    (await rejectedCode(() =>
+      tinyEnvelopeSupport.setVst3ProgramData("inst-test", programEnvelope({ data: "x".repeat(64) }), {})
+    )) === "program_data_too_large",
+    "daemon VST3 program-data helper rejects oversized restore envelopes"
+  );
 
   const [unitExpression] = unitNormalizers.normalizeVst3NoteExpressions([
     {
