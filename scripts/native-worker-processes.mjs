@@ -426,9 +426,13 @@ export function createNativeWorkerProcesses({
       if (!programData) {
         return undefined;
       }
-      return this.request(
+      const parsed = await this.request(
         `setProgramData ${programData.programListId} ${programData.programIndex} ${programData.data || "-"}`
       );
+      if (parsed.ok !== true) {
+        throw new Error("worker returned invalid VST3 program-data restore acknowledgement");
+      }
+      return parsed;
     }
 
     async setParameter(parameterId, normalizedValue, sampleOffset = 0) {

@@ -39,11 +39,18 @@ export async function exerciseVst3ProgramDataNativeWorker({
     const restoredEmpty = await programDataWorker.setVst3ProgramData(-2147483648, 0, "");
     const restoredBytes = await programDataWorker.setVst3ProgramData(7, 2, "YWI=");
     const restoredPaddedBytes = await programDataWorker.setVst3ProgramData(2147483647, 255, "+/8=");
+    const badRestoreAckMessage = await rejectedMessage(() =>
+      programDataWorker.setVst3ProgramData(7, 3, "YWI=")
+    );
     check(
       restoredEmpty?.restored === "empty" &&
         restoredBytes?.restored === "bytes" &&
         restoredPaddedBytes?.restored === "padded-bytes",
       "native VST3 workers encode signed, empty, and padded program-data restore commands"
+    );
+    check(
+      badRestoreAckMessage === "worker returned invalid VST3 program-data restore acknowledgement",
+      "native VST3 workers reject invalid program-data restore acknowledgements"
     );
   } finally {
     programDataWorker.destroy();
@@ -104,6 +111,7 @@ const responses = new Map([
   ],
   ["setProgramData -2147483648 0 -", { ok: true, restored: "empty" }],
   ["setProgramData 7 2 YWI=", { ok: true, restored: "bytes" }],
+  ["setProgramData 7 3 YWI=", { ok: false }],
   ["setProgramData 2147483647 255 +/8=", { ok: true, restored: "padded-bytes" }]
 ]);
 
@@ -136,4 +144,13 @@ function writeExecutable(tempDir, filename, source) {
   fs.writeFileSync(file, source, { mode: 0o755 });
   fs.chmodSync(file, 0o755);
   return file;
+}
+
+async function rejectedMessage(operation) {
+  try {
+    await operation();
+  } catch (error) {
+    return error.message;
+  }
+  return undefined;
 }
