@@ -308,10 +308,15 @@ function knownFileGrantOperations(operations) {
 }
 
 function renderingFeatureStatus(result) {
-  if (hasFailedPhase(result, ["processAudioBlock"])) {
+  const renderStatus = renderSignalStatus(result);
+  const outputBusStatus = outputBusSignalStatus(result);
+  if (hasFailedPhase(result, ["processAudioBlock"]) || renderStatus === "failed" || outputBusStatus === "failed") {
     return "failed";
   }
-  return result.renderSignal === "signal" || result.renderSignal === "silent" || hasOkPhase(result, "processAudioBlock")
+  return result.renderSignal === "signal" ||
+    result.renderSignal === "silent" ||
+    (result.outputBusSignalProfile?.category && outputBusStatus !== "missing") ||
+    hasOkPhase(result, "processAudioBlock")
     ? "passed"
     : "missing";
 }
