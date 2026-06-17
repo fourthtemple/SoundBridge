@@ -11,7 +11,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
         id: 1,
         programs: [{ index: 0, name: "Program 1" }]
       },
-      vst3Unit: { id: 2, nameFallback: true, programListId: 1 },
+      vst3Unit: { id: 2, name: "", programListId: 1 },
       vst3MidiMappings: [
         { busIndex: 0, channel: 0, controller: 1 },
         { busIndex: 1, channel: 2, controller: 74 },
@@ -22,7 +22,7 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
     {
       id: "program-without-list",
       programChange: true,
-      nameFallback: true,
+      name: "",
       vst3Unit: { id: 3, programListId: -1 },
       vst3MidiMappings: [
         { busIndex: 0, channel: 0, controller: 128 },

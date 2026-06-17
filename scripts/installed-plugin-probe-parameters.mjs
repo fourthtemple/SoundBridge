@@ -143,7 +143,7 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     if (parameter?.automatable !== false && parameter?.readOnly !== true) {
       profile.writableCount += 1;
     }
-    if (parameter?.nameFallback === true) {
+    if (parameter?.nameFallback === true || hasEmptyName(parameter)) {
       profile.nameFallbackCount += 1;
     }
     if (typeof parameter?.displayValue === "string" && parameter.displayValue.length > 0) {
@@ -160,7 +160,7 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
     }
     if (isVst3 && parameter?.vst3Unit && typeof parameter.vst3Unit === "object") {
       profile.vst3UnitCount += 1;
-      if (parameter.vst3Unit.nameFallback === true) {
+      if (parameter.vst3Unit.nameFallback === true || hasEmptyName(parameter.vst3Unit)) {
         profile.vst3UnitNameFallbackCount += 1;
       }
       const programListId = boundedVst3ProgramListId(parameter.vst3Unit.programListId);
@@ -379,4 +379,8 @@ function boundedVst3ProgramListId(value) {
 
 function hasOwn(object, key) {
   return object != null && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function hasEmptyName(value) {
+  return hasOwn(value, "name") && String(value.name ?? "").length === 0;
 }
