@@ -229,7 +229,22 @@ function parameterFeatureStatus(result) {
   if (hasFailedPhase(result, ["getParameters", "setParameter", "setParameterDisplayValue"])) {
     return "failed";
   }
-  return hasOkPhase(result, "getParameters") || Number.isInteger(result.parameterCount) ? "passed" : "missing";
+  if (result.parameterProfile?.category === "failed") {
+    return "failed";
+  }
+  return isPassedParameterProfile(result.parameterProfile?.category) ||
+    hasOkPhase(result, "getParameters") ||
+    Number.isInteger(result.parameterCount)
+    ? "passed"
+    : "missing";
+}
+
+function isPassedParameterProfile(category) {
+  return category === "writable" ||
+    category === "automation-only" ||
+    category === "read-only" ||
+    category === "listed" ||
+    category === "none";
 }
 
 function fileGrantFeatureStatus(result) {

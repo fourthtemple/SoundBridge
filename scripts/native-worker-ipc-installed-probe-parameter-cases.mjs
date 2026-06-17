@@ -139,6 +139,26 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
     ]
   };
   const failedDisplayInputSummary = summarizeProbeResults([failedDisplayInputResult]);
+  const statusOnlyParameterSummary = summarizeProbeResults([
+    {
+      ok: true,
+      format: "vst3",
+      parameterProfile: summarizeParameterProfile([
+        { id: "status-only-read-only", automatable: false, readOnly: true }
+      ], { format: "vst3" })
+    },
+    {
+      ok: true,
+      format: "vst3",
+      parameterProfile: summarizeParameterProfile([], { format: "vst3" })
+    },
+    {
+      ok: false,
+      format: "vst3",
+      pluginId: "vst3:status-only-parameter-failed",
+      parameterProfile: { category: "failed" }
+    }
+  ]);
 
   check(
     parameterProfile.category === "writable" &&
@@ -231,5 +251,14 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       failedDisplayInputSummary.matrix[0].parameterDisplayInput === "failed" &&
       failedDisplayInputSummary.matrix[0].featureStatus.parameters === "failed",
     "installed plugin probe reports VST3 parameter metadata, mappings, display input, automation, and failures"
+  );
+  check(
+    statusOnlyParameterSummary.matrix[0].parameterProfile === "read-only" &&
+      statusOnlyParameterSummary.matrix[0].featureStatus.parameters === "passed" &&
+      statusOnlyParameterSummary.matrix[1].parameterProfile === "none" &&
+      statusOnlyParameterSummary.matrix[1].featureStatus.parameters === "passed" &&
+      statusOnlyParameterSummary.matrix[2].parameterProfile === "failed" &&
+      statusOnlyParameterSummary.matrix[2].featureStatus.parameters === "failed",
+    "installed plugin probe reports status-only parameter profile results"
   );
 }
