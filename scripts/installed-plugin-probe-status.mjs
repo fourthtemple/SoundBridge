@@ -39,6 +39,9 @@ export function automationLaneStatus(result) {
 }
 
 export function parameterMetadataStatus(result) {
+  if (hasFailedPhase(result, ["createInstance", "getParameters"])) {
+    return "failed";
+  }
   return result.parameterMetadataAtLimit === true
     ? "at-limit"
     : Number.isInteger(result.parameterCount)
@@ -49,6 +52,9 @@ export function parameterMetadataStatus(result) {
 export function parameterProfileStatus(result) {
   if (result.parameterProfile?.category) {
     return result.parameterProfile.category;
+  }
+  if (hasFailedPhase(result, ["createInstance", "getParameters"])) {
+    return "failed";
   }
   return Number.isInteger(result.parameterCount)
     ? result.parameterCount > 0 ? "listed" : "none"

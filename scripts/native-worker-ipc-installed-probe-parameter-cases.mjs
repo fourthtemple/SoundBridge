@@ -49,6 +49,23 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile
     }
   ]).matrix[0];
+  const failedParameterSummary = summarizeProbeResults([
+    {
+      ok: false,
+      format: "vst3",
+      pluginId: "vst3:parameter-create-failed",
+      phases: [{ name: "createInstance", ok: false, error: { code: "native_worker_failed" } }]
+    },
+    {
+      ok: false,
+      format: "vst3",
+      pluginId: "vst3:parameter-query-failed",
+      phases: [
+        { name: "createInstance", ok: true },
+        { name: "getParameters", ok: false, error: { code: "bad_parameter_snapshot" } }
+      ]
+    }
+  ]);
 
   check(
     parameterProfile.category === "writable" &&
@@ -100,7 +117,16 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       JSON.stringify(matrix.parameterVst3MidiMappingControllers) === JSON.stringify([1, 74, 128, 129]) &&
       JSON.stringify(matrix.parameterVst3MidiMappingBuses) === JSON.stringify([0, 1]) &&
       JSON.stringify(matrix.parameterVst3MidiMappingChannels) === JSON.stringify([0, 2]) &&
-      matrix.parameterFlags.includes("program-change-without-list"),
-    "installed plugin probe reports VST3 parameter MIDI mappings and program-change gaps"
+      matrix.parameterFlags.includes("program-change-without-list") &&
+      failedParameterSummary.coverage.parameterMetadata.failed === 2 &&
+      failedParameterSummary.coverage.parameterProfiles.failed === 2 &&
+      failedParameterSummary.matrix[0].parameterMetadata === "failed" &&
+      failedParameterSummary.matrix[0].parameterProfile === "failed" &&
+      failedParameterSummary.matrix[0].featureStatus.instantiation === "failed" &&
+      failedParameterSummary.matrix[0].featureStatus.parameters === "missing" &&
+      failedParameterSummary.matrix[1].parameterMetadata === "failed" &&
+      failedParameterSummary.matrix[1].parameterProfile === "failed" &&
+      failedParameterSummary.matrix[1].featureStatus.parameters === "failed",
+    "installed plugin probe reports VST3 parameter metadata, mappings, and failures"
   );
 }
