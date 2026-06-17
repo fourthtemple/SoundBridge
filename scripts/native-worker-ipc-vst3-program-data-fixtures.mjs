@@ -39,6 +39,9 @@ export async function exerciseVst3ProgramDataNativeWorker({
     const restoredEmpty = await programDataWorker.setVst3ProgramData(-2147483648, 0, "");
     const restoredBytes = await programDataWorker.setVst3ProgramData(7, 2, "YWI=");
     const restoredPaddedBytes = await programDataWorker.setVst3ProgramData(2147483647, 255, "+/8=");
+    const sentinelRestoreMessage = await rejectedMessage(() =>
+      programDataWorker.setVst3ProgramData(-1, 0, "YWI=")
+    );
     const badRestoreAckMessage = await rejectedMessage(() =>
       programDataWorker.setVst3ProgramData(7, 3, "YWI=")
     );
@@ -49,7 +52,8 @@ export async function exerciseVst3ProgramDataNativeWorker({
       "native VST3 workers encode signed, empty, and padded program-data restore commands"
     );
     check(
-      badRestoreAckMessage === "worker returned invalid VST3 program-data restore acknowledgement",
+      sentinelRestoreMessage === "VST3 program data cannot use the no-program-list sentinel." &&
+        badRestoreAckMessage === "worker returned invalid VST3 program-data restore acknowledgement",
       "native VST3 workers reject invalid program-data restore acknowledgements"
     );
   } finally {
