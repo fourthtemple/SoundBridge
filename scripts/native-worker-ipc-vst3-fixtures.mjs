@@ -80,6 +80,25 @@ export async function exerciseVst3MultiBusNativeWorker({
         JSON.stringify(multiAuxBuses.get(4)) === JSON.stringify([[0.5, 0.6], [0.7, 0.8]]),
       "native VST3 workers preserve multiple aux input and nonsequential output buses"
     );
+    const sparseAuxRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0, 0], [0, 0]],
+      inputBuses: [
+        { index: 3, channels: [[0.9, 0.7]] },
+        { index: 0, channels: [[0.05, 0.15], [0.25, 0.35]] }
+      ],
+      transport: { samplePosition: 120 }
+    });
+    const sparseAuxBuses = new Map((sparseAuxRendered.outputBuses ?? []).map((bus) => [bus.index, bus.channels]));
+    check(
+      sparseAuxRendered.outputBuses?.length === 3 &&
+        JSON.stringify(sparseAuxRendered.channels) === JSON.stringify([[0.95, 0.85], [0.25, 0.35]]) &&
+        JSON.stringify(sparseAuxBuses.get(0)) === JSON.stringify(sparseAuxRendered.channels) &&
+        JSON.stringify(sparseAuxBuses.get(1)) === JSON.stringify([[0.9, 0.7]]) &&
+        JSON.stringify(sparseAuxBuses.get(4)) === JSON.stringify([[-0.9, -0.7]]),
+      "native VST3 workers route sparse aux input buses by explicit index"
+    );
     const weirdRendered = await busWorker.render({
       frames: 2,
       sampleRate: 48000,
@@ -618,6 +637,29 @@ process.stdin.on("data", (chunk) => {
           { index: 1, channels: [[0.3, 0.4]] },
           { index: 0, channels: multiAuxMainOutput },
           { index: 2, channels: [[-0.5, -0.6]] }
+        ]
+      }) + "\\n");
+      continue;
+    }
+
+    const sparseAuxLegacyChannels = [[0, 0], [0, 0]];
+    const sparseAuxInputBuses = [
+      { index: 3, channels: [[0.9, 0.7]] },
+      { index: 0, channels: [[0.05, 0.15], [0.25, 0.35]] }
+    ];
+    const sparseAuxRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[5] === "sample=120" &&
+      JSON.stringify(channels) === JSON.stringify(sparseAuxLegacyChannels) &&
+      JSON.stringify(inputBuses) === JSON.stringify(sparseAuxInputBuses);
+    if (sparseAuxRequestMatched) {
+      const sparseAuxMainOutput = [[0.95, 0.85], [0.25, 0.35]];
+      process.stdout.write(JSON.stringify({
+        channels: sparseAuxMainOutput,
+        outputBuses: [
+          { index: 4, channels: [[-0.9, -0.7]] },
+          { index: 1, channels: [[0.9, 0.7]] },
+          { index: 0, channels: sparseAuxMainOutput }
         ]
       }) + "\\n");
       continue;
