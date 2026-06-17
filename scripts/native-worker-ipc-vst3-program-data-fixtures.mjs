@@ -24,6 +24,12 @@ export async function exerciseVst3ProgramDataNativeWorker({
     const badExportMessage = await rejectedMessage(() =>
       programDataWorker.getVst3ProgramData(8, 0)
     );
+    const missingBytesExportMessage = await rejectedMessage(() =>
+      programDataWorker.getVst3ProgramData(9, 0)
+    );
+    const wrongFormatExportMessage = await rejectedMessage(() =>
+      programDataWorker.getVst3ProgramData(10, 0)
+    );
     check(
       exported?.programListId === 2147483647 &&
         exported.programIndex === 255 &&
@@ -41,6 +47,11 @@ export async function exerciseVst3ProgramDataNativeWorker({
     check(
       badExportMessage === "VST3 program data was not valid base64.",
       "native VST3 workers reject invalid program-data exports"
+    );
+    check(
+      missingBytesExportMessage === "VST3 program data bytes must be base64 text." &&
+        wrongFormatExportMessage === "VST3 program data reported the wrong format.",
+      "native VST3 workers reject malformed program-data export metadata"
     );
 
     const restoredEmpty = await programDataWorker.setVst3ProgramData(-2147483648, 0, "");
@@ -121,6 +132,8 @@ const responses = new Map([
     { programData: { format: "vst3", programListId: 7, programIndex: 2, size: 999, data: "YWI=" } }
   ],
   ["getProgramData 8 0", { programData: { format: "vst3", programListId: 8, programIndex: 0, data: "not-base64" } }],
+  ["getProgramData 9 0", { programData: { format: "vst3", programListId: 9, programIndex: 0 } }],
+  ["getProgramData 10 0", { programData: { format: "au", programListId: 10, programIndex: 0, data: "YWI=" } }],
   ["setProgramData -2147483648 0 -", { ok: true, restored: "empty" }],
   ["setProgramData 7 2 YWI=", { ok: true, restored: "bytes" }],
   ["setProgramData 7 3 YWI=", { ok: false }],
