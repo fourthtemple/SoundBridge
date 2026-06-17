@@ -675,12 +675,17 @@ export function createNativeWorkerProcesses({
     if (!Array.isArray(buses) || buses.length === 0) {
       return "-";
     }
-    const encoded = buses
-      .slice(0, limits.maxPluginBuses)
-      .map((bus) => ({
-        index: normalizeInt(bus?.index, 0, limits.maxPluginBuses - 1, 0),
-        channels: encodeAudioChannels(bus?.channels, frames)
-      }))
+    const byIndex = new Map();
+    for (const bus of buses.slice(0, limits.maxPluginBuses)) {
+      if (!bus || typeof bus !== "object" || Array.isArray(bus)) {
+        continue;
+      }
+      const index = normalizeInt(bus.index, 0, limits.maxPluginBuses - 1, 0);
+      if (!byIndex.has(index)) {
+        byIndex.set(index, encodeAudioChannels(bus.channels, frames));
+      }
+    }
+    const encoded = Array.from(byIndex, ([index, channels]) => ({ index, channels }))
       .sort((left, right) => left.index - right.index)
       .map((bus) => `${bus.index}=${bus.channels}`)
       .join(";");

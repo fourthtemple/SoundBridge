@@ -99,6 +99,29 @@ export async function exerciseVst3MultiBusNativeWorker({
         JSON.stringify(sparseAuxBuses.get(4)) === JSON.stringify([[-0.9, -0.7]]),
       "native VST3 workers sort sparse aux input buses by explicit index"
     );
+    const boundedInputRendered = await busWorker.render({
+      frames: 2,
+      sampleRate: 48000,
+      channels: [[0, 0], [0, 0]],
+      inputBuses: [
+        null,
+        ["bad"],
+        { index: 1, channels: [[0.2, 0.2]] },
+        { index: "1", channels: [[0.9, 0.9]] },
+        { index: 99, channels: [[0.4, 0.5]] },
+        { index: -7, channels: [[0.1, 0.1], [0.3, 0.3]] }
+      ],
+      transport: { samplePosition: 160 }
+    });
+    const boundedInputBuses = new Map((boundedInputRendered.outputBuses ?? []).map((bus) => [bus.index, bus.channels]));
+    check(
+      boundedInputRendered.outputBuses?.length === 3 &&
+        JSON.stringify(boundedInputRendered.channels) === JSON.stringify([[0.3, 0.3], [0.3, 0.3]]) &&
+        JSON.stringify(boundedInputBuses.get(0)) === JSON.stringify(boundedInputRendered.channels) &&
+        JSON.stringify(boundedInputBuses.get(1)) === JSON.stringify([[0.2, 0.2]]) &&
+        JSON.stringify(boundedInputBuses.get(31)) === JSON.stringify([[0.4, 0.5]]),
+      "native VST3 workers bound malformed duplicate input buses before IPC"
+    );
     const inactiveOutputRendered = await busWorker.render({
       frames: 2,
       sampleRate: 48000,
@@ -404,6 +427,29 @@ process.stdin.on("data", (chunk) => {
           { index: 4, channels: [[-0.9, -0.7]] },
           { index: 1, channels: [[0.9, 0.7]] },
           { index: 0, channels: sparseAuxMainOutput }
+        ]
+      }) + "\\n");
+      continue;
+    }
+
+    const boundedInputBuses = [
+      { index: 0, channels: [[0.1, 0.1], [0.3, 0.3]] },
+      { index: 1, channels: [[0.2, 0.2]] },
+      { index: 31, channels: [[0.4, 0.5]] }
+    ];
+    const boundedInputRequestMatched = frames === 2 &&
+      Number(parts[2]) === 48000 &&
+      parts[5] === "sample=160" &&
+      JSON.stringify(channels) === JSON.stringify([[0, 0], [0, 0]]) &&
+      JSON.stringify(inputBuses) === JSON.stringify(boundedInputBuses);
+    if (boundedInputRequestMatched) {
+      const boundedInputMainOutput = [[0.3, 0.3], [0.3, 0.3]];
+      process.stdout.write(JSON.stringify({
+        channels: boundedInputMainOutput,
+        outputBuses: [
+          { index: 0, channels: boundedInputMainOutput },
+          { index: 1, channels: [[0.2, 0.2]] },
+          { index: 31, channels: [[0.4, 0.5]] }
         ]
       }) + "\\n");
       continue;
