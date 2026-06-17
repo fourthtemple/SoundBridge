@@ -1,5 +1,6 @@
 const MAX_PLUGIN_PARAMETERS = 1024;
 const MAX_VST3_MIDI_MAPPINGS = 256;
+const MAX_VST3_MIDI_MAPPING_SCAN = MAX_VST3_MIDI_MAPPINGS * 2;
 const VST3_MIDI_AFTERTOUCH_CONTROLLER = 128;
 const VST3_MIDI_PITCH_BEND_CONTROLLER = 129;
 
@@ -170,9 +171,13 @@ export function summarizeParameterProfile(parameters, { atLimit = false, format 
         profile.invalidVst3UnitProgramListLinkCount += 1;
       }
     }
-    const remainingMidiMappings = MAX_VST3_MIDI_MAPPINGS - profile.vst3MidiMappingCount;
-    const midiMappingProfile = isVst3 && remainingMidiMappings > 0
-      ? boundedVst3MidiMappings(parameter?.vst3MidiMappings, remainingMidiMappings)
+    const remainingValidMidiMappings = MAX_VST3_MIDI_MAPPINGS - profile.vst3MidiMappingCount;
+    const remainingInvalidMidiMappings = MAX_VST3_MIDI_MAPPINGS - profile.invalidVst3MidiMappingCount;
+    const midiMappingProfile = isVst3 && (remainingValidMidiMappings > 0 || remainingInvalidMidiMappings > 0)
+      ? boundedVst3MidiMappings(parameter?.vst3MidiMappings, {
+        validLimit: remainingValidMidiMappings,
+        invalidLimit: remainingInvalidMidiMappings
+      })
       : { valid: [], invalidCount: 0 };
     const midiMappings = midiMappingProfile.valid;
     profile.invalidVst3MidiMappingCount = Math.min(
@@ -323,7 +328,10 @@ function parameterProfileFlags(profile, { atLimit, isVst3 }) {
   return flags;
 }
 
-function boundedVst3MidiMappings(mappings, limit = MAX_VST3_MIDI_MAPPINGS) {
+function boundedVst3MidiMappings(
+  mappings,
+  { validLimit = MAX_VST3_MIDI_MAPPINGS, invalidLimit = MAX_VST3_MIDI_MAPPINGS } = {}
+) {
   if (!Array.isArray(mappings)) {
     return { valid: [], invalidCount: 0, invalidRouteCount: 0, invalidControllerCount: 0 };
   }
@@ -331,15 +339,21 @@ function boundedVst3MidiMappings(mappings, limit = MAX_VST3_MIDI_MAPPINGS) {
   let invalidCount = 0;
   let invalidRouteCount = 0;
   let invalidControllerCount = 0;
-  for (const mapping of mappings.slice(0, limit)) {
-    if (validVst3MidiMapping(mapping)) {
+  for (const mapping of mappings.slice(0, MAX_VST3_MIDI_MAPPING_SCAN)) {
+    const issues = vst3MidiMappingIssues(mapping);
+    if (!issues.invalidRoute && !issues.invalidController) {
+      if (valid.length >= validLimit) {
+        continue;
+      }
       valid.push(mapping);
-    } else {
-      invalidCount += 1;
-      const issues = vst3MidiMappingIssues(mapping);
-      invalidRouteCount += issues.invalidRoute ? 1 : 0;
-      invalidControllerCount += issues.invalidController ? 1 : 0;
+      continue;
     }
+    if (invalidCount >= invalidLimit) {
+      continue;
+    }
+    invalidCount += 1;
+    invalidRouteCount += issues.invalidRoute ? 1 : 0;
+    invalidControllerCount += issues.invalidController ? 1 : 0;
   }
   return { valid, invalidCount, invalidRouteCount, invalidControllerCount };
 }

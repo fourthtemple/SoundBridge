@@ -76,6 +76,31 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       parameterProfile: cappedMappingProfile
     }
   ]).matrix[0];
+  const saturatedMappingProfile = summarizeParameterProfile([
+    {
+      id: "valid-mappings-at-limit",
+      vst3MidiMappings: Array.from({ length: 256 }, (_, index) => ({
+        busIndex: 0,
+        channel: 0,
+        controller: index % 128
+      }))
+    },
+    {
+      id: "invalid-mappings-after-limit",
+      vst3MidiMappings: [
+        { busIndex: 99, channel: 0, controller: 1 },
+        { busIndex: 0, channel: 0, controller: 130 },
+        { busIndex: 99, channel: 99, controller: 130 }
+      ]
+    }
+  ], { format: "vst3" });
+  const saturatedMappingMatrix = summarizeProbeResults([
+    {
+      ok: true,
+      format: "vst3",
+      parameterProfile: saturatedMappingProfile
+    }
+  ]).matrix[0];
   const failedParameterSummary = summarizeProbeResults([
     {
       ok: false,
@@ -178,6 +203,17 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       cappedMappingMatrix.parameterVst3MidiMappingCount === 256 &&
       cappedMappingMatrix.parameterVst3MidiDuplicateMappingCount === 128 &&
       cappedMappingMatrix.parameterFlags.includes("vst3-midi-mapping-at-limit") &&
+      saturatedMappingProfile.vst3MidiMappingCount === 256 &&
+      saturatedMappingProfile.invalidVst3MidiMappingCount === 3 &&
+      saturatedMappingProfile.invalidVst3MidiMappingRouteCount === 2 &&
+      saturatedMappingProfile.invalidVst3MidiMappingControllerCount === 2 &&
+      saturatedMappingProfile.flags.includes("vst3-midi-mapping-at-limit") &&
+      saturatedMappingProfile.flags.includes("invalid-vst3-midi-mapping-route") &&
+      saturatedMappingProfile.flags.includes("invalid-vst3-midi-mapping-controller") &&
+      saturatedMappingMatrix.parameterVst3MidiMappingCount === 256 &&
+      saturatedMappingMatrix.parameterInvalidVst3MidiMappingCount === 3 &&
+      saturatedMappingMatrix.parameterInvalidVst3MidiMappingRouteCount === 2 &&
+      saturatedMappingMatrix.parameterInvalidVst3MidiMappingControllerCount === 2 &&
       failedParameterSummary.coverage.parameterMetadata.failed === 2 &&
       failedParameterSummary.coverage.parameterProfiles.failed === 2 &&
       failedParameterSummary.matrix[0].parameterMetadata === "failed" &&
