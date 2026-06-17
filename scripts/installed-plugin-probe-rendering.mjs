@@ -177,13 +177,24 @@ function activeOutputLayouts(layout) {
   if (layouts.length === 0) {
     return [{ index: 0, channels: clampInt(layout?.outputChannels, 1, 32, 1) }];
   }
-  return layouts
+  return uniqueActiveOutputLayouts(layouts
     .map((bus) => ({
       index: clampInt(bus?.index, 0, 31, 0),
       channels: clampInt(bus?.channels, 0, 32, 0),
       active: bus?.active !== false
     }))
-    .filter((bus) => bus.active && bus.channels > 0);
+    .filter((bus) => bus.active && bus.channels > 0));
+}
+
+function uniqueActiveOutputLayouts(buses) {
+  const seen = new Set();
+  return buses.filter((bus) => {
+    if (seen.has(bus.index)) {
+      return false;
+    }
+    seen.add(bus.index);
+    return true;
+  });
 }
 
 function hasSignal(channels) {

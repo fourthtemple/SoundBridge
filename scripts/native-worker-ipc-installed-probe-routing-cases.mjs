@@ -348,6 +348,7 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     outputBusLayouts: [
       { index: 0, channels: 2, active: true },
       { index: 1, channels: 1, active: true },
+      { index: 2, channels: 1, active: true },
       { index: 2, channels: 1, active: true }
     ]
   });
