@@ -356,6 +356,12 @@ function duplicateCount(values) {
 }
 
 function boundedInt(value, min, max) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return undefined;
+  }
+  if (typeof value === "string" && value.trim().length === 0) {
+    return undefined;
+  }
   const numeric = Number(value);
   if (!Number.isInteger(numeric) || numeric < min || numeric > max) {
     return undefined;

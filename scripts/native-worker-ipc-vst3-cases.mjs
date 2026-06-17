@@ -441,7 +441,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
 
   const [unitExpression] = unitNormalizers.normalizeVst3NoteExpressions([
     {
-      typeId: 0,
+      typeId: "0",
       name: "1234567890",
       shortName: "Velocity",
       unit: "%",
@@ -458,11 +458,24 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
   ]);
   check(
     unitExpression?.name === "12345678" &&
+      unitExpression.typeId === 0 &&
       unitExpression.associatedParameterId === "1234567890" &&
       unitExpression.unitId === 2 &&
       unitExpression.channel === 1 &&
       unitExpression.bipolar === true,
     "daemon normalizers bound VST3 note-expression metadata"
+  );
+  const validTypedExpressions = unitNormalizers.normalizeVst3NoteExpressions([
+    { typeId: true, name: "Boolean" },
+    { typeId: "", name: "Blank" },
+    { typeId: "   ", name: "Whitespace" },
+    { typeId: "6", name: "Text" }
+  ]);
+  check(
+    validTypedExpressions.length === 1 &&
+      validTypedExpressions[0].typeId === 6 &&
+      validTypedExpressions[0].name === "Text",
+    "daemon normalizers skip invalid VST3 note-expression ids"
   );
   const [invalidUnitExpression] = unitNormalizers.normalizeVst3NoteExpressions([
     {

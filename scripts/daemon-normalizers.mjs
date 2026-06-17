@@ -294,16 +294,16 @@ export function createDaemonNormalizers(options = {}) {
     if (!expression || typeof expression !== "object") {
       return undefined;
     }
-    const rawTypeId = Number(expression.typeId);
-    if (!Number.isInteger(rawTypeId) || rawTypeId < 0 || rawTypeId > 4_294_967_295) {
+    const typeId = normalizeUnsignedInt32(expression.typeId);
+    if (typeId === undefined) {
       return undefined;
     }
     const name = truncateText(expression.name, limits.maxPluginParameterTextBytes);
     const minValue = clamp01(Number(expression.minValue));
     const maxValue = Math.max(minValue, clamp01(Number(expression.maxValue)));
     const normalized = {
-      typeId: rawTypeId,
-      name: name || `Expression ${rawTypeId}`,
+      typeId,
+      name: name || `Expression ${typeId}`,
       defaultValue: Math.max(minValue, Math.min(maxValue, clamp01(Number(expression.defaultValue)))),
       minValue,
       maxValue,
@@ -341,6 +341,20 @@ export function createDaemonNormalizers(options = {}) {
       return undefined;
     }
     return id;
+  }
+
+  function normalizeUnsignedInt32(value) {
+    if (typeof value !== "number" && typeof value !== "string") {
+      return undefined;
+    }
+    if (typeof value === "string" && value.trim().length === 0) {
+      return undefined;
+    }
+    const number = Number(value);
+    if (!Number.isInteger(number) || number < 0 || number > 4_294_967_295) {
+      return undefined;
+    }
+    return number;
   }
 
   function normalizeNativeState(nativeState, format) {
