@@ -238,13 +238,13 @@ export function summarizeVst3ProgramDataProfile(plugin) {
       invalidProgramListUnitCount += 1;
       flags.push("invalid-program-list-unit");
     }
-    if (programList?.nameFallback === true) {
+    if (programList?.nameFallback === true || hasEmptyName(programList)) {
       programListNameFallbackCount += 1;
       flags.push("program-list-name-fallback");
     }
     if (Array.isArray(programList.programs)) {
       for (const program of programList.programs.slice(0, MAX_PLUGIN_PROGRAMS)) {
-        if (program?.nameFallback === true) {
+        if (program?.nameFallback === true || hasEmptyName(program)) {
           programNameFallbackCount += 1;
           flags.push("program-name-fallback");
         }
@@ -470,6 +470,10 @@ function boundedInt(value, min, max) {
 
 function hasOwn(object, key) {
   return object != null && Object.prototype.hasOwnProperty.call(object, key);
+}
+
+function hasEmptyName(value) {
+  return hasOwn(value, "name") && String(value.name ?? "").length === 0;
 }
 
 function assertBoundedParameterSnapshot(response, assertProbe, context) {

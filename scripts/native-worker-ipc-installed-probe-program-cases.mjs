@@ -93,13 +93,13 @@ export async function exerciseInstalledProbeProgramSupport({ check }) {
       { id: 1, programDataSupported: false, programs: [{ index: 0 }] },
       {
         id: 2,
-        nameFallback: true,
+        name: "",
         unitId: 4,
         programDataSupported: true,
         programs: [
           { index: 3, normalizedValue: 0 },
           { index: 3 },
-          { index: 4, normalizedValue: 1, nameFallback: true },
+          { index: 4, name: "", normalizedValue: 1 },
           { index: "bad", normalizedValue: "bad" }
         ]
       }
