@@ -266,6 +266,12 @@ async function exerciseVst3ProgramDataFailureReporting({ check }) {
       format: "vst3",
       pluginId: "vst3:restore-failed",
       phases: [{ name: "setVst3ProgramData", ok: false, error: { code: "bad_vst3_program_data_restore" } }]
+    },
+    {
+      ok: false,
+      format: "vst3",
+      pluginId: "vst3:create-failed",
+      phases: [{ name: "createInstance", ok: false, error: { code: "native_worker_failed" } }]
     }
   ]);
   check(
@@ -278,8 +284,15 @@ async function exerciseVst3ProgramDataFailureReporting({ check }) {
       failedProgramDataSummary.matrix[0].vst3ProgramData === "export-failed" &&
       failedProgramDataSummary.matrix[0].featureStatus.vst3ProgramData === "export-failed" &&
       failedProgramDataSummary.matrix[1].vst3ProgramData === "restore-failed" &&
-      failedProgramDataSummary.matrix[1].featureStatus.vst3ProgramData === "restore-failed",
-    "installed plugin probe reports VST3 program-data export and restore failures"
+      failedProgramDataSummary.matrix[1].featureStatus.vst3ProgramData === "restore-failed" &&
+      failedProgramDataSummary.coverage.vst3ProgramData.failed === 1 &&
+      failedProgramDataSummary.coverage.vst3ProgramDataTargets.failed === 1 &&
+      failedProgramDataSummary.coverage.vst3ProgramLists.failed === 1 &&
+      failedProgramDataSummary.matrix[2].vst3ProgramData === "failed" &&
+      failedProgramDataSummary.matrix[2].vst3ProgramDataTarget === "failed" &&
+      failedProgramDataSummary.matrix[2].vst3ProgramLists === "failed" &&
+      failedProgramDataSummary.matrix[2].featureStatus.vst3ProgramData === "failed",
+    "installed plugin probe reports VST3 program-data export, restore, and instantiation failures"
   );
 }
 

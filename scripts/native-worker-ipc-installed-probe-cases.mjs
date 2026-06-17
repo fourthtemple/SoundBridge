@@ -664,7 +664,10 @@ export async function exerciseInstalledProbeSupport({ check }) {
       matrixReport.matrix[2].pluginId === "[local-path]" &&
       matrixReport.matrix[2].failedPhase === "createInstance" &&
       matrixReport.matrix[2].failureCode === "[local-path]: bad" &&
-      matrixReport.matrix[2].featureStatus.instantiation === "failed",
+      matrixReport.matrix[2].featureStatus.instantiation === "failed" &&
+      matrixReport.matrix[2].vst3ProgramData === "failed" &&
+      matrixReport.matrix[2].vst3ProgramDataTarget === "failed" &&
+      matrixReport.matrix[2].vst3ProgramLists === "failed",
     "installed plugin probe prints compact compatibility matrix JSON"
   );
 

@@ -106,7 +106,10 @@ export function vst3ProgramDataProfileStatus(result) {
   if (result.vst3ProgramDataProfile?.category) {
     return result.vst3ProgramDataProfile.category;
   }
-  return String(result.format ?? "").toLowerCase() === "vst3" ? "missing" : "skipped-format";
+  if (String(result.format ?? "").toLowerCase() !== "vst3") {
+    return "skipped-format";
+  }
+  return hasFailedPhase(result, ["createInstance"]) ? "failed" : "missing";
 }
 
 export function vst3ProgramDataStatus(result) {
@@ -119,15 +122,20 @@ export function vst3ProgramDataStatus(result) {
   if (hasFailedPhase(result, ["getVst3ProgramData"])) {
     return "export-failed";
   }
+  if (String(result.format ?? "").toLowerCase() === "vst3" && hasFailedPhase(result, ["createInstance"])) {
+    return "failed";
+  }
   return "missing";
 }
 
 export function vst3ProgramListStatus(result) {
-  return String(result.format ?? "").toLowerCase() !== "vst3"
-    ? "skipped-format"
-    : Number.isInteger(result.vst3ProgramListCount)
-      ? result.vst3ProgramListCount > 0 ? "listed" : "none"
-      : "missing";
+  if (String(result.format ?? "").toLowerCase() !== "vst3") {
+    return "skipped-format";
+  }
+  if (Number.isInteger(result.vst3ProgramListCount)) {
+    return result.vst3ProgramListCount > 0 ? "listed" : "none";
+  }
+  return hasFailedPhase(result, ["createInstance"]) ? "failed" : "missing";
 }
 
 export function latencyTailStatus(result) {
