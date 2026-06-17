@@ -14,7 +14,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       parentUnitId: 0,
       name: "1234567890",
       nameFallback: true,
-      programListId: 7
+      programListId: "7"
     }
   });
   check(
@@ -55,6 +55,11 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     normalizedValue: 0,
     vst3Unit: { id: 3, programListId: "bad" }
   });
+  const booleanUnitLink = unitNormalizers.normalizeWorkerParameter({
+    id: "boolean-unit-link",
+    normalizedValue: 0,
+    vst3Unit: { id: true, programListId: false }
+  });
   const sentinelUnitLink = unitNormalizers.normalizeWorkerParameter({
     id: "sentinel-unit-link",
     normalizedValue: 0,
@@ -65,6 +70,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       invalidUnitLink.vst3Unit.name === "Unit 3" &&
       invalidUnitLink.vst3Unit.nameFallback === true &&
       !Object.hasOwn(invalidUnitLink.vst3Unit, "programListId") &&
+      !Object.hasOwn(booleanUnitLink, "vst3Unit") &&
       sentinelUnitLink?.vst3Unit?.id === 4 &&
       sentinelUnitLink.vst3Unit.name === "Unit 4" &&
       sentinelUnitLink.vst3Unit.nameFallback === true &&
@@ -74,10 +80,10 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
 
   const [unitProgramList] = unitNormalizers.normalizeVst3ProgramLists([
     {
-      id: 7,
+      id: "7",
       name: "1234567890",
       nameFallback: true,
-      unitId: 2,
+      unitId: "2",
       programDataSupported: true,
       programs: [{ index: 0, name: "1234567890", normalizedValue: 0.5, nameFallback: true }]
     }
@@ -102,6 +108,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
   const [partialProgramList] = unitNormalizers.normalizeVst3ProgramLists([
     { id: "bad", programs: [{ index: 0, name: "Broken", normalizedValue: 0.25 }] },
     { id: -1, programs: [{ index: 0, name: "Sentinel", normalizedValue: 0.25 }] },
+    { id: false, programs: [{ index: 0, name: "Boolean", normalizedValue: 0.25 }] },
     {
       id: 8,
       unitId: "bad",

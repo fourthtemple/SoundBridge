@@ -108,11 +108,10 @@ export function createDaemonNormalizers(options = {}) {
     if (!unit || typeof unit !== "object") {
       return undefined;
     }
-    const rawId = Number(unit.id);
-    if (!Number.isInteger(rawId) || rawId < -2147483648 || rawId > 2147483647) {
+    const id = normalizeSignedInt32(unit.id);
+    if (id === undefined) {
       return undefined;
     }
-    const id = rawId;
     const fallbackName = `Unit ${id}`;
     const name = truncateText(unit.name, limits.maxPluginParameterTextBytes);
     const nameFallback = unit.nameFallback === true || !name;
@@ -193,6 +192,12 @@ export function createDaemonNormalizers(options = {}) {
   }
 
   function normalizeSignedInt32(value) {
+    if (typeof value !== "number" && typeof value !== "string") {
+      return undefined;
+    }
+    if (typeof value === "string" && value.trim().length === 0) {
+      return undefined;
+    }
     const number = Number(value);
     if (!Number.isInteger(number) || number < -2147483648 || number > 2147483647) {
       return undefined;

@@ -397,6 +397,12 @@ function sortedIntegers(values) {
 }
 
 function boundedVst3ProgramListId(value) {
+  if (typeof value !== "number" && typeof value !== "string") {
+    return undefined;
+  }
+  if (typeof value === "string" && value.trim().length === 0) {
+    return undefined;
+  }
   const numeric = Number(value);
   if (!Number.isInteger(numeric) || numeric < -2_147_483_648 || numeric > 2_147_483_647 || numeric === -1) {
     return undefined;
