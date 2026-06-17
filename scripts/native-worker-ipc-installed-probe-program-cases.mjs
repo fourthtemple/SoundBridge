@@ -255,27 +255,12 @@ export async function exerciseInstalledProbeProgramSupport({ check }) {
 }
 
 async function exerciseVst3ProgramDataFailureReporting({ check }) {
-  const restoreResult = { phases: [] };
-  let restoreFailureCode = "";
-  try {
-    await probeVst3ProgramData({
-      assertProbe,
-      createdPlugin: {
-        vst3ProgramLists: [
-          { id: 7, programDataSupported: true, programs: [{ index: 2 }] }
-        ]
-      },
-      instanceId: "inst-program-data",
-      phase: recordPhase,
-      plugin: { format: "vst3" },
-      request: mismatchedRestoreRequest,
-      result: restoreResult,
-      session: "session",
-      socket: {}
-    });
-  } catch (error) {
-    restoreFailureCode = error.code;
-  }
+  const { code: badExportSizeCode, result: badExportSizeResult } =
+    await captureProgramDataFailure(mismatchedExportSizeRequest);
+  const { code: leakingExportCode, result: leakingExportResult } =
+    await captureProgramDataFailure(leakingExportRequest);
+  const { code: restoreFailureCode, result: restoreResult } =
+    await captureProgramDataFailure(mismatchedRestoreRequest);
 
   const failedProgramDataSummary = summarizeProbeResults([
     {
@@ -298,7 +283,15 @@ async function exerciseVst3ProgramDataFailureReporting({ check }) {
     }
   ]);
   check(
-    restoreFailureCode === "bad_vst3_program_data_restore" &&
+    badExportSizeCode === "bad_vst3_program_data" &&
+      badExportSizeResult.phases.some((phase) => phase.name === "getVst3ProgramData" && phase.ok === false) &&
+      !badExportSizeResult.phases.some((phase) => phase.name === "setVst3ProgramData") &&
+      vst3ProgramDataStatus(badExportSizeResult) === "export-failed" &&
+      leakingExportCode === "native_editor_launch_data_leak" &&
+      leakingExportResult.phases.some((phase) => phase.name === "getVst3ProgramData" && phase.ok === false) &&
+      !leakingExportResult.phases.some((phase) => phase.name === "setVst3ProgramData") &&
+      vst3ProgramDataStatus(leakingExportResult) === "export-failed" &&
+      restoreFailureCode === "bad_vst3_program_data_restore" &&
       restoreResult.phases.some((phase) => phase.name === "getVst3ProgramData" && phase.ok === true) &&
       restoreResult.phases.some((phase) => phase.name === "setVst3ProgramData" && phase.ok === false) &&
       vst3ProgramDataStatus(restoreResult) === "restore-failed" &&
@@ -317,6 +310,31 @@ async function exerciseVst3ProgramDataFailureReporting({ check }) {
       failedProgramDataSummary.matrix[2].featureStatus.vst3ProgramData === "failed",
     "installed plugin probe reports VST3 program-data export, restore, and instantiation failures"
   );
+}
+
+async function captureProgramDataFailure(request) {
+  const result = { phases: [] };
+  let code = "";
+  try {
+    await probeVst3ProgramData({
+      assertProbe,
+      createdPlugin: {
+        vst3ProgramLists: [
+          { id: 7, programDataSupported: true, programs: [{ index: 2 }] }
+        ]
+      },
+      instanceId: "inst-program-data",
+      phase: recordPhase,
+      plugin: { format: "vst3" },
+      request,
+      result,
+      session: "session",
+      socket: {}
+    });
+  } catch (error) {
+    code = error.code;
+  }
+  return { code, result };
 }
 
 function assertProbe(ok, code, message) {
@@ -341,14 +359,7 @@ async function recordPhase(result, name, operation) {
 
 async function mismatchedRestoreRequest(_socket, method) {
   if (method === "getVst3ProgramData") {
-    return {
-      format: "vst3",
-      programListId: 7,
-      programIndex: 2,
-      size: 2,
-      data: "YWI=",
-      programData: "opaque-program-data-envelope"
-    };
+    return programDataExportResponse();
   }
   if (method === "setVst3ProgramData") {
     return {
@@ -360,4 +371,30 @@ async function mismatchedRestoreRequest(_socket, method) {
     };
   }
   throw new Error(`unexpected method ${method}`);
+}
+
+async function mismatchedExportSizeRequest(_socket, method) {
+  if (method === "getVst3ProgramData") {
+    return programDataExportResponse({ size: 3 });
+  }
+  throw new Error(`unexpected method ${method}`);
+}
+
+async function leakingExportRequest(_socket, method) {
+  if (method === "getVst3ProgramData") {
+    return programDataExportResponse({ diagnostics: { path: "should-not-leak" } });
+  }
+  throw new Error(`unexpected method ${method}`);
+}
+
+function programDataExportResponse(overrides = {}) {
+  return {
+    format: "vst3",
+    programListId: 7,
+    programIndex: 2,
+    size: 2,
+    data: "YWI=",
+    programData: "opaque-program-data-envelope",
+    ...overrides
+  };
 }
