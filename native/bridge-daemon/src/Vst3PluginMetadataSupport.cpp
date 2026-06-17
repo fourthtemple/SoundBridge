@@ -144,10 +144,14 @@ std::string programListInfoToJson(
   }
 
   const auto listName = cappedString(VST3::StringConvert::convert(programList.name));
+  const bool listNameFallback = listName.empty();
   Steinberg::Vst::UnitID unitId = Steinberg::Vst::kNoParentUnitId;
   std::ostringstream output;
   output << "{\"id\":" << programList.id
          << ",\"name\":\"" << jsonEscape(listName.empty() ? "Programs" : listName) << "\"";
+  if (listNameFallback) {
+    output << ",\"nameFallback\":true";
+  }
   if (unitIdForProgramList(unitInfo, programList.id, unitId)) {
     output << ",\"unitId\":" << unitId;
   }

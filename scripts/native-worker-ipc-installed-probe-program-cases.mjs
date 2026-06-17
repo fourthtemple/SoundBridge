@@ -70,6 +70,7 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       { id: 1, programDataSupported: false, programs: [{ index: 0 }] },
       {
         id: 2,
+        nameFallback: true,
         unitId: 4,
         programDataSupported: true,
         programs: [
@@ -136,6 +137,7 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       targetedProgramDataProfile.invalidProgramIndexCount === 1 &&
       targetedProgramDataProfile.duplicateProgramIndexCount === 1 &&
       targetedProgramDataProfile.unitLinkedProgramListCount === 1 &&
+      targetedProgramDataProfile.programListNameFallbackCount === 1 &&
       targetedProgramDataProfile.programNameFallbackCount === 1 &&
       targetedProgramDataProfile.missingProgramValueCount === 1 &&
       targetedProgramDataProfile.invalidProgramValueCount === 1 &&
@@ -143,10 +145,12 @@ export function exerciseInstalledProbeProgramSupport({ check }) {
       targetedProgramDataProfile.maxProgramValueCount === 1 &&
       targetedProgramDataProfile.flags.includes("duplicate-program-index") &&
       targetedProgramDataProfile.flags.includes("unit-linked-program-list") &&
+      targetedProgramDataProfile.flags.includes("program-list-name-fallback") &&
       targetedProgramDataProfile.flags.includes("program-name-fallback") &&
       targetedProgramDataProfile.flags.includes("missing-program-value") &&
       targetedProgramDataProfile.flags.includes("invalid-program-value") &&
       targetedProgramDataMatrix.vst3ProgramDataUnitLinkedLists === 1 &&
+      targetedProgramDataMatrix.vst3ProgramDataProgramListNameFallbacks === 1 &&
       targetedProgramDataMatrix.vst3ProgramDataProgramNameFallbacks === 1 &&
       targetedProgramDataMatrix.vst3ProgramDataMissingProgramValues === 1 &&
       targetedProgramDataMatrix.vst3ProgramDataInvalidProgramValues === 1 &&

@@ -189,6 +189,7 @@ function summarizeCompatibilityMatrix(results, options) {
       vst3ProgramDataNoProgramListSentinels: safeMatrixInteger(result.vst3ProgramDataProfile?.noProgramListSentinelCount, 0, 256),
       vst3ProgramDataUnitLinkedLists: safeMatrixInteger(result.vst3ProgramDataProfile?.unitLinkedProgramListCount, 0, 256),
       vst3ProgramDataInvalidUnitLinkedLists: safeMatrixInteger(result.vst3ProgramDataProfile?.invalidProgramListUnitCount, 0, 256),
+      vst3ProgramDataProgramListNameFallbacks: safeMatrixInteger(result.vst3ProgramDataProfile?.programListNameFallbackCount, 0, 256),
       vst3ProgramDataProgramNameFallbacks: safeMatrixInteger(result.vst3ProgramDataProfile?.programNameFallbackCount, 0, 65536),
       vst3ProgramDataMissingProgramValues: safeMatrixInteger(result.vst3ProgramDataProfile?.missingProgramValueCount, 0, 65536),
       vst3ProgramDataInvalidProgramValues: safeMatrixInteger(result.vst3ProgramDataProfile?.invalidProgramValueCount, 0, 65536),

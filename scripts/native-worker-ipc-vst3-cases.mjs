@@ -45,6 +45,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
     {
       id: 7,
       name: "1234567890",
+      nameFallback: true,
       unitId: 2,
       programDataSupported: true,
       programs: [{ index: 0, name: "1234567890", normalizedValue: 0.5, nameFallback: true }]
@@ -55,6 +56,7 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       unitProgramList.unitId === 2 &&
       unitProgramList.programDataSupported === true &&
       unitProgramList.name === "12345678" &&
+      unitProgramList.nameFallback === true &&
       unitProgramList.programs?.[0]?.name === "12345678" &&
       unitProgramList.programs?.[0]?.nameFallback === true,
     "daemon normalizers bound VST3 program-list metadata"

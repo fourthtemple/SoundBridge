@@ -60,6 +60,7 @@
       "properties": {
         "id": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "name": { "type": "string", "maxLength": 160 },
+        "nameFallback": { "type": "boolean" },
         "unitId": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
         "programDataSupported": { "type": "boolean" },
         "programs": {

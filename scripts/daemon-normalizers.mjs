@@ -189,6 +189,9 @@ export function createDaemonNormalizers(options = {}) {
       name: truncateText(programList.name ?? "Programs", limits.maxPluginParameterTextBytes) || "Programs",
       programs
     };
+    if (programList.nameFallback === true) {
+      normalized.nameFallback = true;
+    }
     if (programList.unitId !== undefined) {
       const unitId = normalizeSignedInt32(programList.unitId);
       if (unitId !== undefined) {

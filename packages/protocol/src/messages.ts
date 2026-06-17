@@ -185,6 +185,7 @@ export interface PluginProgram {
 export interface PluginProgramList {
   id: number;
   name: string;
+  nameFallback?: boolean;
   unitId?: number;
   programDataSupported?: boolean;
   programs: PluginProgram[];
