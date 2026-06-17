@@ -1,4 +1,5 @@
 const MAX_VST3_NOTE_EXPRESSIONS = 256;
+const MAX_VST3_NOTE_EXPRESSION_STEPS = 1_000_000;
 const VST3_NO_PARAM_ID = "4294967295";
 const TEXT_NOTE_EXPRESSION_TYPE_ID = 6;
 
@@ -12,6 +13,7 @@ export function summarizeProbeVst3Events(plugin) {
     invalidAssociatedParameterCount,
     invalidExpressionCount,
     invalidRouteExpressionCount,
+    invalidValueMetadataCount,
     invalidUnitLinkCount,
     metadataAtLimit
   } = boundedNoteExpressionProfile(plugin?.vst3NoteExpressions);
@@ -25,6 +27,7 @@ export function summarizeProbeVst3Events(plugin) {
     invalidAssociatedParameterCount,
     invalidExpressionCount,
     invalidRouteExpressionCount,
+    invalidValueMetadataCount,
     invalidUnitLinkCount,
     metadataAtLimit
   });
@@ -38,10 +41,13 @@ export function summarizeProbeVst3Events(plugin) {
     invalidAssociatedParameterCount,
     invalidNoteExpressionCount: invalidExpressionCount,
     invalidNoteExpressionRouteCount: invalidRouteExpressionCount,
+    invalidNoteExpressionValueMetadataCount: invalidValueMetadataCount,
     invalidNoteExpressionUnitLinkCount: invalidUnitLinkCount,
     duplicateNoteExpressionTypeIdCount: duplicateTypeIdCount,
     associatedParameterCount: expressions.filter((expression) => expression.hasAssociatedParameter).length,
     unitLinkedExpressionCount: expressions.filter((expression) => expression.hasUnitLink).length,
+    fixedValueRangeCount: expressions.filter((expression) => expression.fixedValueRange).length,
+    steppedExpressionCount: expressions.filter((expression) => expression.steppedValue).length,
     bipolarExpressionCount: expressions.filter((expression) => expression.bipolar).length,
     oneShotExpressionCount: expressions.filter((expression) => expression.oneShot).length,
     absoluteExpressionCount: expressions.filter((expression) => expression.absolute).length,
@@ -61,6 +67,7 @@ function expressionFlags(
     invalidAssociatedParameterCount,
     invalidExpressionCount,
     invalidRouteExpressionCount,
+    invalidValueMetadataCount,
     invalidUnitLinkCount,
     metadataAtLimit
   }
@@ -84,6 +91,9 @@ function expressionFlags(
   }
   if (invalidRouteExpressionCount > 0) {
     flags.push("invalid-note-expression-route");
+  }
+  if (invalidValueMetadataCount > 0) {
+    flags.push("invalid-value-metadata");
   }
   if (invalidAssociatedParameterCount > 0) {
     flags.push("invalid-associated-parameter");
@@ -117,6 +127,12 @@ function expressionFlags(
   }
   if (expressions.some((expression) => expression.hasUnitLink)) {
     flags.push("unit-linked-expression");
+  }
+  if (expressions.some((expression) => expression.fixedValueRange)) {
+    flags.push("fixed-value-range");
+  }
+  if (expressions.some((expression) => expression.steppedValue)) {
+    flags.push("stepped-expression");
   }
   if (expressions.some((expression) => expression.bipolar)) {
     flags.push("bipolar-expression");
@@ -157,6 +173,7 @@ function boundedNoteExpressionProfile(value) {
       invalidAssociatedParameterCount: 0,
       invalidExpressionCount: 0,
       invalidRouteExpressionCount: 0,
+      invalidValueMetadataCount: 0,
       invalidUnitLinkCount: 0,
       metadataAtLimit: false
     };
@@ -165,6 +182,7 @@ function boundedNoteExpressionProfile(value) {
   let invalidAssociatedParameterCount = 0;
   let invalidExpressionCount = 0;
   let invalidRouteExpressionCount = 0;
+  let invalidValueMetadataCount = 0;
   let invalidUnitLinkCount = 0;
   for (const expression of value.slice(0, MAX_VST3_NOTE_EXPRESSIONS)) {
     const normalized = normalizeNoteExpression(expression);
@@ -172,6 +190,9 @@ function boundedNoteExpressionProfile(value) {
       expressions.push(normalized);
       if (normalized.invalidRouteMetadata) {
         invalidRouteExpressionCount += 1;
+      }
+      if (normalized.invalidValueMetadata) {
+        invalidValueMetadataCount += 1;
       }
       if (normalized.invalidAssociatedParameterMetadata) {
         invalidAssociatedParameterCount += 1;
@@ -188,6 +209,7 @@ function boundedNoteExpressionProfile(value) {
     invalidAssociatedParameterCount,
     invalidExpressionCount,
     invalidRouteExpressionCount,
+    invalidValueMetadataCount,
     invalidUnitLinkCount,
     metadataAtLimit: value.length >= MAX_VST3_NOTE_EXPRESSIONS
   };
@@ -205,6 +227,7 @@ function normalizeNoteExpression(expression) {
   const channel = boundedInt(expression.channel, 0, 15);
   const unitId = boundedInt(expression.unitId, -2_147_483_648, 2_147_483_647);
   const associatedParameterId = normalizeAssociatedParameterId(expression.associatedParameterId);
+  const valueMetadata = normalizeValueMetadata(expression);
   return {
     typeId,
     busIndex: busIndex ?? 0,
@@ -212,13 +235,36 @@ function normalizeNoteExpression(expression) {
     invalidRouteMetadata:
       (hasOwn(expression, "busIndex") && busIndex === undefined) ||
       (hasOwn(expression, "channel") && channel === undefined),
+    invalidValueMetadata: valueMetadata.invalid,
     invalidAssociatedParameterMetadata: hasOwn(expression, "associatedParameterId") && associatedParameterId === undefined,
     invalidUnitLinkMetadata: hasOwn(expression, "unitId") && unitId === undefined,
+    fixedValueRange: valueMetadata.fixedRange,
+    steppedValue: valueMetadata.stepped,
     hasAssociatedParameter: associatedParameterId !== undefined,
     hasUnitLink: unitId !== undefined,
     bipolar: expression.bipolar === true,
     oneShot: expression.oneShot === true,
     absolute: expression.absolute === true
+  };
+}
+
+function normalizeValueMetadata(expression) {
+  const minValue = optionalBoundedNumber(expression.minValue, 0, 1);
+  const maxValue = optionalBoundedNumber(expression.maxValue, 0, 1);
+  const defaultValue = optionalBoundedNumber(expression.defaultValue, 0, 1);
+  const stepCount = optionalBoundedInt(expression.stepCount, 0, MAX_VST3_NOTE_EXPRESSION_STEPS);
+  const invalid =
+    (hasOwn(expression, "minValue") && minValue === undefined) ||
+    (hasOwn(expression, "maxValue") && maxValue === undefined) ||
+    (hasOwn(expression, "defaultValue") && defaultValue === undefined) ||
+    (hasOwn(expression, "stepCount") && stepCount === undefined) ||
+    (minValue !== undefined && maxValue !== undefined && minValue > maxValue) ||
+    (defaultValue !== undefined && minValue !== undefined && defaultValue < minValue) ||
+    (defaultValue !== undefined && maxValue !== undefined && defaultValue > maxValue);
+  return {
+    invalid,
+    fixedRange: minValue !== undefined && maxValue !== undefined && minValue === maxValue,
+    stepped: stepCount !== undefined && stepCount > 0
   };
 }
 
@@ -256,4 +302,16 @@ function boundedInt(value, min, max) {
     return undefined;
   }
   return numeric;
+}
+
+function optionalBoundedInt(value, min, max) {
+  return value === undefined ? undefined : boundedInt(value, min, max);
+}
+
+function optionalBoundedNumber(value, min, max) {
+  if (value === undefined) {
+    return undefined;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric >= min && numeric <= max ? numeric : undefined;
 }

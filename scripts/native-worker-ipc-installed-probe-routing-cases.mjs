@@ -145,10 +145,10 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
   const vst3EventProfile = summarizeProbeVst3Events({
     format: "vst3",
     vst3NoteExpressions: [
-      { typeId: 0, busIndex: 0, channel: 0, bipolar: true },
+      { typeId: 0, busIndex: 0, channel: 0, minValue: 0.5, maxValue: 0.5, defaultValue: 0.5, stepCount: 4, bipolar: true },
       { typeId: 6, busIndex: 2, channel: 3, unitId: 4, associatedParameterId: "param-1", oneShot: true },
       { typeId: 6, busIndex: 2, channel: 3 },
-      { typeId: 7, busIndex: 99, channel: 99, unitId: "bad", associatedParameterId: "4294967295", absolute: true },
+      { typeId: 7, busIndex: 99, channel: 99, minValue: 1, maxValue: 0, unitId: "bad", associatedParameterId: "4294967295", absolute: true },
       { typeId: "bad", busIndex: 0, channel: 0 }
     ]
   });
@@ -173,10 +173,13 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       vst3EventProfile.invalidNoteExpressionCount === 1 &&
       vst3EventProfile.invalidNoteExpressionRouteCount === 1 &&
       vst3EventProfile.invalidAssociatedParameterCount === 1 &&
+      vst3EventProfile.invalidNoteExpressionValueMetadataCount === 1 &&
       vst3EventProfile.invalidNoteExpressionUnitLinkCount === 1 &&
       vst3EventProfile.duplicateNoteExpressionTypeIdCount === 1 &&
       vst3EventProfile.associatedParameterCount === 1 &&
       vst3EventProfile.unitLinkedExpressionCount === 1 &&
+      vst3EventProfile.fixedValueRangeCount === 1 &&
+      vst3EventProfile.steppedExpressionCount === 1 &&
       vst3EventProfile.bipolarExpressionCount === 1 &&
       vst3EventProfile.oneShotExpressionCount === 1 &&
       vst3EventProfile.absoluteExpressionCount === 1 &&
@@ -192,10 +195,16 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       vst3EventProfile.flags.includes("invalid-note-expression") &&
       vst3EventProfile.flags.includes("invalid-note-expression-route") &&
       vst3EventProfile.flags.includes("invalid-associated-parameter") &&
+      vst3EventProfile.flags.includes("invalid-value-metadata") &&
       vst3EventProfile.flags.includes("invalid-unit-link") &&
+      vst3EventProfile.flags.includes("fixed-value-range") &&
+      vst3EventProfile.flags.includes("stepped-expression") &&
       vst3EventProfile.flags.includes("duplicate-note-expression-type-id") &&
       vst3EventMatrix.vst3InvalidAssociatedNoteExpressionCount === 1 &&
+      vst3EventMatrix.vst3InvalidNoteExpressionValueMetadataCount === 1 &&
       vst3EventMatrix.vst3InvalidUnitLinkedNoteExpressionCount === 1 &&
+      vst3EventMatrix.vst3FixedNoteExpressionValueRangeCount === 1 &&
+      vst3EventMatrix.vst3SteppedNoteExpressionCount === 1 &&
       invalidVst3EventProfile.category === "invalid-metadata" &&
       invalidVst3EventProfile.invalidNoteExpressionCount === 1 &&
       invalidVst3EventProfile.flags.includes("no-valid-note-expressions") &&
