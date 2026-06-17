@@ -566,7 +566,7 @@ export function createDaemonNormalizers(options = {}) {
   }
 
   function truncateText(value, maxBytes) {
-    const text = String(value ?? "");
+    const text = String(value ?? "").replace(/\u0000/g, "");
     if (Buffer.byteLength(text, "utf8") <= maxBytes) {
       return text;
     }

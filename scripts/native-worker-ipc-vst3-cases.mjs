@@ -25,6 +25,31 @@ export async function exerciseVst3ProgramDataSupport({ check, protocolError }) {
       unitParameter.vst3Unit.nameFallback === true,
     "daemon normalizers bound VST3 unit metadata"
   );
+  const nulTextParameter = unitNormalizers.normalizeWorkerParameter({
+    id: "nul-text",
+    name: "Cut\u0000off",
+    normalizedValue: 0.5,
+    defaultNormalizedValue: 0.5,
+    displayValue: "12\u0000 dB",
+    unit: "d\u0000B"
+  });
+  const [nulTextProgramList] = unitNormalizers.normalizeVst3ProgramLists([
+    { id: 11, name: "Bank\u0000 A", programs: [{ index: 0, name: "Init\u0000", normalizedValue: 0 }] }
+  ]);
+  const [nulTextExpression] = unitNormalizers.normalizeVst3NoteExpressions([
+    { typeId: 3, name: "Expr\u0000", shortName: "E\u0000", unit: "%\u0000" }
+  ]);
+  check(
+    nulTextParameter?.name === "Cutoff" &&
+      nulTextParameter.displayValue === "12 dB" &&
+      nulTextParameter.unit === "dB" &&
+      nulTextProgramList?.name === "Bank A" &&
+      nulTextProgramList.programs?.[0]?.name === "Init" &&
+      nulTextExpression?.name === "Expr" &&
+      nulTextExpression.shortName === "E" &&
+      nulTextExpression.unit === "%",
+    "daemon normalizers strip NULs from VST3 metadata text"
+  );
   const invalidUnitLink = unitNormalizers.normalizeWorkerParameter({
     id: "bad-unit-link",
     normalizedValue: 0,
