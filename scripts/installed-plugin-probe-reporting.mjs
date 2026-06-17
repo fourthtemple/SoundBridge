@@ -168,6 +168,7 @@ function summarizeCompatibilityMatrix(results, options) {
       vst3InvalidNoteExpressionRouteCount: safeMatrixInteger(result.vst3EventProfile?.invalidNoteExpressionRouteCount, 0, 256),
       vst3DuplicateNoteExpressionTypeIdCount: safeMatrixInteger(result.vst3EventProfile?.duplicateNoteExpressionTypeIdCount, 0, 256),
       vst3AssociatedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.associatedParameterCount, 0, 256),
+      vst3UnitLinkedNoteExpressionCount: safeMatrixInteger(result.vst3EventProfile?.unitLinkedExpressionCount, 0, 256),
       vst3NoteExpressionMetadataAtLimit:
         typeof result.vst3EventProfile?.metadataAtLimit === "boolean" ? result.vst3EventProfile.metadataAtLimit : undefined,
       vst3NoteExpressionTypeIds: safeMatrixIntegerArray(result.vst3EventProfile?.typeIds, 0, 4_294_967_295),

@@ -144,7 +144,7 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
     format: "vst3",
     vst3NoteExpressions: [
       { typeId: 0, busIndex: 0, channel: 0 },
-      { typeId: 6, busIndex: 2, channel: 3, associatedParameterId: "param-1" },
+      { typeId: 6, busIndex: 2, channel: 3, unitId: 4, associatedParameterId: "param-1" },
       { typeId: 6, busIndex: 2, channel: 3 },
       { typeId: 7, busIndex: 99, channel: 99 },
       { typeId: "bad", busIndex: 0, channel: 0 }
@@ -167,11 +167,13 @@ export function exerciseInstalledProbeRoutingSupport({ check }) {
       vst3EventProfile.invalidNoteExpressionRouteCount === 1 &&
       vst3EventProfile.duplicateNoteExpressionTypeIdCount === 1 &&
       vst3EventProfile.associatedParameterCount === 1 &&
+      vst3EventProfile.unitLinkedExpressionCount === 1 &&
       JSON.stringify(vst3EventProfile.typeIds) === JSON.stringify([0, 6, 7]) &&
       JSON.stringify(vst3EventProfile.eventBuses) === JSON.stringify([0, 2]) &&
       vst3EventProfile.flags.includes("text-expression") &&
       vst3EventProfile.flags.includes("value-expression") &&
       vst3EventProfile.flags.includes("associated-parameter") &&
+      vst3EventProfile.flags.includes("unit-linked-expression") &&
       vst3EventProfile.flags.includes("invalid-note-expression") &&
       vst3EventProfile.flags.includes("invalid-note-expression-route") &&
       vst3EventProfile.flags.includes("duplicate-note-expression-type-id") &&

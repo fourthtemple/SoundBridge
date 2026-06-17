@@ -158,6 +158,7 @@ export function exerciseInstalledProbeSupport({ check }) {
           "multi-channel",
           "text-expression",
           "value-expression",
+          "unit-linked-expression",
           "invalid-note-expression",
           "invalid-note-expression-route",
           "duplicate-note-expression-type-id"
@@ -169,6 +170,7 @@ export function exerciseInstalledProbeSupport({ check }) {
         invalidNoteExpressionRouteCount: 1,
         duplicateNoteExpressionTypeIdCount: 1,
         associatedParameterCount: 1,
+        unitLinkedExpressionCount: 1,
         eventBuses: [0, 2],
         channels: [0, 3],
         typeIds: [0, 6, 7]
@@ -297,6 +299,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.coverage.vst3EventProfiles["non-main-event-bus"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:text-expression"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:value-expression"] === 1 &&
+      coverageSummary.coverage.vst3EventProfiles["flag:unit-linked-expression"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:invalid-note-expression"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:invalid-note-expression-route"] === 1 &&
       coverageSummary.coverage.vst3EventProfiles["flag:duplicate-note-expression-type-id"] === 1 &&
@@ -376,6 +379,7 @@ export function exerciseInstalledProbeSupport({ check }) {
       coverageSummary.matrix[0].vst3InvalidNoteExpressionRouteCount === 1 &&
       coverageSummary.matrix[0].vst3DuplicateNoteExpressionTypeIdCount === 1 &&
       coverageSummary.matrix[0].vst3AssociatedNoteExpressionCount === 1 &&
+      coverageSummary.matrix[0].vst3UnitLinkedNoteExpressionCount === 1 &&
       JSON.stringify(coverageSummary.matrix[0].vst3NoteExpressionTypeIds) === JSON.stringify([0, 6, 7]) &&
       JSON.stringify(coverageSummary.matrix[0].vst3EventBuses) === JSON.stringify([0, 2]) &&
       JSON.stringify(coverageSummary.matrix[0].vst3EventChannels) === JSON.stringify([0, 3]) &&

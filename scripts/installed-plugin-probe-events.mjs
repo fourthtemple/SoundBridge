@@ -34,6 +34,7 @@ export function summarizeProbeVst3Events(plugin) {
     invalidNoteExpressionRouteCount: invalidRouteExpressionCount,
     duplicateNoteExpressionTypeIdCount: duplicateTypeIdCount,
     associatedParameterCount: expressions.filter((expression) => expression.hasAssociatedParameter).length,
+    unitLinkedExpressionCount: expressions.filter((expression) => expression.hasUnitLink).length,
     metadataAtLimit,
     eventBuses,
     channels,
@@ -90,6 +91,9 @@ function expressionFlags(
   }
   if (expressions.some((expression) => expression.hasAssociatedParameter)) {
     flags.push("associated-parameter");
+  }
+  if (expressions.some((expression) => expression.hasUnitLink)) {
+    flags.push("unit-linked-expression");
   }
   if (metadataAtLimit) {
     flags.push("metadata-at-limit");
@@ -150,6 +154,7 @@ function normalizeNoteExpression(expression) {
   }
   const busIndex = boundedInt(expression.busIndex, 0, 31);
   const channel = boundedInt(expression.channel, 0, 15);
+  const unitId = boundedInt(expression.unitId, -2_147_483_648, 2_147_483_647);
   return {
     typeId,
     busIndex: busIndex ?? 0,
@@ -157,7 +162,8 @@ function normalizeNoteExpression(expression) {
     invalidRouteMetadata:
       (hasOwn(expression, "busIndex") && busIndex === undefined) ||
       (hasOwn(expression, "channel") && channel === undefined),
-    hasAssociatedParameter: typeof expression.associatedParameterId === "string" && expression.associatedParameterId.length > 0
+    hasAssociatedParameter: typeof expression.associatedParameterId === "string" && expression.associatedParameterId.length > 0,
+    hasUnitLink: unitId !== undefined
   };
 }
 
