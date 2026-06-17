@@ -66,6 +66,16 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       ]
     }
   ]);
+  const failedAutomationSummary = summarizeProbeResults([{
+    ok: false,
+    format: "vst3",
+    pluginId: "vst3:automation-failed",
+    phases: [
+      { name: "createInstance", ok: true },
+      { name: "getParameters", ok: true },
+      { name: "setAutomationLane", ok: false, error: { code: "bad_automation_lane" } }
+    ]
+  }]);
 
   check(
     parameterProfile.category === "writable" &&
@@ -126,7 +136,10 @@ export function exerciseInstalledProbeParameterSupport({ check }) {
       failedParameterSummary.matrix[0].featureStatus.parameters === "missing" &&
       failedParameterSummary.matrix[1].parameterMetadata === "failed" &&
       failedParameterSummary.matrix[1].parameterProfile === "failed" &&
-      failedParameterSummary.matrix[1].featureStatus.parameters === "failed",
-    "installed plugin probe reports VST3 parameter metadata, mappings, and failures"
+      failedParameterSummary.matrix[1].featureStatus.parameters === "failed" &&
+      failedAutomationSummary.coverage.automationLanes.failed === 1 &&
+      failedAutomationSummary.matrix[0].automation === "failed" &&
+      failedAutomationSummary.matrix[0].featureStatus.automation === "failed",
+    "installed plugin probe reports VST3 parameter metadata, mappings, automation, and failures"
   );
 }

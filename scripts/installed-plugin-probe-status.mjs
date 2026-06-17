@@ -31,6 +31,9 @@ export function hasOkPhase(result, name) {
 }
 
 export function automationLaneStatus(result) {
+  if (hasFailedPhase(result, ["setAutomationLane"])) {
+    return "failed";
+  }
   return Number.isInteger(result.automationLanePointCount)
     ? "applied"
     : result.automationLaneSkipped
