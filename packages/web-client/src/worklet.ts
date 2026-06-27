@@ -22,6 +22,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private readonly latencyRecoveryBlocks: number;
   private readonly targetResponseDeadlineLeadBlocks: number;
   private readonly latencyPressureThresholdBlocks: number;
+  private readonly statsIntervalBlocks: number;
   private blockId = 0;
   private lastFrames = 128;
   private underruns = 0;
@@ -61,7 +62,6 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private bypassed = false;
   private bypassResponseBlockFloor = 0;
   private sharedAudioWakeMode: "none" | "pending" | "atomics" | "timer" = "none";
-
   constructor(options: AudioWorkletNodeOptions) {
     super();
     const processorOptions = options.processorOptions ?? {};
@@ -92,11 +92,11 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.latencyRecoveryBlocks = this.boundedInteger(processorOptions.latencyRecoveryBlocks, 512, 32, 8192);
     this.targetResponseDeadlineLeadBlocks = this.boundedInteger(processorOptions.targetResponseDeadlineLeadBlocks, 1, 0, 16);
     this.latencyPressureThresholdBlocks = this.boundedInteger(processorOptions.latencyPressureThresholdBlocks, 4, 1, 64);
+    this.statsIntervalBlocks = this.boundedInteger(processorOptions.statsIntervalBlocks, 128, 8, 1024);
     this.maxRecycledOutputBuffers = this.outputChannels * Math.max(2, this.maxQueuedOutputBlocks + this.maxOutputLatencyBlocks);
     this.bypassed = processorOptions.bypassed === true;
     this.port.onmessage = (event) => this.handleMessage(event.data);
   }
-
   process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
     const input = inputs[0] ?? [];
     const output = outputs[0] ?? [];
@@ -134,7 +134,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
 
     this.postProcessBlock(currentBlockId, frames, outgoing);
 
-    if (this.blockId % 128 === 0) {
+    if (this.blockId % this.statsIntervalBlocks === 0) {
       const leadMinBlocks = this.responseDeadlineLeadMinBlocks ?? 0;
       const leadMaxBlocks = this.responseDeadlineLeadMaxBlocks ?? 0;
       const jitterBlocks = this.responseBlocksSinceLastStats > 0 ? leadMaxBlocks - leadMinBlocks : 0;

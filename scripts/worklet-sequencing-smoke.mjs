@@ -392,6 +392,13 @@ assert(typeof statsMessage?.responseJitterSamples === "number", "worklet stats r
 assert(typeof statsMessage?.responseDeadlineMisses === "number", "worklet stats report response deadline misses");
 assert(typeof statsMessage?.responseDeadlineMissesSinceLastStats === "number", "worklet stats report windowed deadline misses");
 
+const fastStatsProcessor = new processorCtor({ processorOptions: { outputChannels: 1, statsIntervalBlocks: 8 } });
+const fastStatsPort = lastPort;
+for (let index = 0; index < 8; index += 1) {
+  fastStatsProcessor.process([[Float32Array.from([index])]], [[new Float32Array(1)]]);
+}
+assert(fastStatsPort.messages.some((message) => message.type === "stats"), "worklet honors bounded stats interval overrides");
+
 console.log("Worklet sequencing smoke checks passed.");
 
 function equal(left, right) {

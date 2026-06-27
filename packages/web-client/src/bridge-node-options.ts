@@ -12,6 +12,7 @@ export interface SoundBridgeAudioNodeOptions {
   latencyRecoveryBlocks?: number;
   targetResponseDeadlineLeadBlocks?: number;
   latencyPressureThresholdBlocks?: number;
+  statsIntervalBlocks?: number;
   audioTransport?: "binary" | "json";
   audioRequestTimeoutMs?: number;
   audioTransferMode?: "auto" | "message" | "shared";
@@ -84,6 +85,7 @@ const LIVE_AUDIO_NODE_OUTPUT_LATENCY_BLOCKS = 2;
 const LIVE_AUDIO_NODE_MAX_OUTPUT_LATENCY_BLOCKS = 4;
 const LIVE_AUDIO_NODE_LATENCY_RECOVERY_BLOCKS = 128;
 const LIVE_AUDIO_NODE_LATENCY_PRESSURE_THRESHOLD_BLOCKS = 2;
+const LIVE_AUDIO_NODE_STATS_INTERVAL_BLOCKS = 32;
 const LIVE_AUDIO_NODE_SHARED_BUFFER_BLOCKS = 4;
 const LIVE_AUDIO_NODE_AUDIO_REQUEST_TIMEOUT_MS = 250;
 
@@ -116,6 +118,7 @@ export function createLivePerformanceAudioNodeOptions(options: LivePerformanceAu
     latencyRecoveryBlocks: boundedInteger(options.latencyRecoveryBlocks, LIVE_AUDIO_NODE_LATENCY_RECOVERY_BLOCKS, 32, 8192),
     targetResponseDeadlineLeadBlocks: boundedInteger(options.targetResponseDeadlineLeadBlocks, 1, 0, 16),
     latencyPressureThresholdBlocks: boundedInteger(options.latencyPressureThresholdBlocks, LIVE_AUDIO_NODE_LATENCY_PRESSURE_THRESHOLD_BLOCKS, 1, 64),
+    statsIntervalBlocks: boundedInteger(options.statsIntervalBlocks, LIVE_AUDIO_NODE_STATS_INTERVAL_BLOCKS, 8, 1024),
     audioTransport: options.audioTransport === "json" ? "json" : "binary",
     audioRequestTimeoutMs: boundedInteger(options.audioRequestTimeoutMs, LIVE_AUDIO_NODE_AUDIO_REQUEST_TIMEOUT_MS, 0, 60000),
     audioTransferMode: options.audioTransferMode ?? "auto",

@@ -615,6 +615,7 @@ const LIVE_AUDIO_NODE_OUTPUT_LATENCY_BLOCKS = 2;
 const LIVE_AUDIO_NODE_MAX_OUTPUT_LATENCY_BLOCKS = 4;
 const LIVE_AUDIO_NODE_LATENCY_RECOVERY_BLOCKS = 128;
 const LIVE_AUDIO_NODE_LATENCY_PRESSURE_THRESHOLD_BLOCKS = 2;
+const LIVE_AUDIO_NODE_STATS_INTERVAL_BLOCKS = 32;
 const LIVE_AUDIO_NODE_SHARED_BUFFER_BLOCKS = 4;
 const LIVE_AUDIO_NODE_AUDIO_REQUEST_TIMEOUT_MS = 250;
 
@@ -662,6 +663,7 @@ export function createLivePerformanceAudioNodeOptions(options) {
       1,
       64
     ),
+    statsIntervalBlocks: boundedAudioNodeInteger(options.statsIntervalBlocks, LIVE_AUDIO_NODE_STATS_INTERVAL_BLOCKS, 8, 1024),
     audioTransport: options.audioTransport === "json" ? "json" : "binary",
     audioRequestTimeoutMs: boundedAudioNodeInteger(options.audioRequestTimeoutMs, LIVE_AUDIO_NODE_AUDIO_REQUEST_TIMEOUT_MS, 0, 60000),
     audioTransferMode: options.audioTransferMode ?? "auto",
@@ -746,6 +748,7 @@ export class SoundBridgeAudioNode extends EventTarget {
         latencyRecoveryBlocks: options.latencyRecoveryBlocks,
         targetResponseDeadlineLeadBlocks: options.targetResponseDeadlineLeadBlocks,
         latencyPressureThresholdBlocks: options.latencyPressureThresholdBlocks,
+        statsIntervalBlocks: options.statsIntervalBlocks,
         bypassed: options.bypassed
       }
     });
@@ -784,6 +787,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       latencyRecoveryBlocks: boundedAudioNodeInteger(options.latencyRecoveryBlocks, 512, 32, 8192),
       targetResponseDeadlineLeadBlocks: boundedAudioNodeInteger(options.targetResponseDeadlineLeadBlocks, 1, 0, 16),
       latencyPressureThresholdBlocks: boundedAudioNodeInteger(options.latencyPressureThresholdBlocks, 4, 1, 64),
+      statsIntervalBlocks: boundedAudioNodeInteger(options.statsIntervalBlocks, 128, 8, 1024),
       audioTransport: options.audioTransport === "json" ? "json" : "binary",
       audioRequestTimeoutMs: boundedAudioNodeInteger(options.audioRequestTimeoutMs, 2000, 0, 60000),
       audioTransferMode: options.audioTransferMode ?? "auto",
