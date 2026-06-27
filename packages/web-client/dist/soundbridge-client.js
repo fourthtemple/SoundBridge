@@ -1303,7 +1303,10 @@ function liveEffectTimeoutError() {
 }
 
 function liveEffectFailureReason(error) {
-  return error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout" ? "process-timeout" : "processing-error";
+  return error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout" ||
+    error instanceof SoundBridgeProtocolError && error.code === "render_timeout"
+    ? "process-timeout"
+    : "processing-error";
 }
 
 function liveEffectNowMs() {

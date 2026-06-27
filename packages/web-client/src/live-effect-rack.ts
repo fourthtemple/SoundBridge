@@ -5,7 +5,7 @@ import type {
   HostTransportState,
   PluginMetadata
 } from "../../protocol/src/messages";
-import { SoundBridgeClient } from "./client";
+import { SoundBridgeClient, SoundBridgeProtocolError } from "./client";
 import type { BinaryAudioBlockRequest, BinaryAudioBusBlock } from "./client";
 
 export interface LiveEffectRackOptions {
@@ -506,7 +506,10 @@ function liveEffectTimeoutError(): Error {
 }
 
 function liveEffectFailureReason(error: unknown): LiveEffectRackHealth["unhealthyReason"] {
-  return error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout" ? "process-timeout" : "processing-error";
+  return (error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout") ||
+    (error instanceof SoundBridgeProtocolError && error.code === "render_timeout")
+    ? "process-timeout"
+    : "processing-error";
 }
 
 function liveEffectNowMs(): number {

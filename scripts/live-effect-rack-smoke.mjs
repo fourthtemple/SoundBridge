@@ -1,4 +1,5 @@
 import {
+  SoundBridgeProtocolError,
   SoundBridgeLiveEffectRack,
   createLivePerformanceRackOptions
 } from "../packages/web-client/dist/soundbridge-client.js";
@@ -28,6 +29,7 @@ class FakeLiveClient {
     this.renderDurationMs = 0.5;
     this.renderBudgetMs = 2.667;
     this.renderBudgetExceeded = false;
+    this.protocolErrorCode = undefined;
   }
 
   async createInstance(request) {
@@ -58,6 +60,9 @@ class FakeLiveClient {
     this.processTimeouts.push(timeoutMs);
     if (this.processingDelayMs > 0) {
       await delay(this.processingDelayMs);
+    }
+    if (this.protocolErrorCode) {
+      throw new SoundBridgeProtocolError(this.protocolErrorCode, "native render deadline missed", {});
     }
     if (this.failProcessing) {
       throw new Error("plugin worker crashed");
@@ -360,6 +365,21 @@ await timeoutRecoveryRack.processBlock({ blockId: 24, channels: inputChannels })
 await flushAsync();
 assert(timeoutRecovered === 1 && timeoutRecoveryRack.health.healthy === false, "process-timeout recovery cap leaves repeated failures dry");
 await timeoutRecoveryRack.destroy();
+
+const daemonTimeoutRack = await SoundBridgeLiveEffectRack.create({
+  client,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128
+});
+client.protocolErrorCode = "render_timeout";
+const daemonTimedOut = await daemonTimeoutRack.processBlock({ blockId: 25, channels: inputChannels });
+assert(
+  daemonTimedOut.bypassed === true && daemonTimeoutRack.health.unhealthyReason === "process-timeout",
+  "daemon render_timeout errors use live process-timeout policy"
+);
+client.protocolErrorCode = undefined;
+await daemonTimeoutRack.destroy();
 
 const livePerformanceRack = await SoundBridgeLiveEffectRack.createLivePerformance({
   client,

@@ -15,6 +15,7 @@ import { createDaemonPairing } from "./daemon-pairing.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonParameterCommands } from "./daemon-parameter-commands.mjs";
 import { createPluginCatalogSupport, loadNativeHostStatus, resolveNativeRenderer } from "./daemon-plugin-catalog.mjs";
+import { boundedRenderDurationMs, boundedRenderTimeoutMs, recordRenderSuccess, renderBudgetDiagnostics, renderTimeoutProtocolError, renderTimestampMs } from "./daemon-render-diagnostics.mjs";
 import { createDaemonRequestHandler } from "./daemon-request-handler.mjs";
 import { createDaemonRuntimePayloads } from "./daemon-runtime-payloads.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
@@ -583,7 +584,13 @@ async function processAudioBlock(payload, session) {
 
   if (instance.kind === "instrument") {
     const renderStartedAt = renderTimestampMs();
-    const processed = await processInstrumentBlock(instance, frames, blockSampleRate, { inputBuses, transport, renderTimeoutMs });
+    let processed;
+    try {
+      processed = await processInstrumentBlock(instance, frames, blockSampleRate, { inputBuses, transport, renderTimeoutMs });
+    } catch (error) {
+      throw renderTimeoutProtocolError(instance, error, { blockId: payload.blockId, frames, renderTimeoutMs, sampleRate: blockSampleRate }, protocolError) ?? error;
+    }
+    recordRenderSuccess(instance);
     const renderDurationMs = boundedRenderDurationMs(renderStartedAt);
     const processedChannels = normalizeAudioChannels(processed.channels, instance.outputChannels, frames);
     return {
@@ -602,14 +609,20 @@ async function processAudioBlock(payload, session) {
 
   if (instance.worker) {
     const renderStartedAt = renderTimestampMs();
-    const rendered = await instance.worker.render({
-      frames,
-      sampleRate: blockSampleRate,
-      channels,
-      inputBuses,
-      transport,
-      renderTimeoutMs
-    });
+    let rendered;
+    try {
+      rendered = await instance.worker.render({
+        frames,
+        sampleRate: blockSampleRate,
+        channels,
+        inputBuses,
+        transport,
+        renderTimeoutMs
+      });
+    } catch (error) {
+      throw renderTimeoutProtocolError(instance, error, { blockId: payload.blockId, frames, renderTimeoutMs, sampleRate: blockSampleRate }, protocolError) ?? error;
+    }
+    recordRenderSuccess(instance);
     const renderDurationMs = boundedRenderDurationMs(renderStartedAt);
     const renderedChannels = Array.isArray(rendered) ? rendered : rendered.channels;
     return {
@@ -657,26 +670,6 @@ async function processAudioBlock(payload, session) {
     renderDurationMs,
     ...renderBudgetDiagnostics(renderDurationMs, frames, blockSampleRate)
   };
-}
-
-function renderTimestampMs() {
-  return typeof globalThis.performance?.now === "function" ? globalThis.performance.now() : Date.now();
-}
-
-function boundedRenderDurationMs(startedAt) {
-  const elapsed = renderTimestampMs() - startedAt;
-  return Number.isFinite(elapsed) ? Math.max(0, Math.min(60000, Math.round(elapsed * 1000) / 1000)) : 0;
-}
-
-function renderBudgetDiagnostics(renderDurationMs, frames, sampleRate) {
-  const budget = (Number(frames) / Number(sampleRate)) * 1000;
-  const renderBudgetMs = Number.isFinite(budget) ? Math.max(0, Math.min(60000, Math.round(budget * 1000) / 1000)) : 0;
-  return { renderBudgetMs, renderBudgetExceeded: renderBudgetMs > 0 && renderDurationMs > renderBudgetMs };
-}
-
-function boundedRenderTimeoutMs(value) {
-  const timeout = Math.floor(Number(value));
-  return Number.isFinite(timeout) && timeout > 0 ? Math.max(1, Math.min(60000, timeout)) : undefined;
 }
 
 function getInstance(instanceId, session) {
