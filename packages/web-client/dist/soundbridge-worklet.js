@@ -289,7 +289,8 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       type: "process",
       blockId,
       frames,
-      channels
+      channels,
+      transportLatencySamples: this.transportLatencySamples()
     };
     const transfer = channels.map((channel) => channel.buffer);
     if (this.inFlightBlocks >= this.maxInFlightBlocks) {
@@ -386,6 +387,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     Atomics.store(control, metadataOffset + SoundBridgeAudioProcessor.sharedBlockIdOffset, blockId);
     Atomics.store(control, metadataOffset + SoundBridgeAudioProcessor.sharedBlockFramesOffset, frames);
     Atomics.store(control, metadataOffset + SoundBridgeAudioProcessor.sharedBlockChannelsOffset, Math.min(channels.length, shared.channels));
+    Atomics.store(control, metadataOffset + 3, this.transportLatencySamples());
     const base = this.sharedAudioOffset(shared, slotIndex);
     for (let channelIndex = 0; channelIndex < shared.channels; channelIndex += 1) {
       const offset = base + channelIndex * shared.frames;

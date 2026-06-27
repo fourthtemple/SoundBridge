@@ -12,7 +12,6 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private static readonly sharedBlockIdOffset = 0;
   private static readonly sharedBlockFramesOffset = 1;
   private static readonly sharedBlockChannelsOffset = 2;
-
   private readonly outputChannels: number;
   private readonly maxQueuedOutputBlocks: number;
   private outputLatencyBlocks: number;
@@ -322,7 +321,6 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private outputChannelBlock(channel: ArrayLike<number>): Float32Array {
     return channel instanceof Float32Array ? channel : Float32Array.from(channel);
   }
-
   private postProcessBlock(blockId: number, frames: number, channels: Float32Array[]): void {
     const sharedResult = this.writeSharedInput(blockId, frames, channels);
     if (sharedResult === "sent") {
@@ -333,7 +331,8 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       type: "process",
       blockId,
       frames,
-      channels
+      channels,
+      transportLatencySamples: this.transportLatencySamples()
     };
     const transfer = channels.map((channel) => channel.buffer);
     if (this.inFlightBlocks >= this.maxInFlightBlocks) {
@@ -444,6 +443,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     Atomics.store(control, metadataOffset + SoundBridgeAudioProcessor.sharedBlockIdOffset, blockId);
     Atomics.store(control, metadataOffset + SoundBridgeAudioProcessor.sharedBlockFramesOffset, frames);
     Atomics.store(control, metadataOffset + SoundBridgeAudioProcessor.sharedBlockChannelsOffset, Math.min(channels.length, shared.channels));
+    Atomics.store(control, metadataOffset + 3, this.transportLatencySamples());
     const base = this.sharedAudioOffset(shared, slotIndex);
     for (let channelIndex = 0; channelIndex < shared.channels; channelIndex += 1) {
       const offset = base + channelIndex * shared.frames;

@@ -1,6 +1,7 @@
 import {
   __soundBridgeDecodeBinaryAudioEnvelope as decodeBinaryAudioEnvelope,
-  __soundBridgeEncodeBinaryAudioEnvelope as encodeBinaryAudioEnvelope
+  __soundBridgeEncodeBinaryAudioEnvelope as encodeBinaryAudioEnvelope,
+  liveTransportForBlock
 } from "./soundbridge-client.js";
 
 let socket;
@@ -19,6 +20,7 @@ const SHARED_DROPPED = 3;
 const SHARED_BLOCK_ID_OFFSET = 0;
 const SHARED_BLOCK_FRAMES_OFFSET = 1;
 const SHARED_BLOCK_CHANNELS_OFFSET = 2;
+const SHARED_BLOCK_TRANSPORT_LATENCY_OFFSET = 3;
 const SHARED_AUDIO_WAIT_TIMEOUT_MS = 100;
 const SHARED_AUDIO_TIMER_POLL_MS = 1;
 const STALE_REQUEST_ID_LIMIT = 1024;
@@ -169,14 +171,14 @@ function sendAudioProcess(port, config, message) {
   const frames = boundedFrames(message.frames ?? channels[0]?.length ?? 128);
   const recyclableInput = recyclableInputChannels(channels, frames);
   const blockId = Math.floor(Number(message.blockId ?? 0));
-  const samplePosition = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, blockId * frames));
+  const transport = audioBlockTransport(config, blockId, frames, message.transportLatencySamples);
   const binary = config.audioTransport === "binary";
   const payload = {
     instanceId: config.instanceId,
     blockId,
     sampleRate: config.sampleRate,
     ...(binary ? {} : { channels: channels.map((channel) => Array.from(channel)) }),
-    transport: { playing: true, samplePosition },
+    transport,
     timestamp: performance.now(),
     renderTimeoutMs: config.audioRequestTimeoutMs > 0 ? config.audioRequestTimeoutMs : void 0
   };
@@ -363,14 +365,14 @@ function sendSharedAudioProcess(config, shared, block) {
     shared.port.postMessage({ type: "audio-error", blockId: block.blockId, error: "SoundBridge worker transport is not connected." });
     return;
   }
-  const samplePosition = Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, block.blockId * block.frames));
+  const transport = audioBlockTransport(config, block.blockId, block.frames, block.transportLatencySamples);
   const binary = config.audioTransport === "binary";
   const payload = {
     instanceId: config.instanceId,
     blockId: block.blockId,
     sampleRate: config.sampleRate,
     ...(binary ? {} : { channels: block.channels.map((channel) => Array.from(channel)) }),
-    transport: { playing: true, samplePosition },
+    transport,
     timestamp: performance.now(),
     renderTimeoutMs: config.audioRequestTimeoutMs > 0 ? config.audioRequestTimeoutMs : void 0
   };
@@ -444,6 +446,7 @@ function readSharedInputBlock(shared, slotIndex) {
   const blockId = Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_ID_OFFSET);
   const frames = Math.min(shared.frames, boundedFrames(Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_FRAMES_OFFSET)));
   const channelCount = Math.max(1, Math.min(shared.channels, Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_CHANNELS_OFFSET)));
+  const transportLatencySamples = Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_TRANSPORT_LATENCY_OFFSET);
   const channels = [];
   const base = sharedAudioOffset(shared, slotIndex);
   for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
@@ -452,7 +455,17 @@ function readSharedInputBlock(shared, slotIndex) {
     channel.set(shared.inputAudio.subarray(offset, offset + frames));
     channels.push(channel);
   }
-  return { blockId, frames, channels };
+  return { blockId, frames, channels, transportLatencySamples };
+}
+
+function audioBlockTransport(config, blockId, frames, transportLatencySamples) {
+  return liveTransportForBlock({
+    sampleRate: config.sampleRate,
+    maxBlockSize: frames,
+    blockId,
+    reportedLatencySamples: transportLatencySamples,
+    compensateOutputLatency: true
+  });
 }
 
 function takeSharedInputBuffer(shared, frames) {

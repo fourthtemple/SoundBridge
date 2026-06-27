@@ -979,19 +979,18 @@ export class SoundBridgeAudioNode extends EventTarget {
     const binaryChannels = message.channels;
     const requestedFrames = Math.floor(Number(message.frames ?? binaryChannels[0]?.length ?? 128));
     const frames = Number.isFinite(requestedFrames) ? Math.max(1, requestedFrames) : 128;
-    const requestedSamplePosition = Math.floor(message.blockId * frames);
-    const samplePosition = Number.isFinite(requestedSamplePosition)
-      ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, requestedSamplePosition))
-      : 0;
     const request = {
       instanceId: this.instanceId,
       blockId: message.blockId,
       sampleRate: this.sampleRate,
       channels: binaryChannels,
-      transport: {
-        playing: true,
-        samplePosition
-      },
+      transport: liveTransportForBlock({
+        sampleRate: this.sampleRate,
+        maxBlockSize: frames,
+        blockId: message.blockId,
+        reportedLatencySamples: message.transportLatencySamples,
+        compensateOutputLatency: true
+      }),
       timestamp: performance.now(),
       renderTimeoutMs: this.audioRequestTimeoutMs > 0 ? this.audioRequestTimeoutMs : void 0
     };

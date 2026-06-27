@@ -8,6 +8,7 @@ import {
 } from "./bridge-node-options";
 import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
 import { SoundBridgeClient } from "./client";
+import { liveTransportForBlock } from "./live-transport";
 
 export { createLivePerformanceAudioNodeOptions } from "./bridge-node-options";
 export type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
@@ -392,19 +393,18 @@ export class SoundBridgeAudioNode extends EventTarget {
     const binaryChannels = typed.channels as ArrayLike<number>[];
     const requestedFrames = Math.floor(Number(typed.frames ?? binaryChannels[0]?.length ?? 128));
     const frames = Number.isFinite(requestedFrames) ? Math.max(1, requestedFrames) : 128;
-    const requestedSamplePosition = Math.floor(typed.blockId * frames);
-    const samplePosition = Number.isFinite(requestedSamplePosition)
-      ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, requestedSamplePosition))
-      : 0;
     const request = {
       instanceId: this.instanceId,
       blockId: typed.blockId,
       sampleRate: this.sampleRate,
       channels: binaryChannels,
-      transport: {
-        playing: true,
-        samplePosition
-      },
+      transport: liveTransportForBlock({
+        sampleRate: this.sampleRate,
+        maxBlockSize: frames,
+        blockId: typed.blockId,
+        reportedLatencySamples: typed.transportLatencySamples,
+        compensateOutputLatency: true
+      }),
       timestamp: performance.now(),
       renderTimeoutMs: this.audioRequestTimeoutMs > 0 ? this.audioRequestTimeoutMs : undefined
     };

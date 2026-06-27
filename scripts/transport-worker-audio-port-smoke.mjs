@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import vm from "node:vm";
+import { liveTransportForBlock } from "../packages/web-client/dist/soundbridge-client.js";
 
 const workerPath = resolve("packages/web-client/dist/soundbridge-transport-worker.js");
 const workerSource = readFileSync(workerPath, "utf8").replace(
@@ -8,6 +9,7 @@ const workerSource = readFileSync(workerPath, "utf8").replace(
   `
 const decodeBinaryAudioEnvelope = globalThis.decodeBinaryAudioEnvelope;
 const encodeBinaryAudioEnvelope = globalThis.encodeBinaryAudioEnvelope;
+const liveTransportForBlock = globalThis.liveTransportForBlock;
 `
 );
 const postedMessages = [];
@@ -110,6 +112,7 @@ const context = {
     encodedBinaryChannels.push(channels);
     return new ArrayBuffer(8);
   },
+  liveTransportForBlock,
   performance: {
     now() {
       return 123;
@@ -154,11 +157,13 @@ audioPort.onmessage({
     type: "process",
     blockId: 7,
     frames: 2,
+    transportLatencySamples: 4,
     channels: [input]
   }
 });
 assert(socket.sent.length === 1, "transport worker sends the audio process frame");
 assert(encodedBinaryEnvelopes[0]?.payload.renderTimeoutMs === 2000, "transport worker forwards default render deadlines");
+assert(encodedBinaryEnvelopes[0]?.payload.transport?.samplePosition === 18, "transport worker compensates direct transport sample positions");
 assert(audioPort.messages[0]?.type === "recycle-input", "transport worker recycles worklet input after send");
 assert(audioPort.messages[0]?.channels?.[0] === input, "transport worker returns the original input channel");
 assert(audioPort.transfers[0]?.[0] === input.buffer, "transport worker transfers the recycled input buffer");
@@ -190,8 +195,8 @@ assert(processed.renderBudgetMs === 2.667, "transport worker routes render budge
 assert(processed.renderBudgetExceeded === false, "transport worker routes render budget verdict on the port path");
 
 const sharedAudio = createSharedAudio(2, 1, 2);
-writeSharedInput(sharedAudio, 13, [Float32Array.from([0.1, 0.2])]);
-writeSharedInput(sharedAudio, 14, [Float32Array.from([0.3, 0.4])]);
+writeSharedInput(sharedAudio, 13, [Float32Array.from([0.1, 0.2])], 6);
+writeSharedInput(sharedAudio, 14, [Float32Array.from([0.3, 0.4])], 8);
 const sharedPort = new TestPort();
 self.onmessage({
   data: {
@@ -210,6 +215,7 @@ assert(
   "transport worker reports atomic shared-audio wakeups"
 );
 assert(socket.sent.length === 2, "transport worker drains shared input up to its in-flight limit");
+assert(encodedBinaryEnvelopes[1]?.payload.transport?.samplePosition === 32, "transport worker compensates shared-ring transport sample positions");
 assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 2) === 1, "transport worker leaves shared input queued under backpressure");
 assert(waitAsyncCalls === 0, "transport worker does not wait for new shared input while backpressured");
 socket.emit("message", {
@@ -229,6 +235,7 @@ socket.emit("message", {
   })
 });
 assert(socket.sent.length === 3, "transport worker resumes shared input drain after a response frees capacity");
+assert(encodedBinaryEnvelopes[2]?.payload.transport?.samplePosition === 36, "transport worker preserves per-block shared transport latency");
 assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 2) === 0, "transport worker consumes remaining shared input after backpressure clears");
 assert(waitAsyncCalls === 1, "transport worker waits on shared input after draining queued blocks");
 assert(
@@ -621,7 +628,7 @@ function createSharedAudio(slots, channels, frames) {
   };
 }
 
-function writeSharedInput(sharedAudio, blockId, channels) {
+function writeSharedInput(sharedAudio, blockId, channels, transportLatencySamples = 0) {
   const control = new Int32Array(sharedAudio.inputControl);
   const audio = new Float32Array(sharedAudio.inputAudio);
   const writeIndex = Atomics.load(control, 0);
@@ -629,6 +636,7 @@ function writeSharedInput(sharedAudio, blockId, channels) {
   Atomics.store(control, metadataOffset, blockId);
   Atomics.store(control, metadataOffset + 1, channels[0].length);
   Atomics.store(control, metadataOffset + 2, channels.length);
+  Atomics.store(control, metadataOffset + 3, transportLatencySamples);
   for (let channelIndex = 0; channelIndex < channels.length; channelIndex += 1) {
     audio.set(channels[channelIndex], writeIndex * sharedAudio.channels * sharedAudio.frames + channelIndex * sharedAudio.frames);
   }

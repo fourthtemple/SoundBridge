@@ -123,6 +123,7 @@ const directTransportPort = new TestPort();
 directMainPort.onmessage({ data: { type: "connect-transport", port: directTransportPort } });
 directProcessor.process([[Float32Array.from([5, 5])]], [[new Float32Array(2)]]);
 assert(directTransportPort.messages[0]?.type === "process", "direct worklet transport posts process blocks to the transport port");
+assert(directTransportPort.messages[0]?.transportLatencySamples === 2, "direct worklet transport posts current output latency samples");
 assert(!directMainPort.messages.some((message) => message.type === "process"), "direct worklet transport avoids page-thread process messages");
 const recycledInput = directTransportPort.messages[0].channels[0];
 directTransportPort.onmessage({
@@ -238,6 +239,7 @@ const sharedWarmup = [new Float32Array(2)];
 sharedProcessor.process([[Float32Array.from([7, 7])]], [sharedWarmup]);
 assert(sharedTransportPort.messages.length === 0, "shared worklet transport avoids per-block port messages");
 assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 2) === 1, "shared worklet transport writes input blocks to shared memory");
+assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 11) === 2, "shared worklet transport writes current output latency samples");
 writeSharedOutput(sharedAudio, 0, [Float32Array.from([70, 70])]);
 const sharedOutput = [new Float32Array(2)];
 sharedProcessor.process([[Float32Array.from([8, 8])]], [sharedOutput]);
