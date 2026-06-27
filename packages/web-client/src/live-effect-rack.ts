@@ -83,6 +83,7 @@ const LIVE_PERFORMANCE_PROCESS_TIMEOUT_BLOCKS = 4;
 const LIVE_PERFORMANCE_TRANSITION_FADE_BLOCKS = 0.5;
 const LIVE_PERFORMANCE_RECOVERY_BLOCKS = 16;
 const LIVE_PERFORMANCE_PROCESS_TIMEOUT_RECOVERIES = 1;
+const LIVE_EFFECT_MAX_LATENCY_SAMPLES = 1048576;
 
 export function createLivePerformanceRackOptions(options: LivePerformanceRackOptions): LiveEffectRackOptions {
   const {
@@ -242,12 +243,28 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (!this.instanceId || !this.healthy) {
       return this.health;
     }
-    const latency = await this.client.getLatency(this.instanceId, transportLatencySamples);
+    const requestedTransportLatencySamples = boundedLatencySamples(transportLatencySamples, 0);
+    const previousPluginLatencySamples = this.created?.latencySamples ?? 0;
+    const previousTransportLatencySamples = this.transportLatencySamples;
+    const previousReportedLatencySamples = this.reportedLatencySamples;
+    const latency = await this.client.getLatency(this.instanceId, requestedTransportLatencySamples);
+    const pluginLatencySamples = boundedLatencySamples(latency.pluginLatencySamples, previousPluginLatencySamples);
+    const boundedTransportLatencySamples = boundedLatencySamples(
+      latency.transportLatencySamples,
+      previousTransportLatencySamples
+    );
     if (this.created) {
-      this.created.latencySamples = latency.pluginLatencySamples;
+      this.created.latencySamples = pluginLatencySamples;
     }
-    this.transportLatencySamples = latency.transportLatencySamples;
-    this.reportedLatencySamples = latency.reportedLatencySamples;
+    this.transportLatencySamples = boundedTransportLatencySamples;
+    this.reportedLatencySamples = combinedLatencySamples(pluginLatencySamples, boundedTransportLatencySamples);
+    if (
+      pluginLatencySamples !== previousPluginLatencySamples ||
+      boundedTransportLatencySamples !== previousTransportLatencySamples ||
+      this.reportedLatencySamples !== previousReportedLatencySamples
+    ) {
+      this.dispatchEvent(new CustomEvent("latencychange", { detail: this.health }));
+    }
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     return this.health;
   }
@@ -387,13 +404,12 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (!this.created) {
       return;
     }
-    const latencySamples = boundedOptionalNumber(response.latencySamples, 0, 1048576);
-    const boundedLatencySamples = latencySamples === undefined ? undefined : Math.floor(latencySamples);
-    if (boundedLatencySamples === undefined || boundedLatencySamples === this.created.latencySamples) {
+    const latencySamples = boundedLatencySamples(response.latencySamples, this.created.latencySamples);
+    if (latencySamples === this.created.latencySamples) {
       return;
     }
-    this.created.latencySamples = boundedLatencySamples;
-    this.reportedLatencySamples = Math.min(1048576, boundedLatencySamples + this.transportLatencySamples);
+    this.created.latencySamples = latencySamples;
+    this.reportedLatencySamples = combinedLatencySamples(latencySamples, this.transportLatencySamples);
     this.dispatchEvent(new CustomEvent("latencychange", { detail: this.health }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
@@ -518,6 +534,18 @@ function liveEffectBlockFrames(maxBlockSize: number): number {
 function boundedOptionalNumber(value: unknown, min: number, max: number): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : undefined;
+}
+
+function boundedLatencySamples(value: unknown, fallback: number): number {
+  const bounded = boundedOptionalNumber(value, 0, LIVE_EFFECT_MAX_LATENCY_SAMPLES);
+  if (bounded !== undefined) {
+    return Math.floor(bounded);
+  }
+  return Math.floor(boundedOptionalNumber(fallback, 0, LIVE_EFFECT_MAX_LATENCY_SAMPLES) ?? 0);
+}
+
+function combinedLatencySamples(pluginLatencySamples: number, transportLatencySamples: number): number {
+  return Math.min(LIVE_EFFECT_MAX_LATENCY_SAMPLES, pluginLatencySamples + transportLatencySamples);
 }
 
 async function withLiveEffectTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

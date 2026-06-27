@@ -24,6 +24,7 @@ class FakeLiveClient {
     this.binaryProcessed = [];
     this.processTimeouts = [];
     this.binaryProcessTimeouts = [];
+    this.latencyRequests = [];
     this.failProcessing = false;
     this.processingDelayMs = 0;
     this.renderDurationMs = 0.5;
@@ -88,6 +89,7 @@ class FakeLiveClient {
   }
 
   async getLatency(_instanceId, transportLatencySamples = 0) {
+    this.latencyRequests.push(transportLatencySamples);
     return {
       pluginLatencySamples: this.latencySamples,
       transportLatencySamples,
@@ -169,6 +171,20 @@ assert(
   "live effect rack reports plugin plus transport latency for host compensation"
 );
 
+let latencyEvents = 0;
+rack.addEventListener("latencychange", () => {
+  latencyEvents += 1;
+});
+const refreshedTransportLatency = await rack.refreshLatency(256.9);
+assert(client.latencyRequests.at(-1) === 256, "live rack bounds transport latency before requesting compensation");
+assert(
+  refreshedTransportLatency.pluginLatencySamples === 12 &&
+    refreshedTransportLatency.transportLatencySamples === 256 &&
+    refreshedTransportLatency.reportedLatencySamples === 268,
+  "live rack refresh normalizes plugin plus transport latency for host compensation"
+);
+assert(latencyEvents === 1, "live rack emits latencychange when refreshed latency changes");
+
 const inputChannels = [
   [1, 0.5, -0.5, 0],
   [0.25, -0.25, 0.75, -0.75]
@@ -184,20 +200,16 @@ assert(rack.health.lastRenderBudgetMs === 2.667, "live rack records render budge
 assert(client.binaryProcessed.length === 1, "healthy live rack uses binary processAudioBlock by default");
 assert(client.processed.length === 1, "binary live rack still reaches the fake processor");
 
-let latencyEvents = 0;
-rack.addEventListener("latencychange", () => {
-  latencyEvents += 1;
-});
 client.latencySamples = 48;
 const dynamicLatency = await rack.processBlock({ blockId: 2, channels: inputChannels });
 assert(dynamicLatency.latencySamples === 48, "live rack receives dynamic plugin latency from render responses");
 assert(
   rack.health.pluginLatencySamples === 48 &&
-    rack.health.transportLatencySamples === 128 &&
-    rack.health.reportedLatencySamples === 176,
+    rack.health.transportLatencySamples === 256 &&
+    rack.health.reportedLatencySamples === 304,
   "live rack updates plugin plus transport latency from render responses"
 );
-assert(latencyEvents === 1, "live rack emits a latencychange event when render latency changes");
+assert(latencyEvents === 2, "live rack emits a latencychange event when render latency changes");
 client.latencySamples = 12;
 
 rack.setBypassed(true);

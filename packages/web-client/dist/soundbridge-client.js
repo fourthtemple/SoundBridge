@@ -893,6 +893,7 @@ const LIVE_PERFORMANCE_PROCESS_TIMEOUT_BLOCKS = 4;
 const LIVE_PERFORMANCE_TRANSITION_FADE_BLOCKS = 0.5;
 const LIVE_PERFORMANCE_RECOVERY_BLOCKS = 16;
 const LIVE_PERFORMANCE_PROCESS_TIMEOUT_RECOVERIES = 1;
+const LIVE_EFFECT_MAX_LATENCY_SAMPLES = 1048576;
 
 export function createLivePerformanceRackOptions(options) {
   const {
@@ -1035,12 +1036,28 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (!this.instanceId || !this.healthy) {
       return this.health;
     }
-    const latency = await this.client.getLatency(this.instanceId, transportLatencySamples);
+    const requestedTransportLatencySamples = boundedLiveEffectLatencySamples(transportLatencySamples, 0);
+    const previousPluginLatencySamples = this.created?.latencySamples ?? 0;
+    const previousTransportLatencySamples = this.transportLatencySamples;
+    const previousReportedLatencySamples = this.reportedLatencySamples;
+    const latency = await this.client.getLatency(this.instanceId, requestedTransportLatencySamples);
+    const pluginLatencySamples = boundedLiveEffectLatencySamples(latency.pluginLatencySamples, previousPluginLatencySamples);
+    const boundedTransportLatencySamples = boundedLiveEffectLatencySamples(
+      latency.transportLatencySamples,
+      previousTransportLatencySamples
+    );
     if (this.created) {
-      this.created.latencySamples = latency.pluginLatencySamples;
+      this.created.latencySamples = pluginLatencySamples;
     }
-    this.transportLatencySamples = latency.transportLatencySamples;
-    this.reportedLatencySamples = latency.reportedLatencySamples;
+    this.transportLatencySamples = boundedTransportLatencySamples;
+    this.reportedLatencySamples = combinedLiveEffectLatencySamples(pluginLatencySamples, boundedTransportLatencySamples);
+    if (
+      pluginLatencySamples !== previousPluginLatencySamples ||
+      boundedTransportLatencySamples !== previousTransportLatencySamples ||
+      this.reportedLatencySamples !== previousReportedLatencySamples
+    ) {
+      this.dispatchEvent(new CustomEvent("latencychange", { detail: this.health }));
+    }
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     return this.health;
   }
@@ -1180,13 +1197,12 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (!this.created) {
       return;
     }
-    const latencySamples = boundedLiveEffectOptionalNumber(response.latencySamples, 0, 1048576);
-    const boundedLatencySamples = latencySamples === void 0 ? void 0 : Math.floor(latencySamples);
-    if (boundedLatencySamples === void 0 || boundedLatencySamples === this.created.latencySamples) {
+    const latencySamples = boundedLiveEffectLatencySamples(response.latencySamples, this.created.latencySamples);
+    if (latencySamples === this.created.latencySamples) {
       return;
     }
-    this.created.latencySamples = boundedLatencySamples;
-    this.reportedLatencySamples = Math.min(1048576, boundedLatencySamples + this.transportLatencySamples);
+    this.created.latencySamples = latencySamples;
+    this.reportedLatencySamples = combinedLiveEffectLatencySamples(latencySamples, this.transportLatencySamples);
     this.dispatchEvent(new CustomEvent("latencychange", { detail: this.health }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
@@ -1311,6 +1327,18 @@ function liveEffectBlockFrames(maxBlockSize) {
 function boundedLiveEffectOptionalNumber(value, min, max) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : void 0;
+}
+
+function boundedLiveEffectLatencySamples(value, fallback) {
+  const bounded = boundedLiveEffectOptionalNumber(value, 0, LIVE_EFFECT_MAX_LATENCY_SAMPLES);
+  if (bounded !== void 0) {
+    return Math.floor(bounded);
+  }
+  return Math.floor(boundedLiveEffectOptionalNumber(fallback, 0, LIVE_EFFECT_MAX_LATENCY_SAMPLES) ?? 0);
+}
+
+function combinedLiveEffectLatencySamples(pluginLatencySamples, transportLatencySamples) {
+  return Math.min(LIVE_EFFECT_MAX_LATENCY_SAMPLES, pluginLatencySamples + transportLatencySamples);
 }
 
 async function withLiveEffectTimeout(promise, timeoutMs) {
