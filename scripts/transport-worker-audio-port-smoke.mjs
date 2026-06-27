@@ -29,6 +29,7 @@ const testAtomics = {
     return { async: true, value: new Promise(() => {}) };
   }
 };
+const originalWaitAsync = testAtomics.waitAsync;
 
 class FakeSocket {
   static OPEN = 1;
@@ -366,6 +367,28 @@ assert(
   "transport worker times out shared audio requests"
 );
 assert(socket.sent.length === sentBeforeSharedTimeout + 2, "shared timeout releases capacity and drains the next queued block");
+
+const timerFallbackAudio = createSharedAudio(2, 1, 2);
+const timerFallbackPort = new TestPort();
+testAtomics.waitAsync = undefined;
+self.onmessage({
+  data: {
+    type: "audio-port",
+    port: timerFallbackPort,
+    instanceId: "inst-timer-fallback",
+    sampleRate: 48000,
+    sessionToken: "session-1",
+    audioTransport: "binary",
+    sharedAudio: timerFallbackAudio
+  }
+});
+assert(
+  timerFallbackPort.messages.some((message) => message.type === "shared-audio-status" && message.wakeMode === "timer"),
+  "transport worker reports timer shared-audio wakeups when atomics wait is unavailable"
+);
+assert([...timers.values()].some((timer) => timer.ms === 1), "transport worker polls timer shared-audio fallback at live-safe cadence");
+timerFallbackPort.onmessage({ data: { type: "destroy" } });
+testAtomics.waitAsync = originalWaitAsync;
 
 const genericEnvelope = {
   type: "request",

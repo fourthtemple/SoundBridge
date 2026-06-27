@@ -19,6 +19,7 @@ const SHARED_BLOCK_ID_OFFSET = 0;
 const SHARED_BLOCK_FRAMES_OFFSET = 1;
 const SHARED_BLOCK_CHANNELS_OFFSET = 2;
 const SHARED_AUDIO_WAIT_TIMEOUT_MS = 100;
+const SHARED_AUDIO_TIMER_POLL_MS = 1;
 
 self.onmessage = (event) => {
   const message = event.data;
@@ -271,7 +272,7 @@ function scheduleSharedAudioPump(config, shared) {
     }
   }
   const queued = Atomics.load(shared.inputControl, SHARED_AVAILABLE);
-  setTimeout(() => pumpSharedAudio(config, shared), queued > 0 && shared.inFlightBlocks < config.maxInFlightBlocks ? 0 : 4);
+  setTimeout(() => pumpSharedAudio(config, shared), queued > 0 && shared.inFlightBlocks < config.maxInFlightBlocks ? 0 : SHARED_AUDIO_TIMER_POLL_MS);
 }
 
 function drainSharedAudio(config, shared) {
