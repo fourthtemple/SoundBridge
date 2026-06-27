@@ -58,6 +58,8 @@ export interface LiveEffectRackChainCalibrationHealthSample
   dryOutputBlocks?: unknown;
   bypassDryOutputBlocks?: unknown;
   lastDryReason?: unknown;
+  processTimedOut?: unknown;
+  processTimeoutTripped?: unknown;
 }
 
 export interface LiveEffectRackFrameBatchCalibrationHealthSample
@@ -219,6 +221,8 @@ export class LiveEffectRackChainCalibrationWindow {
   private readonly window: LiveEffectRackCalibrationWindow;
   private dryOutputBlocks = 0;
   private bypassDryOutputBlocks = 0;
+  private processTimeouts = 0;
+  private processTimeoutActive = false;
 
   constructor(options: LiveEffectRackCalibrationWindowOptions) {
     this.window = new LiveEffectRackCalibrationWindow(options);
@@ -229,6 +233,7 @@ export class LiveEffectRackChainCalibrationWindow {
   }
 
   record(health: LiveEffectRackChainCalibrationHealthSample): LiveEffectRackCalibrationWindowSnapshot {
+    this.recordProcessTimeout(health);
     if (health.dryOutputBlocks !== undefined) {
       this.dryOutputBlocks = boundedLiveEffectInteger(health.dryOutputBlocks, this.dryOutputBlocks, 0, Number.MAX_SAFE_INTEGER);
       this.bypassDryOutputBlocks = boundedLiveEffectInteger(health.bypassDryOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
@@ -243,13 +248,16 @@ export class LiveEffectRackChainCalibrationWindow {
       lastResponseDeadlineLeadBlocks: health.lastResponseDeadlineLeadBlocks,
       latencySamples: health.latencySamples,
       dryOutputBlocks: pressureDryOutputBlocks,
-      responseDeadlineMisses: health.responseDeadlineMisses
+      responseDeadlineMisses: health.responseDeadlineMisses,
+      renderTimeouts: this.processTimeouts
     });
   }
 
   reset(): void {
     this.dryOutputBlocks = 0;
     this.bypassDryOutputBlocks = 0;
+    this.processTimeouts = 0;
+    this.processTimeoutActive = false;
     this.window.reset();
   }
 
@@ -263,6 +271,14 @@ export class LiveEffectRackChainCalibrationWindow {
 
   recommendedPolicyOptions(overrides: Partial<LiveEffectRackPolicyOptions> = {}): LiveEffectRackPolicyOptions {
     return this.window.recommendedPolicyOptions(overrides);
+  }
+
+  private recordProcessTimeout(health: LiveEffectRackChainCalibrationHealthSample): void {
+    const timeoutActive = health.processTimedOut === true || health.processTimeoutTripped === true;
+    if (timeoutActive && !this.processTimeoutActive) {
+      this.processTimeouts = Math.min(Number.MAX_SAFE_INTEGER, this.processTimeouts + 1);
+    }
+    this.processTimeoutActive = timeoutActive;
   }
 }
 

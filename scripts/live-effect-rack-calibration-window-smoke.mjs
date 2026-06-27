@@ -258,6 +258,23 @@ assert(
   "live chain calibration window uses cumulative chain dry output deltas"
 );
 
+const chainTimeoutWindow = createLiveEffectRackChainCalibrationWindow({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetMs: 5,
+  processTimeoutMs: 12
+});
+chainTimeoutWindow.record({ lastProcessDurationMs: 1, latencySamples: 0, processTimedOut: false });
+const chainTimeoutSample = chainTimeoutWindow.record({ lastProcessDurationMs: 12, latencySamples: 0, processTimedOut: true });
+assert(
+  chainTimeoutSample.calibration.warnings.includes("process-timeout"),
+  "live chain calibration window reports chain process timeouts as timeout pressure"
+);
+assert(
+  !chainTimeoutSample.calibration.warnings.includes("dry-output-pressure"),
+  "live chain calibration window keeps timeout-only pressure separate from dry-output pressure"
+);
+
 const batchWindow = createLiveEffectRackFrameBatchCalibrationWindow({
   sampleRate: 48000,
   maxBlockSize: 128,
