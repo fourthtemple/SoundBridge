@@ -6,6 +6,7 @@ import {
 import { setCapabilityStatus } from "./capability-status.js";
 import { createFileGrantActions } from "./file-grant-actions.js";
 import { createPluginBrowser } from "./plugin-browser.js";
+import { createRealtimeStats } from "./realtime-stats.js";
 import { createVst3ProgramDataControls } from "./vst3-program-data-controls.js";
 
 const elements = {
@@ -38,19 +39,6 @@ const elements = {
   engineStatus: document.querySelector("#engineStatus"),
   latencyStatus: document.querySelector("#latencyStatus"),
   sourceLabel: document.querySelector("#sourceLabel"),
-  processedBlocks: document.querySelector("#processedBlocks"),
-  underruns: document.querySelector("#underruns"),
-  queuedBlocks: document.querySelector("#queuedBlocks"),
-  staleOutputBlocks: document.querySelector("#staleOutputBlocks"),
-  droppedInputBlocks: document.querySelector("#droppedInputBlocks"),
-  inFlightBlocks: document.querySelector("#inFlightBlocks"),
-  outputLatencyBlocks: document.querySelector("#outputLatencyBlocks"),
-  transportLatencySamples: document.querySelector("#transportLatencySamples"),
-  latencyIncreases: document.querySelector("#latencyIncreases"),
-  sharedAudioEnabled: document.querySelector("#sharedAudioEnabled"),
-  sharedQueuedBlocks: document.querySelector("#sharedQueuedBlocks"),
-  inputBufferAllocations: document.querySelector("#inputBufferAllocations"),
-  inputBufferReuses: document.querySelector("#inputBufferReuses"),
   renderEngine: document.querySelector("#renderEngine"),
   log: document.querySelector("#log"),
   scope: document.querySelector("#scope")
@@ -71,6 +59,11 @@ let controlsEnabled = false;
 let latestTransportLatencySamples = 0;
 const activeNotes = new Set();
 const keyToNote = new Map();
+const realtimeStats = createRealtimeStats({
+  onTransportLatencySamples: (samples) => {
+    latestTransportLatencySamples = samples || latestTransportLatencySamples;
+  }
+});
 const fileGrantActions = createFileGrantActions({
   client: () => {
     if (!client) {
@@ -372,26 +365,7 @@ async function doEnsureBridgeInstance(recreate = false) {
   analyser.connect(audioContext.destination);
 
   bridge.addEventListener("stats", (event) => {
-    const stats = event.detail;
-    elements.processedBlocks.textContent = String(stats.processedBlocks ?? 0);
-    elements.underruns.textContent = String(stats.underruns ?? 0);
-    elements.queuedBlocks.textContent = String(stats.queuedOutputBlocks ?? 0);
-    elements.staleOutputBlocks.textContent = String(stats.staleOutputBlocks ?? 0);
-    elements.droppedInputBlocks.textContent = String(stats.droppedInputBlocks ?? 0);
-    elements.inFlightBlocks.textContent = String(stats.inFlightBlocks ?? 0);
-    elements.outputLatencyBlocks.textContent = String(stats.outputLatencyBlocks ?? 0);
-    elements.transportLatencySamples.textContent = String(stats.transportLatencySamples ?? 0);
-    latestTransportLatencySamples = Number(stats.transportLatencySamples ?? latestTransportLatencySamples) || 0;
-    elements.latencyIncreases.textContent = String(stats.latencyIncreases ?? 0);
-    const wakeMode = typeof stats.sharedAudioWakeMode === "string" ? stats.sharedAudioWakeMode : "";
-    elements.sharedAudioEnabled.textContent = stats.sharedAudioEnabled
-      ? wakeMode && wakeMode !== "none"
-        ? `On (${wakeMode})`
-        : "On"
-      : "Off";
-    elements.sharedQueuedBlocks.textContent = `${stats.sharedInputQueuedBlocks ?? 0}/${stats.sharedOutputQueuedBlocks ?? 0}`;
-    elements.inputBufferAllocations.textContent = String(stats.inputBufferAllocations ?? 0);
-    elements.inputBufferReuses.textContent = String(stats.inputBufferReuses ?? 0);
+    realtimeStats.update(event.detail);
   });
   bridge.addEventListener("audio-error", (event) => {
     logError(event.detail);

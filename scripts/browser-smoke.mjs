@@ -103,6 +103,7 @@ try {
       undefined,
       { timeout: 5000 }
     );
+    await assertRealtimeStats(page);
   }
 
   console.log("SoundBridge browser smoke test passed.");
@@ -112,6 +113,19 @@ try {
 
 async function processedBlocks(page) {
   return Number(await page.locator("#processedBlocks").textContent());
+}
+
+async function assertRealtimeStats(page) {
+  for (const selector of [
+    "#latencyDecreases",
+    "#responseDeadlineLeadSamples",
+    "#responseJitterSamples",
+    "#sharedDroppedBlocks",
+    "#latencyRecoveryBlocks"
+  ]) {
+    const text = await page.locator(selector).textContent();
+    assert(/^-?\d+(\.\d+)?(\/-?\d+(\.\d+)?)?$/.test((text ?? "").trim()), `${selector} reports realtime stats.`);
+  }
 }
 
 async function assertFileGrantControls(page, option, label) {
