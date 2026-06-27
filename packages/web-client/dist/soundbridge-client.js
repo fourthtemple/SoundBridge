@@ -3964,6 +3964,35 @@ export function createLiveEffectRackFrameBatchProcessor(options) {
   return new LiveEffectRackFrameBatchProcessor(options);
 }
 
+export function createLivePerformanceFrameBatchProcessorOptions(options) {
+  const {
+    sampleRate,
+    maxBlockSize,
+    processBudgetBlocks,
+    processTimeoutBlocks,
+    ...processorOptions
+  } = options;
+  const policy = createLiveEffectRackPolicy({
+    ...options,
+    sampleRate,
+    maxBlockSize,
+    processBudgetBlocks,
+    processTimeoutBlocks
+  });
+  return {
+    ...processorOptions,
+    processBudgetMs: policy.processBudgetMs,
+    processTimeoutMs: policy.processTimeoutMs,
+    maxConsecutiveProcessBudgetMisses: policy.maxConsecutiveProcessBudgetMisses,
+    processBudgetRecoveryBlocks: policy.processBudgetRecoveryBlocks,
+    processTimeoutRecoveryBlocks: policy.processTimeoutRecoveryBlocks
+  };
+}
+
+export function createLivePerformanceFrameBatchProcessor(options) {
+  return createLiveEffectRackFrameBatchProcessor(createLivePerformanceFrameBatchProcessorOptions(options));
+}
+
 function maxLiveEffectFrameBatchLatency(results, key) {
   return results.reduce((max, result) => Math.max(max, result[key]), 0);
 }

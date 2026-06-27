@@ -3,13 +3,19 @@ import {
   createLiveEffectRackCalibrationWindow,
   createLiveEffectRackChain,
   createLiveEffectRackChainCalibrationWindow,
-  createLiveEffectRackFrameBatchProcessor
+  createLiveEffectRackFrameBatchProcessor,
+  createLivePerformanceFrameBatchProcessor,
+  createLivePerformanceFrameBatchProcessorOptions
 } from "../packages/web-client/dist/soundbridge-client.js";
 
 function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function near(left, right, epsilon = 0.000001) {
+  return Math.abs(left - right) <= epsilon;
 }
 
 let now = 1000;
@@ -270,6 +276,33 @@ const batchScheduler = createLiveEffectRackBlockScheduler({
   transport: { playing: true, tempo: 124 },
   nowMs: () => now
 });
+const liveBatchOptions = createLivePerformanceFrameBatchProcessorOptions({
+  scheduler: batchScheduler,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetBlocks: 2,
+  processTimeoutBlocks: 3
+});
+assert(
+  near(liveBatchOptions.processBudgetMs, (128 / 48000) * 1000 * 2) &&
+    near(liveBatchOptions.processTimeoutMs, (128 / 48000) * 1000 * 3) &&
+    liveBatchOptions.maxConsecutiveProcessBudgetMisses === 3 &&
+    liveBatchOptions.processBudgetRecoveryBlocks === 16 &&
+    liveBatchOptions.processTimeoutRecoveryBlocks === 16,
+  "live frame batch preset converts block policies into bounded processor options"
+);
+const liveBatchProcessor = createLivePerformanceFrameBatchProcessor({
+  scheduler: batchScheduler,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetBlocks: 2,
+  processTimeoutBlocks: 3
+});
+assert(
+  liveBatchProcessor.processBudgetMs === liveBatchOptions.processBudgetMs &&
+    liveBatchProcessor.processTimeoutMs === liveBatchOptions.processTimeoutMs,
+  "live frame batch preset creates a processor with live budget and timeout defaults"
+);
 const processedTargets = [];
 const deckTarget = {
   health: { healthy: true, reportedLatencySamples: 640 },

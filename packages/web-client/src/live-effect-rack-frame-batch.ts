@@ -13,6 +13,7 @@ import type {
   LiveEffectRackScheduledFrame,
   LiveEffectRackScheduleOptions
 } from "./live-effect-rack-scheduler";
+import { createLiveEffectRackPolicy } from "./live-effect-rack-policy";
 
 const LIVE_EFFECT_FRAME_BATCH_TARGETS = 16;
 
@@ -66,6 +67,13 @@ export interface LiveEffectRackFrameBatchProcessorOptions {
   processBudgetRecoveryBlocks?: number;
   processTimeoutRecoveryBlocks?: number;
   nowMs?: () => number;
+}
+
+export interface LivePerformanceFrameBatchProcessorOptions extends LiveEffectRackFrameBatchProcessorOptions {
+  sampleRate: number;
+  maxBlockSize: number;
+  processBudgetBlocks?: number;
+  processTimeoutBlocks?: number;
 }
 
 export interface LiveEffectRackFrameBatchTargetResult {
@@ -551,6 +559,39 @@ export function createLiveEffectRackFrameBatchProcessor(
   options: LiveEffectRackFrameBatchProcessorOptions
 ): LiveEffectRackFrameBatchProcessor {
   return new LiveEffectRackFrameBatchProcessor(options);
+}
+
+export function createLivePerformanceFrameBatchProcessorOptions(
+  options: LivePerformanceFrameBatchProcessorOptions
+): LiveEffectRackFrameBatchProcessorOptions {
+  const {
+    sampleRate,
+    maxBlockSize,
+    processBudgetBlocks,
+    processTimeoutBlocks,
+    ...processorOptions
+  } = options;
+  const policy = createLiveEffectRackPolicy({
+    ...options,
+    sampleRate,
+    maxBlockSize,
+    processBudgetBlocks,
+    processTimeoutBlocks
+  });
+  return {
+    ...processorOptions,
+    processBudgetMs: policy.processBudgetMs,
+    processTimeoutMs: policy.processTimeoutMs,
+    maxConsecutiveProcessBudgetMisses: policy.maxConsecutiveProcessBudgetMisses,
+    processBudgetRecoveryBlocks: policy.processBudgetRecoveryBlocks,
+    processTimeoutRecoveryBlocks: policy.processTimeoutRecoveryBlocks
+  };
+}
+
+export function createLivePerformanceFrameBatchProcessor(
+  options: LivePerformanceFrameBatchProcessorOptions
+): LiveEffectRackFrameBatchProcessor {
+  return createLiveEffectRackFrameBatchProcessor(createLivePerformanceFrameBatchProcessorOptions(options));
 }
 
 function maxLatency(results: LiveEffectRackFrameBatchTargetResult[], key: "latencySamples" | "reportedLatencySamples"): number {
