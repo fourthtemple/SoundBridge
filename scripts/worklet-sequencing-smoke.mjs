@@ -227,6 +227,11 @@ adaptiveProcessor.process([[Float32Array.from([2])]], [[new Float32Array(1)]]);
 assert(adaptiveProcessor.outputLatencyBlocks === 2, "direct worklet transport raises output latency after repeated misses");
 assert(adaptiveProcessor.latencyIncreases === 1, "direct worklet transport counts adaptive latency raises");
 assert(adaptiveProcessor.transportLatencySamples() === 2, "direct worklet transport reports adaptive transport latency samples");
+assert(adaptiveProcessor.latencySafetyBlocks === 1, "miss-driven adaptive latency raises schedule a safety block");
+const adaptiveUnderrunsBeforeSafety = adaptiveProcessor.underruns;
+adaptiveProcessor.process([[Float32Array.from([3])]], [[new Float32Array(1)]]);
+assert(adaptiveProcessor.latencySafetyInsertions === 1, "miss-driven adaptive latency raises insert a controlled safety block");
+assert(adaptiveProcessor.underruns === adaptiveUnderrunsBeforeSafety, "miss-driven safety blocks are not counted as underruns");
 
 const recoveryProcessor = new processorCtor({
   processorOptions: {

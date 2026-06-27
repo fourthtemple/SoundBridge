@@ -526,7 +526,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.consecutiveOnTimeBlocks = 0;
     this.consecutiveLatencyMisses += 1;
     if (this.consecutiveLatencyMisses >= this.latencyMissThresholdBlocks) {
-      this.raiseOutputLatency();
+      this.raiseOutputLatency(true);
     }
   }
 
@@ -537,7 +537,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.consecutiveOnTimeBlocks = 0;
     this.consecutiveLatencyMisses += 1;
     if (this.consecutiveLatencyMisses >= this.latencyMissThresholdBlocks) {
-      this.raiseOutputLatency();
+      this.raiseOutputLatency(true);
     }
   }
 
