@@ -196,7 +196,7 @@ const rack = await SoundBridgeLiveEffectRack.create({
 });
 
 assert(rack.instanceId === "inst-live-1", "live effect rack creates a plugin instance");
-assert(rack.health.healthy === true && rack.health.latencySamples === 12, "live effect rack starts healthy");
+assert(rack.health.healthy === true && rack.health.latencySamples === 12 && rack.health.lastDryReason === undefined, "live effect rack starts healthy");
 assert(rack.health.wetMix === 1, "live effect rack starts fully wet");
 assert(
   rack.health.pluginLatencySamples === 12 &&
@@ -503,11 +503,11 @@ const slowBlock = backpressureRack.processBlock({ blockId: 12, channels: inputCh
 const backpressured = await backpressureRack.processBlock({ blockId: 13, channels: inputChannels });
 assert(backpressured.bypassed === true && backpressured.healthy === true, "live rack returns dry when its in-flight limit is full");
 assert(backpressured.renderEngine === "dry-backpressure", "in-flight pressure reports a dry backpressure render engine");
-assert(backpressureRack.health.droppedInputBlocks === 1 && backpressureRack.health.inFlightBlocks === 1, "live rack tracks in-flight pressure");
+assert(backpressureRack.health.droppedInputBlocks === 1 && backpressureRack.health.inFlightBlocks === 1 && backpressureRack.health.lastDryReason === "backpressure", "live rack tracks in-flight pressure");
 assert(backpressureEvents === 1, "in-flight pressure emits a host-visible event");
 client.processingDelayMs = 0;
 const slowProcessed = await slowBlock;
-assert(slowProcessed.bypassed === false && backpressureRack.health.inFlightBlocks === 0, "first slow block completes after backpressure drop");
+assert(slowProcessed.bypassed === false && backpressureRack.health.inFlightBlocks === 0 && backpressureRack.health.lastDryReason === undefined, "first slow block completes after backpressure drop");
 await backpressureRack.destroy();
 
 const staleRack = await SoundBridgeLiveEffectRack.create({
@@ -525,10 +525,10 @@ const beforeStaleProcessed = client.processed.length;
 const stale = await staleRack.processBlock({ blockId: 14, channels: inputChannels, timestamp: liveEffectTestNowMs() - 20 });
 assert(stale.bypassed === true && stale.healthy === true, "live rack drops stale timestamped input to dry");
 assert(stale.renderEngine === "dry-stale-input", "stale input reports a dry stale render engine");
-assert(staleRack.health.staleInputBlocks === 1 && staleEvents === 1, "live rack reports stale input pressure");
+assert(staleRack.health.staleInputBlocks === 1 && staleEvents === 1 && staleRack.health.lastDryReason === "stale-input", "live rack reports stale input pressure");
 assert(client.processed.length === beforeStaleProcessed, "stale input avoids plugin processing");
 const fresh = await staleRack.processBlock({ blockId: 15, channels: inputChannels, timestamp: liveEffectTestNowMs() });
-assert(fresh.bypassed === false && client.processed.length === beforeStaleProcessed + 1, "fresh timestamped input still processes");
+assert(fresh.bypassed === false && staleRack.health.lastDryReason === undefined && client.processed.length === beforeStaleProcessed + 1, "fresh timestamped input still processes");
 let staleOutputEvents = 0;
 staleRack.addEventListener("stale-output", () => {
   staleOutputEvents += 1;
@@ -538,7 +538,7 @@ const beforeStaleOutputProcessed = client.processed.length;
 const staleOutput = await staleRack.processBlock({ blockId: 16, channels: inputChannels, timestamp: liveEffectTestNowMs() });
 assert(staleOutput.bypassed === true && staleOutput.healthy === true, "live rack drops late render output to dry");
 assert(staleOutput.renderEngine === "dry-stale-output", "late render output reports a dry stale-output render engine");
-assert(staleRack.health.staleOutputBlocks === 1 && staleOutputEvents === 1, "live rack reports stale output pressure");
+assert(staleRack.health.staleOutputBlocks === 1 && staleOutputEvents === 1 && staleRack.health.lastDryReason === "stale-output", "live rack reports stale output pressure");
 assert(client.processed.length === beforeStaleOutputProcessed + 1, "stale output still records that native rendering happened");
 client.processingDelayMs = 0;
 await staleRack.destroy();

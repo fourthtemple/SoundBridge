@@ -2,6 +2,7 @@ import { SoundBridgeProtocolError } from "./client";
 
 const LIVE_EFFECT_MAX_LATENCY_SAMPLES = 1048576;
 export type LiveEffectFailureReason = "processing-error" | "process-timeout";
+export type LiveEffectDryReason = LiveEffectFailureReason | "backpressure" | "bypass" | "destroyed" | "process-budget-exceeded" | "render-budget-exceeded" | "stale-input" | "stale-output" | "state-changed";
 
 export interface LiveEffectRackTiming {
   sampleRate: number;
@@ -131,6 +132,14 @@ export function liveEffectFailureReason(error: unknown): LiveEffectFailureReason
   return (error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout") || isRenderDeadlineProtocolError(error)
     ? "process-timeout"
     : "processing-error";
+}
+
+export function liveEffectDryReason(renderEngine: unknown, fallback: unknown): LiveEffectDryReason {
+  if (fallback === "processing-error" || fallback === "process-timeout" || fallback === "process-budget-exceeded" || fallback === "render-budget-exceeded" || fallback === "destroyed") return fallback;
+  if (renderEngine === "dry-backpressure") return "backpressure";
+  if (renderEngine === "dry-stale-input") return "stale-input";
+  if (renderEngine === "dry-stale-output") return "stale-output";
+  return renderEngine === "dry-state-changed" ? "state-changed" : "bypass";
 }
 
 export function isRenderDeadlineProtocolError(error: unknown): error is SoundBridgeProtocolError {

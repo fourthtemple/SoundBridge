@@ -1351,6 +1351,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.renderTimeouts = 0;
     this.consecutiveRenderTimeouts = 0;
     this.renderQuarantined = false;
+    this.lastDryReason = void 0;
     this.lastOutputPath = void 0;
     this.lastOutputTail = void 0;
     this.transportLatencySamples = 0;
@@ -1421,6 +1422,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       renderTimeouts: this.renderTimeouts,
       consecutiveRenderTimeouts: this.consecutiveRenderTimeouts,
       renderQuarantined: this.renderQuarantined,
+      lastDryReason: this.lastDryReason,
       unhealthyReason: this.unhealthyReason,
       recoveryDryBlocks: this.recoveryDryBlocks,
       recoveryInProgress: this.recoveryInProgress,
@@ -1660,6 +1662,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.renderTimeouts = 0;
     this.consecutiveRenderTimeouts = 0;
     this.renderQuarantined = false;
+    this.lastDryReason = void 0;
     this.lastOutputPath = void 0;
     this.lastOutputTail = void 0;
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
@@ -1866,6 +1869,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
 
   finishResponse(response, dryInput, wetMixOverride) {
     const outputPath = response.bypassed ? "dry" : "wet";
+    this.lastDryReason = response.bypassed ? liveEffectDryReason(response.renderEngine, this.unhealthyReason) : void 0;
     const mixed = response.bypassed ? response.channels : wetMixedLiveEffectChannels(response.channels, dryInput, this.outputChannels, boundedLiveEffectWetMix(wetMixOverride, this.wetMix));
     const channels = transitionLiveEffectOutputChannels(mixed, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = liveEffectOutputTail(channels, this.outputChannels);
@@ -1993,6 +1997,14 @@ function liveEffectFailureReason(error) {
   return error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout" || isRenderDeadlineProtocolError(error)
     ? "process-timeout"
     : "processing-error";
+}
+
+function liveEffectDryReason(renderEngine, fallback) {
+  if (fallback === "processing-error" || fallback === "process-timeout" || fallback === "process-budget-exceeded" || fallback === "render-budget-exceeded" || fallback === "destroyed") return fallback;
+  if (renderEngine === "dry-backpressure") return "backpressure";
+  if (renderEngine === "dry-stale-input") return "stale-input";
+  if (renderEngine === "dry-stale-output") return "stale-output";
+  return renderEngine === "dry-state-changed" ? "state-changed" : "bypass";
 }
 
 function isRenderDeadlineProtocolError(error) {
