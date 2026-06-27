@@ -161,6 +161,37 @@ assert(
   "live rack chain emits retry and post-retry pressure events"
 );
 
+fakeNowMs = 0;
+const recoveryStage = new FakeStage("recovery", 3, 0, 0, 3);
+const recoveryChain = createLiveEffectRackChain({
+  stages: [recoveryStage],
+  outputChannels: 1,
+  maxBlockSize: 2,
+  processBudgetMs: 2,
+  maxConsecutiveProcessBudgetMisses: 1,
+  processBudgetRecoveryBlocks: 2,
+  nowMs: () => fakeNowMs
+});
+let recoveredEvents = 0;
+recoveryChain.addEventListener("chain-process-budget-recovered", (event) => {
+  recoveredEvents += 1;
+  assert(event.detail.health.healthy === true, "live rack chain recovery events include healthy state");
+});
+const recoveryTrip = await recoveryChain.processBlock({ blockId: 10, channels: [[1, 1]], sampleRate: 48000 });
+assert(recoveryTrip.bypassed === true && recoveryChain.health.healthy === false, "live rack chain recovery starts from a dry trip");
+const recoveryCooldownOne = await recoveryChain.processBlock({ blockId: 11, channels: [[2, 2]], sampleRate: 48000 });
+assert(
+  recoveryCooldownOne.bypassed === true &&
+    recoveryChain.health.recoveryDryBlocks === 1 &&
+    recoveryChain.health.healthy === false,
+  "live rack chain recovery waits through bounded dry cooldown blocks"
+);
+const recoveryCooldownTwo = await recoveryChain.processBlock({ blockId: 12, channels: [[2, 2]], sampleRate: 48000 });
+assert(recoveryCooldownTwo.bypassed === true && recoveryChain.health.healthy === true, "live rack chain recovers after dry cooldown");
+assert(recoveryStage.requests.length === 1 && recoveredEvents === 1, "live rack chain recovery does not process during cooldown");
+const recoveredBlock = await recoveryChain.processBlock({ blockId: 13, channels: [[1, 1]], sampleRate: 48000 });
+assert(recoveredBlock.bypassed === true && recoveredBlock.channels[0][0] === 1, "live rack chain can trip again after automatic recovery");
+
 const scheduler = createLiveEffectRackBlockScheduler({
   sampleRate: 48000,
   maxBlockSize: 4,
@@ -180,7 +211,7 @@ const throwingStage = {
   }
 };
 const failingChain = createLiveEffectRackChain({ stages: [left, throwingStage, right], outputChannels: 2, maxBlockSize: 4 });
-const failed = await failingChain.processBlock({ blockId: 10, channels: [[1, 1], [2, 2]], sampleRate: 48000 });
+const failed = await failingChain.processBlock({ blockId: 14, channels: [[1, 1], [2, 2]], sampleRate: 48000 });
 assert(failed.healthy === false && failed.failedStageIndex === 1, "live rack chain reports the failing stage");
 assert(failed.processedStages === 2 && failed.stageResults[1].healthy === false, "live rack chain records the failed stage result");
 assert(failed.channels[0][0] === 2 && failed.channels[1][0] === 4, "live rack chain fails dry to last known audio");

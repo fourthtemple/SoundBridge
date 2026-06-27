@@ -2041,11 +2041,13 @@ export class LiveEffectRackChain extends EventTarget {
     this.maxBlockSize = boundedLiveEffectInteger(options.maxBlockSize, 128, 1, 8192);
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
     this.maxConsecutiveProcessBudgetMisses = boundedLiveEffectInteger(options.maxConsecutiveProcessBudgetMisses, 0, 0, 1024);
+    this.processBudgetRecoveryBlocks = boundedLiveEffectInteger(options.processBudgetRecoveryBlocks, 0, 0, 4096);
     this.outputChannels = options.outputChannels === void 0
       ? void 0
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
     this.nowMs = typeof options.nowMs === "function" ? options.nowMs : liveEffectNowMs;
     this.processBudgetMisses = 0;
+    this.recoveryDryBlocks = 0;
     this.lastError = void 0;
     this.unhealthyReason = void 0;
     this.lastProcessDurationMs = void 0;
@@ -2058,10 +2060,12 @@ export class LiveEffectRackChain extends EventTarget {
       stageCount: this.stages.length,
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
+      processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
       processBudgetMisses: this.processBudgetMisses,
       lastProcessDurationMs: this.lastProcessDurationMs,
       processBudgetExceeded: this.lastProcessBudgetExceeded,
       processBudgetTripped: this.unhealthyReason === "process-budget-exceeded",
+      recoveryDryBlocks: this.recoveryDryBlocks,
       unhealthyReason: this.unhealthyReason,
       lastError: this.lastError
     };
@@ -2071,7 +2075,9 @@ export class LiveEffectRackChain extends EventTarget {
     const processStartedAt = this.nowMs();
     const outputChannels = this.chainOutputChannels(request.channels);
     if (this.unhealthyReason === "process-budget-exceeded") {
-      return this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
+      const response = this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
+      this.maybeRecoverFromProcessBudget();
+      return response;
     }
     if (this.stages.length === 0) {
       return this.chainDryResponse(request, "chain-empty", outputChannels);
@@ -2154,6 +2160,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastError = void 0;
     this.unhealthyReason = void 0;
     this.processBudgetMisses = 0;
+    this.recoveryDryBlocks = 0;
     this.lastProcessBudgetExceeded = false;
     this.dispatchEvent(new CustomEvent("retry", { detail: { health: this.health } }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
@@ -2201,6 +2208,7 @@ export class LiveEffectRackChain extends EventTarget {
     if (chainProcessBudgetTripped) {
       this.lastError = error;
       this.unhealthyReason = "process-budget-exceeded";
+      this.recoveryDryBlocks = 0;
       const finalResponse = {
         ...response,
         channels: dryLiveEffectChannels(request.channels, outputChannels, this.maxBlockSize),
@@ -2247,6 +2255,23 @@ export class LiveEffectRackChain extends EventTarget {
     if (previousMisses !== this.processBudgetMisses || previousUnhealthyReason !== this.unhealthyReason || response.chainProcessBudgetExceeded) {
       this.dispatchEvent(new CustomEvent("healthchange", { detail: health }));
     }
+  }
+
+  maybeRecoverFromProcessBudget() {
+    if (this.unhealthyReason !== "process-budget-exceeded" || this.processBudgetRecoveryBlocks <= 0) {
+      return;
+    }
+    this.recoveryDryBlocks = Math.min(4096, this.recoveryDryBlocks + 1);
+    if (this.recoveryDryBlocks < this.processBudgetRecoveryBlocks) {
+      return;
+    }
+    this.lastError = void 0;
+    this.unhealthyReason = void 0;
+    this.recoveryDryBlocks = 0;
+    this.processBudgetMisses = 0;
+    this.lastProcessBudgetExceeded = false;
+    this.dispatchEvent(new CustomEvent("chain-process-budget-recovered", { detail: { health: this.health } }));
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 }
 

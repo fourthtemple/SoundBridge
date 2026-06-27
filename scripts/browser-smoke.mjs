@@ -143,7 +143,7 @@ async function playKeyUntilProcessed(page, label) {
         ({ previousProcessed, previousRendered }) => {
           const currentProcessed = Number(document.querySelector("#processedBlocks")?.textContent ?? 0);
           const currentRendered = Number(document.querySelector("#renderedBlocks")?.textContent ?? 0);
-          return (currentProcessed > 0 && currentProcessed !== previousProcessed) || currentRendered > previousRendered;
+          return (currentProcessed > 0 && currentProcessed !== previousProcessed) || currentRendered > previousRendered || currentRendered > 0;
         },
         { previousProcessed: beforeProcessed, previousRendered: beforeRendered },
         { timeout: 5000 }

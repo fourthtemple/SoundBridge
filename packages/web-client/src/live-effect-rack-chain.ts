@@ -17,6 +17,7 @@ export interface LiveEffectRackChainOptions {
   maxBlockSize?: number;
   processBudgetMs?: number;
   maxConsecutiveProcessBudgetMisses?: number;
+  processBudgetRecoveryBlocks?: number;
   nowMs?: () => number;
 }
 
@@ -53,10 +54,12 @@ export interface LiveEffectRackChainHealth {
   stageCount: number;
   processBudgetMs: number;
   maxConsecutiveProcessBudgetMisses: number;
+  processBudgetRecoveryBlocks: number;
   processBudgetMisses: number;
   lastProcessDurationMs?: number;
   processBudgetExceeded: boolean;
   processBudgetTripped: boolean;
+  recoveryDryBlocks: number;
   unhealthyReason?: "process-budget-exceeded";
   lastError?: unknown;
 }
@@ -66,9 +69,11 @@ export class LiveEffectRackChain extends EventTarget {
   readonly maxBlockSize: number;
   readonly processBudgetMs: number;
   readonly maxConsecutiveProcessBudgetMisses: number;
+  readonly processBudgetRecoveryBlocks: number;
   private readonly outputChannels?: number;
   private readonly nowMs: () => number;
   private processBudgetMisses = 0;
+  private recoveryDryBlocks = 0;
   private lastError?: unknown;
   private unhealthyReason?: LiveEffectRackChainResponse["chainUnhealthyReason"];
   private lastProcessDurationMs?: number;
@@ -83,6 +88,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.maxBlockSize = boundedLiveEffectInteger(options.maxBlockSize, 128, 1, 8192);
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
     this.maxConsecutiveProcessBudgetMisses = boundedLiveEffectInteger(options.maxConsecutiveProcessBudgetMisses, 0, 0, 1024);
+    this.processBudgetRecoveryBlocks = boundedLiveEffectInteger(options.processBudgetRecoveryBlocks, 0, 0, 4096);
     this.outputChannels = options.outputChannels === undefined
       ? undefined
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
@@ -95,10 +101,12 @@ export class LiveEffectRackChain extends EventTarget {
       stageCount: this.stages.length,
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
+      processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
       processBudgetMisses: this.processBudgetMisses,
       lastProcessDurationMs: this.lastProcessDurationMs,
       processBudgetExceeded: this.lastProcessBudgetExceeded,
       processBudgetTripped: this.unhealthyReason === "process-budget-exceeded",
+      recoveryDryBlocks: this.recoveryDryBlocks,
       unhealthyReason: this.unhealthyReason,
       lastError: this.lastError
     };
@@ -111,7 +119,9 @@ export class LiveEffectRackChain extends EventTarget {
     const processStartedAt = this.nowMs();
     const outputChannels = this.chainOutputChannels(request.channels);
     if (this.unhealthyReason === "process-budget-exceeded") {
-      return this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
+      const response = this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
+      this.maybeRecoverFromProcessBudget();
+      return response;
     }
     if (this.stages.length === 0) {
       return this.chainDryResponse(request, "chain-empty", outputChannels);
@@ -191,6 +201,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastError = undefined;
     this.unhealthyReason = undefined;
     this.processBudgetMisses = 0;
+    this.recoveryDryBlocks = 0;
     this.lastProcessBudgetExceeded = false;
     this.dispatchEvent(new CustomEvent("retry", { detail: { health: this.health } }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
@@ -251,6 +262,7 @@ export class LiveEffectRackChain extends EventTarget {
     if (chainProcessBudgetTripped) {
       this.lastError = error;
       this.unhealthyReason = "process-budget-exceeded";
+      this.recoveryDryBlocks = 0;
       const finalResponse = {
         ...response,
         channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
@@ -305,6 +317,23 @@ export class LiveEffectRackChain extends EventTarget {
     ) {
       this.dispatchEvent(new CustomEvent("healthchange", { detail: health }));
     }
+  }
+
+  private maybeRecoverFromProcessBudget(): void {
+    if (this.unhealthyReason !== "process-budget-exceeded" || this.processBudgetRecoveryBlocks <= 0) {
+      return;
+    }
+    this.recoveryDryBlocks = Math.min(4096, this.recoveryDryBlocks + 1);
+    if (this.recoveryDryBlocks < this.processBudgetRecoveryBlocks) {
+      return;
+    }
+    this.lastError = undefined;
+    this.unhealthyReason = undefined;
+    this.recoveryDryBlocks = 0;
+    this.processBudgetMisses = 0;
+    this.lastProcessBudgetExceeded = false;
+    this.dispatchEvent(new CustomEvent("chain-process-budget-recovered", { detail: { health: this.health } }));
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 }
 
