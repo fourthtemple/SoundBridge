@@ -380,6 +380,7 @@ assert(
 
 now = 3500;
 let telemetryDurationMs = 10;
+let telemetryTargetCalls = 0;
 const telemetryScheduler = createLiveEffectRackBlockScheduler({
   sampleRate: 1000,
   maxBlockSize: 10,
@@ -389,6 +390,7 @@ const telemetryScheduler = createLiveEffectRackBlockScheduler({
 });
 const telemetryTarget = {
   async processScheduledBlock(scheduled) {
+    telemetryTargetCalls += 1;
     now += telemetryDurationMs;
     return {
       blockId: scheduled.blockId,
@@ -421,6 +423,40 @@ assert(
   telemetryScheduler.snapshot().deadlinePressure.reasons.includes("deadline-miss") &&
     telemetryScheduler.snapshot().deadlinePressure.reasons.includes("low-deadline-lead"),
   "live scheduler consumes frame-batch deadline telemetry as pressure"
+);
+const filteredPressureBatch = await telemetryProcessor.process(
+  [{ target: telemetryTarget, channels: [Array(10).fill(1)] }],
+  { skipOnDeadlinePressure: true, skipOnDeadlinePressureReasons: ["dry-output-pressure"] }
+);
+assert(
+  filteredPressureBatch.processedTargets === 1 && telemetryTargetCalls === 3,
+  "live frame batch pressure reason filters keep unmatched pressure wet"
+);
+let batchDeadlinePressureEvents = 0;
+telemetryProcessor.addEventListener("frame-batch-deadline-pressure", (event) => {
+  batchDeadlinePressureEvents += 1;
+  assert(event.detail.result.skippedTargets === 1, "live frame batch deadline-pressure events include skipped results");
+});
+const deadlineSkipTarget = {
+  health: { healthy: true, reportedLatencySamples: 256 },
+  async processScheduledBlock() {
+    throw new Error("deadline pressure skip should not process targets");
+  }
+};
+const deadlineSkippedBatch = await telemetryProcessor.process(
+  [{ id: "pressure-deck", target: deadlineSkipTarget, channels: [Array(10).fill(0.5)] }],
+  { skipOnDeadlinePressure: true, skipOnDeadlinePressureReasons: ["deadline-miss"] }
+);
+assert(
+  deadlineSkippedBatch.processedTargets === 0 &&
+    deadlineSkippedBatch.skippedTargets === 1 &&
+    deadlineSkippedBatch.failedTargets === 0 &&
+    deadlineSkippedBatch.dryTargets === 1 &&
+    deadlineSkippedBatch.healthy === true &&
+    deadlineSkippedBatch.reportedLatencySamples === 256 &&
+    deadlineSkippedBatch.results[0].response.renderEngine === "frame-batch-deadline-pressure" &&
+    batchDeadlinePressureEvents === 1,
+  "live frame batch can fail dry before starting deadline-pressured shared-frame targets"
 );
 
 const badBatch = await batchProcessor.process([

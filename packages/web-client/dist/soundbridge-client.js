@@ -3711,6 +3711,9 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   async process(targets, options = {}) {
     const frame = options.frame ?? this.scheduler.captureFrame(options.frameOptions);
     const targetCount = boundedLiveEffectInteger(targets?.length, 0, 0, this.maxTargets);
+    if (shouldSkipLiveEffectDeadlinePressure(frame.deadlinePressure, options)) {
+      return this.deadlinePressureDryResult(frame, targets, targetCount);
+    }
     if (this.processBudgetTripped || this.processTimeoutTripped) {
       return this.processPressureDryResult(frame, targets, targetCount);
     }
@@ -3819,6 +3822,34 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     };
   }
 
+  deadlinePressureTargetResult(frame, targetRequest, index) {
+    const scheduled = this.scheduler.scheduleFromFrame(frame, targetRequest?.channels ?? [], targetRequest?.scheduleOptions);
+    const health = targetRequest?.target.health;
+    const reportedLatencySamples = boundedLiveEffectLatencySamples(health?.reportedLatencySamples, boundedLiveEffectLatencySamples(health?.latencySamples, 0));
+    return {
+      id: targetRequest?.id,
+      index,
+      scheduled,
+      response: {
+        blockId: scheduled.blockId,
+        channels: scheduled.request.channels,
+        latencySamples: 0,
+        tailSamples: 0,
+        infiniteTail: false,
+        renderEngine: "frame-batch-deadline-pressure",
+        bypassed: true,
+        healthy: health?.healthy !== false
+      },
+      bypassed: true,
+      dry: true,
+      skipped: true,
+      healthy: health?.healthy !== false,
+      latencySamples: 0,
+      reportedLatencySamples,
+      durationMs: 0
+    };
+  }
+
   recordProcessBudget(frame, results, totalDurationMs) {
     const boundedDurationMs = boundedLiveEffectOptionalNumber(totalDurationMs, 0, 60000) ?? 0;
     const processBudgetExceeded = this.processBudgetMs > 0 && boundedDurationMs > this.processBudgetMs;
@@ -3909,6 +3940,15 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     const result = this.result(frame, results, 0, false, false, error);
     this.maybeRecoverFromProcessBudget();
     this.maybeRecoverFromProcessTimeout();
+    return result;
+  }
+
+  deadlinePressureDryResult(frame, targets, targetCount) {
+    const results = Array.from({ length: targetCount }, (_unused, index) =>
+      this.deadlinePressureTargetResult(frame, targets[index], index)
+    );
+    const result = this.result(frame, results, 0, false, false, void 0);
+    this.dispatchEvent(new CustomEvent("frame-batch-deadline-pressure", { detail: { result, health: this.health } }));
     return result;
   }
 
