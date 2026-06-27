@@ -1,4 +1,8 @@
-import { createLiveEffectRackAdaptiveLatencyController } from "../packages/web-client/dist/soundbridge-client.js";
+import {
+  createLiveEffectRackAdaptiveLatencyController,
+  createLiveEffectRackBlockScheduler,
+  createLiveEffectRackChainSchedulerAdaptiveLatencyController
+} from "../packages/web-client/dist/soundbridge-client.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -154,5 +158,91 @@ const floorRecovery = await controller.record({
   lastResponseDeadlineLeadBlocks: 1
 });
 assert(floorRecovery.applied === false, "adaptive rack latency does not recover below the configured latency floor");
+
+const chainScheduler = createLiveEffectRackBlockScheduler({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 384
+});
+const chainController = createLiveEffectRackChainSchedulerAdaptiveLatencyController({
+  scheduler: chainScheduler,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 256,
+  processBudgetMs: 8,
+  processTimeoutMs: 12,
+  minSamples: 2,
+  cooldownBlocks: 1,
+  maxLatencyIncreaseBlocks: 2,
+  latencyRecoveryBlocks: 2,
+  maxLatencyDecreaseBlocks: 1,
+  minTransportLatencyBlocks: 2,
+  safetyMarginBlocks: 1
+});
+
+const chainReady = chainController.record({
+  latencySamples: 128,
+  lastProcessDurationMs: 0.5,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 0
+});
+assert(chainReady.applied === false, "adaptive chain scheduler latency waits for enough chain samples");
+assert(chainReady.currentTransportLatencySamples === 384, "adaptive chain scheduler latency reads the scheduler latency");
+assert(chainReady.targetTransportLatencySamples === 384, "adaptive chain scheduler latency keeps stable chain latency unchanged");
+
+const chainRaise = chainController.record({
+  latencySamples: 128,
+  lastProcessDurationMs: 0.6,
+  responseJitterBlocks: 4,
+  lastResponseDeadlineLeadBlocks: -1,
+  responseDeadlineMisses: 1
+});
+assert(chainRaise.applied === true, "adaptive chain scheduler latency applies pressure recommendations");
+assert(chainRaise.appliedDirection === "increase", "adaptive chain scheduler latency reports upward changes");
+assert(chainRaise.chainLatencySamples === 128, "adaptive chain scheduler latency reports aggregate chain latency");
+assert(chainRaise.targetTransportLatencySamples === 640, "adaptive chain scheduler latency caps one increase to the configured step");
+assert(chainScheduler.snapshot().transportLatencySamples === 640, "adaptive chain scheduler latency updates the scheduler");
+assert(
+  chainScheduler.snapshot().deadlinePressure.reasons.includes("increase-transport-latency"),
+  "adaptive chain scheduler latency keeps scheduler pressure observable after an increase"
+);
+
+const chainCooldown = chainController.record({
+  latencySamples: 128,
+  lastProcessDurationMs: 0.6,
+  responseJitterBlocks: 4,
+  lastResponseDeadlineLeadBlocks: -1,
+  responseDeadlineMisses: 1
+});
+assert(chainCooldown.applied === false, "adaptive chain scheduler latency observes sample windows after applying");
+
+chainController.reset();
+chainController.record({
+  latencySamples: 128,
+  lastProcessDurationMs: 0.5,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 1
+});
+const chainStable = chainController.record({
+  latencySamples: 128,
+  lastProcessDurationMs: 0.5,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 1
+});
+assert(chainStable.applied === false && chainStable.stableBlocks === 1, "adaptive chain scheduler latency counts stable recovery blocks");
+const chainRecovery = chainController.record({
+  latencySamples: 128,
+  lastProcessDurationMs: 0.5,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 1
+});
+assert(chainRecovery.applied === true, "adaptive chain scheduler latency recovers downward after stable chain health");
+assert(chainRecovery.appliedDirection === "decrease", "adaptive chain scheduler latency reports downward scheduler changes");
+assert(chainRecovery.targetTransportLatencySamples === 512, "adaptive chain scheduler latency recovers in bounded one-block steps");
+assert(chainScheduler.snapshot().transportLatencySamples === 512, "adaptive chain scheduler latency applies the recovery target");
 
 console.log("Live effect rack adaptive latency smoke checks passed.");

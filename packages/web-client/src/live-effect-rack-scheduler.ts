@@ -181,6 +181,13 @@ export class LiveEffectRackBlockScheduler {
     return this.transportLatencySamples;
   }
 
+  updateDeadlinePressureFromHealth(
+    health: LiveEffectRackDeadlinePressureHealth,
+    calibration?: Pick<LiveEffectRackCalibration, "warnings">
+  ): LiveEffectRackDeadlinePressure {
+    return this.updateDeadlinePressure(health, calibration);
+  }
+
   reset(options: { nextBlockId?: number; nextSamplePosition?: number } = {}): void {
     this.nextBlockId = boundedLiveEffectInteger(options.nextBlockId, 0, 0, LIVE_EFFECT_SCHEDULER_MAX_BLOCK_ID);
     this.nextSamplePosition = optionalSchedulerInteger(options.nextSamplePosition, 0, LIVE_EFFECT_SCHEDULER_MAX_SAMPLE_POSITION);
