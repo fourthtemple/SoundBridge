@@ -36,6 +36,7 @@ self.onmessage = (event) => {
       instanceId: String(message.instanceId ?? ""),
       sampleRate: Number(message.sampleRate ?? 48000),
       sessionToken: String(message.sessionToken ?? ""),
+      maxInFlightBlocks: boundedSharedInteger(message.maxInFlightBlocks, 8, 1, 64),
       audioTransport: message.audioTransport === "json" ? "json" : "binary"
     }, message.sharedAudio);
     return;
@@ -165,9 +166,11 @@ function recycleAudioInput(port, channels, frames) {
 }
 
 function routeAudioResponse(envelope) {
-  const shared = envelope.id ? pendingSharedAudio.get(envelope.id) : void 0;
-  if (shared) {
+  const pendingShared = envelope.id ? pendingSharedAudio.get(envelope.id) : void 0;
+  if (pendingShared) {
+    const { shared, config } = pendingShared;
     pendingSharedAudio.delete(envelope.id ?? "");
+    shared.inFlightBlocks = Math.max(0, shared.inFlightBlocks - 1);
     if (envelope.ok && envelope.payload && typeof envelope.payload === "object") {
       const payload = envelope.payload;
       writeSharedOutputBlock(shared, Math.floor(Number(payload.blockId ?? 0)), Array.isArray(payload.channels) ? payload.channels : []);
@@ -177,6 +180,7 @@ function routeAudioResponse(envelope) {
     } else {
       shared.port.postMessage({ type: "audio-error", error: envelope.error });
     }
+    pumpSharedAudio(config, shared);
     return true;
   }
   const port = envelope.id ? pendingAudioPorts.get(envelope.id) : void 0;
@@ -243,11 +247,12 @@ function scheduleSharedAudioPump(config, shared) {
       return;
     }
   }
-  setTimeout(() => pumpSharedAudio(config, shared), Atomics.load(shared.inputControl, SHARED_AVAILABLE) > 0 ? 0 : 1);
+  const queued = Atomics.load(shared.inputControl, SHARED_AVAILABLE);
+  setTimeout(() => pumpSharedAudio(config, shared), queued > 0 && shared.inFlightBlocks < config.maxInFlightBlocks ? 0 : 4);
 }
 
 function drainSharedAudio(config, shared) {
-  while (!shared.closed && Atomics.load(shared.inputControl, SHARED_AVAILABLE) > 0) {
+  while (!shared.closed && shared.inFlightBlocks < config.maxInFlightBlocks && Atomics.load(shared.inputControl, SHARED_AVAILABLE) > 0) {
     const readIndex = Atomics.load(shared.inputControl, SHARED_READ_INDEX) % shared.slots;
     const block = readSharedInputBlock(shared, readIndex);
     Atomics.store(shared.inputControl, SHARED_READ_INDEX, (readIndex + 1) % shared.slots);
@@ -280,11 +285,13 @@ function sendSharedAudioProcess(config, shared, block) {
     payload
   };
   try {
-    pendingSharedAudio.set(envelope.id, shared);
+    shared.inFlightBlocks += 1;
+    pendingSharedAudio.set(envelope.id, { shared, config });
     socket.send(binary ? encodeBinaryAudioEnvelope(envelope, block.channels) : JSON.stringify(envelope));
     recycleSharedInputBlock(shared, block.channels, block.frames);
   } catch (error) {
     pendingSharedAudio.delete(envelope.id);
+    shared.inFlightBlocks = Math.max(0, shared.inFlightBlocks - 1);
     recycleSharedInputBlock(shared, block.channels, block.frames);
     shared.port.postMessage({ type: "audio-error", blockId: block.blockId, error: String(error instanceof Error ? error.message : error) });
   }
@@ -398,6 +405,7 @@ function normalizeSharedAudioPort(port, value) {
     port,
     closed: false,
     wakeMode: "timer",
+    inFlightBlocks: 0,
     slots,
     channels,
     frames,

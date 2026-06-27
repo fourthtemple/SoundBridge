@@ -6,7 +6,7 @@ import {
 let socket: WebSocket | undefined;
 let audioRequestSeq = 0;
 const pendingAudioPorts = new Map<string, MessagePort>();
-const pendingSharedAudio = new Map<string, SharedAudioPort>();
+const pendingSharedAudio = new Map<string, PendingSharedAudioRequest>();
 const SHARED_AUDIO_HEADER_INTS = 8;
 const SHARED_AUDIO_SLOT_INTS = 4;
 const SHARED_WRITE_INDEX = 0;
@@ -22,13 +22,20 @@ interface AudioPortConfig {
   instanceId: string;
   sampleRate: number;
   sessionToken: string;
+  maxInFlightBlocks: number;
   audioTransport: "binary" | "json";
+}
+
+interface PendingSharedAudioRequest {
+  shared: SharedAudioPort;
+  config: AudioPortConfig;
 }
 
 interface SharedAudioPort {
   port: MessagePort;
   closed: boolean;
   wakeMode: "atomics" | "timer";
+  inFlightBlocks: number;
   slots: number;
   channels: number;
   frames: number;
@@ -61,6 +68,7 @@ self.onmessage = (event: MessageEvent) => {
       instanceId: String(message.instanceId ?? ""),
       sampleRate: Number(message.sampleRate ?? 48000),
       sessionToken: String(message.sessionToken ?? ""),
+      maxInFlightBlocks: boundedSharedInteger(message.maxInFlightBlocks, 8, 1, 64),
       audioTransport: message.audioTransport === "json" ? "json" : "binary"
     }, message.sharedAudio);
     return;
@@ -191,9 +199,11 @@ function recycleAudioInput(port: MessagePort, channels: Float32Array[], frames: 
 }
 
 function routeAudioResponse(envelope: { id?: string; ok?: boolean; payload?: unknown; error?: unknown }): boolean {
-  const shared = envelope.id ? pendingSharedAudio.get(envelope.id) : undefined;
-  if (shared) {
+  const pendingShared = envelope.id ? pendingSharedAudio.get(envelope.id) : undefined;
+  if (pendingShared) {
+    const { shared, config } = pendingShared;
     pendingSharedAudio.delete(envelope.id ?? "");
+    shared.inFlightBlocks = Math.max(0, shared.inFlightBlocks - 1);
     if (envelope.ok && envelope.payload && typeof envelope.payload === "object") {
       const payload = envelope.payload as { blockId?: number; channels?: ArrayLike<number>[]; renderEngine?: string };
       writeSharedOutputBlock(shared, Math.floor(Number(payload.blockId ?? 0)), Array.isArray(payload.channels) ? payload.channels : []);
@@ -203,6 +213,7 @@ function routeAudioResponse(envelope: { id?: string; ok?: boolean; payload?: unk
     } else {
       shared.port.postMessage({ type: "audio-error", error: envelope.error });
     }
+    pumpSharedAudio(config, shared);
     return true;
   }
   const port = envelope.id ? pendingAudioPorts.get(envelope.id) : undefined;
@@ -269,11 +280,12 @@ function scheduleSharedAudioPump(config: AudioPortConfig, shared: SharedAudioPor
       return;
     }
   }
-  setTimeout(() => pumpSharedAudio(config, shared), Atomics.load(shared.inputControl, SHARED_AVAILABLE) > 0 ? 0 : 1);
+  const queued = Atomics.load(shared.inputControl, SHARED_AVAILABLE);
+  setTimeout(() => pumpSharedAudio(config, shared), queued > 0 && shared.inFlightBlocks < config.maxInFlightBlocks ? 0 : 4);
 }
 
 function drainSharedAudio(config: AudioPortConfig, shared: SharedAudioPort): void {
-  while (!shared.closed && Atomics.load(shared.inputControl, SHARED_AVAILABLE) > 0) {
+  while (!shared.closed && shared.inFlightBlocks < config.maxInFlightBlocks && Atomics.load(shared.inputControl, SHARED_AVAILABLE) > 0) {
     const readIndex = Atomics.load(shared.inputControl, SHARED_READ_INDEX) % shared.slots;
     const block = readSharedInputBlock(shared, readIndex);
     Atomics.store(shared.inputControl, SHARED_READ_INDEX, (readIndex + 1) % shared.slots);
@@ -310,11 +322,13 @@ function sendSharedAudioProcess(
     payload
   };
   try {
-    pendingSharedAudio.set(envelope.id, shared);
+    shared.inFlightBlocks += 1;
+    pendingSharedAudio.set(envelope.id, { shared, config });
     socket.send(binary ? encodeBinaryAudioEnvelope(envelope, block.channels) : JSON.stringify(envelope));
     recycleSharedInputBlock(shared, block.channels, block.frames);
   } catch (error) {
     pendingSharedAudio.delete(envelope.id);
+    shared.inFlightBlocks = Math.max(0, shared.inFlightBlocks - 1);
     recycleSharedInputBlock(shared, block.channels, block.frames);
     shared.port.postMessage({ type: "audio-error", blockId: block.blockId, error: String(error instanceof Error ? error.message : error) });
   }
@@ -437,6 +451,7 @@ function normalizeSharedAudioPort(port: MessagePort, value: unknown): SharedAudi
     port,
     closed: false,
     wakeMode: "timer",
+    inFlightBlocks: 0,
     slots,
     channels,
     frames,

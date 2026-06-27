@@ -190,6 +190,7 @@ export class SoundBridgeClient extends EventTarget {
         instanceId: options.instanceId,
         sampleRate: options.sampleRate,
         sessionToken: this.sessionToken,
+        maxInFlightBlocks: boundedAudioNodeInteger(options.maxInFlightBlocks, 8, 1, 64),
         audioTransport: options.audioTransport === "json" ? "json" : "binary",
         sharedAudio
       },
@@ -641,6 +642,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     const transportConnection = client.createAudioWorkletTransportConnection({
       instanceId: options.instanceId,
       sampleRate: context.sampleRate,
+      maxInFlightBlocks: options.maxInFlightBlocks,
       audioTransport: options.audioTransport,
       audioTransferMode: options.audioTransferMode,
       channels: Math.max(options.inputChannels, options.outputChannels),

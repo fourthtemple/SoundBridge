@@ -62,6 +62,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     const transportConnection = client.createAudioWorkletTransportConnection({
       instanceId: options.instanceId,
       sampleRate: context.sampleRate,
+      maxInFlightBlocks: options.maxInFlightBlocks,
       audioTransport: options.audioTransport,
       audioTransferMode: options.audioTransferMode,
       channels: Math.max(options.inputChannels, options.outputChannels),

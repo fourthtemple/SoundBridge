@@ -50,6 +50,7 @@ export interface BinaryAudioBlockRequest extends Omit<AudioBlockRequest, "channe
 export interface AudioWorkletTransportOptions extends SharedAudioTransportOptions {
   instanceId: string;
   sampleRate: number;
+  maxInFlightBlocks?: number;
   audioTransport?: "binary" | "json";
 }
 
@@ -243,10 +244,7 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("setVst3ProgramData", { instanceId, programData });
   }
 
-  setParameterEvents(
-    instanceId: string,
-    events: ParameterAutomationEvent[]
-  ): Promise<{ accepted: boolean; eventCount: number; parameters: PluginParameter[] }> {
+  setParameterEvents(instanceId: string, events: ParameterAutomationEvent[]): Promise<{ accepted: boolean; eventCount: number; parameters: PluginParameter[] }> {
     return this.request("setParameterEvents", { instanceId, events });
   }
 
@@ -259,11 +257,7 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("setParameterCurve", { instanceId, parameterId, points, interpolation });
   }
 
-  setAutomationLane(
-    instanceId: string,
-    parameterId: string,
-    points: AutomationLanePoint[]
-  ): Promise<SetAutomationLaneResponse> {
+  setAutomationLane(instanceId: string, parameterId: string, points: AutomationLanePoint[]): Promise<SetAutomationLaneResponse> {
     return this.request("setAutomationLane", { instanceId, parameterId, points });
   }
 
@@ -301,6 +295,7 @@ export class SoundBridgeClient extends EventTarget {
         instanceId: options.instanceId,
         sampleRate: options.sampleRate,
         sessionToken: this.sessionToken,
+        maxInFlightBlocks: boundedAudioWorkletInteger(options.maxInFlightBlocks, 8, 1, 64),
         audioTransport: options.audioTransport === "json" ? "json" : "binary",
         sharedAudio
       },
@@ -746,4 +741,8 @@ function boundedBinaryInteger(value: unknown, min: number, max: number): number 
   return integer;
 }
 
+function boundedAudioWorkletInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const integer = Math.floor(Number(value ?? fallback));
+  return Number.isFinite(integer) ? Math.max(min, Math.min(max, integer)) : fallback;
+}
 export { decodeBinaryAudioEnvelope as __soundBridgeDecodeBinaryAudioEnvelope, encodeBinaryAudioEnvelope as __soundBridgeEncodeBinaryAudioEnvelope };

@@ -56,12 +56,14 @@ assert(pair.sessionToken === "session-1", "worker transport pair response resolv
 const audioPort = client.createAudioWorkletTransportPort({
   instanceId: "inst-1",
   sampleRate: 48000,
+  maxInFlightBlocks: 3,
   audioTransport: "binary"
 });
 const audioPortMessage = FakeWorker.last.messages.at(-1);
 assert(audioPort, "worker transport creates an audio worklet port after pairing");
 assert(audioPortMessage.type === "audio-port", "worker transport registers audio worklet ports with the worker");
 assert(audioPortMessage.instanceId === "inst-1", "worker audio port registration includes instance id");
+assert(audioPortMessage.maxInFlightBlocks === 3, "worker audio port registration includes the bounded in-flight limit");
 assert(audioPortMessage.sharedAudio?.inputControl instanceof SharedArrayBuffer, "worker audio port registration includes shared input control when isolated");
 assert(audioPortMessage.sharedAudio?.outputAudio instanceof SharedArrayBuffer, "worker audio port registration includes shared output audio when isolated");
 audioPort.close();

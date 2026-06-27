@@ -183,6 +183,7 @@ self.onmessage({
     instanceId: "inst-shared",
     sampleRate: 48000,
     sessionToken: "session-1",
+    maxInFlightBlocks: 1,
     audioTransport: "binary",
     sharedAudio
   }
@@ -191,13 +192,9 @@ assert(
   sharedPort.messages.some((message) => message.type === "shared-audio-status" && message.wakeMode === "atomics"),
   "transport worker reports atomic shared-audio wakeups"
 );
-assert(socket.sent.length === 3, "transport worker drains shared input blocks after registration");
-assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 2) === 0, "transport worker consumes shared input slots");
-assert(waitAsyncCalls === 1, "transport worker waits on shared input after draining queued blocks");
-assert(
-  encodedBinaryChannels[1]?.[0] === encodedBinaryChannels[2]?.[0],
-  "transport worker reuses shared input buffers after binary send"
-);
+assert(socket.sent.length === 2, "transport worker drains shared input up to its in-flight limit");
+assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 2) === 1, "transport worker leaves shared input queued under backpressure");
+assert(waitAsyncCalls === 0, "transport worker does not wait for new shared input while backpressured");
 socket.emit("message", {
   data: JSON.stringify({
     type: "response",
@@ -211,6 +208,13 @@ socket.emit("message", {
     }
   })
 });
+assert(socket.sent.length === 3, "transport worker resumes shared input drain after a response frees capacity");
+assert(Atomics.load(new Int32Array(sharedAudio.inputControl), 2) === 0, "transport worker consumes remaining shared input after backpressure clears");
+assert(waitAsyncCalls === 1, "transport worker waits on shared input after draining queued blocks");
+assert(
+  encodedBinaryChannels[1]?.[0] === encodedBinaryChannels[2]?.[0],
+  "transport worker reuses shared input buffers after binary send"
+);
 const sharedOutputControl = new Int32Array(sharedAudio.outputControl);
 const sharedOutputAudio = new Float32Array(sharedAudio.outputAudio);
 assert(Atomics.load(sharedOutputControl, 2) === 1, "transport worker writes shared output slots");
