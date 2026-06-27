@@ -124,7 +124,7 @@ Then create a plugin instance and put it in your Web Audio graph:
 ```
 
 That is the core integration: scan, create an instance, connect `SoundBridgeAudioNode` with the live-performance Web Audio defaults.
-For live UIs, read `pluginNode.health` from your meter/failover loop and listen for `transport-pressure` to monitor transport latency, deadline misses, stale output, dropped input, underruns, audio errors, and render-budget pressure.
+For live UIs, read `pluginNode.health` from your meter/failover loop and listen for `latencychange` plus `transport-pressure` to monitor transport latency, deadline misses, stale output, dropped input, underruns, audio errors, and render-budget pressure.
 
 If your host owns the audio blocks directly, such as a browser DJ deck or live effects rack, use the live-performance rack defaults:
 

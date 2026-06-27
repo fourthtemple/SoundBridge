@@ -35,6 +35,10 @@ export interface SoundBridgeAudioNodeHealth {
   queuedOutputBlocks: number;
   outputLatencyBlocks: number;
   transportLatencySamples: number;
+  latencyIncreases: number;
+  latencyDecreases: number;
+  latencyChangeEvents: number;
+  lastLatencyChangeDirection?: "increased" | "decreased" | "changed";
   responseDeadlineLeadSamples: number;
   responseJitterSamples: number;
   responseDeadlineMisses: number;
@@ -133,6 +137,10 @@ export class SoundBridgeAudioNode extends EventTarget {
   private queuedOutputBlocks = 0;
   private outputLatencyBlocks = 0;
   private transportLatencySamples = 0;
+  private latencyIncreases = 0;
+  private latencyDecreases = 0;
+  private latencyChangeEvents = 0;
+  private lastLatencyChangeDirection?: SoundBridgeAudioNodeHealth["lastLatencyChangeDirection"];
   private responseDeadlineLeadSamples = 0;
   private responseJitterSamples = 0;
   private responseDeadlineMisses = 0;
@@ -279,6 +287,10 @@ export class SoundBridgeAudioNode extends EventTarget {
       queuedOutputBlocks: this.queuedOutputBlocks,
       outputLatencyBlocks: this.outputLatencyBlocks,
       transportLatencySamples: this.transportLatencySamples,
+      latencyIncreases: this.latencyIncreases,
+      latencyDecreases: this.latencyDecreases,
+      latencyChangeEvents: this.latencyChangeEvents,
+      lastLatencyChangeDirection: this.lastLatencyChangeDirection,
       responseDeadlineLeadSamples: this.responseDeadlineLeadSamples,
       responseJitterSamples: this.responseJitterSamples,
       responseDeadlineMisses: this.responseDeadlineMisses,
@@ -471,6 +483,8 @@ export class SoundBridgeAudioNode extends EventTarget {
     queuedOutputBlocks?: number;
     outputLatencyBlocks?: number;
     transportLatencySamples?: number;
+    latencyIncreases?: number;
+    latencyDecreases?: number;
     responseDeadlineLeadSamples?: number;
     responseJitterSamples?: number;
     responseDeadlineMisses?: number;
@@ -483,6 +497,10 @@ export class SoundBridgeAudioNode extends EventTarget {
     sharedOutputDroppedBlocks?: number;
   }): void {
     const previous = {
+      outputLatencyBlocks: this.outputLatencyBlocks,
+      transportLatencySamples: this.transportLatencySamples,
+      latencyIncreases: this.latencyIncreases,
+      latencyDecreases: this.latencyDecreases,
       responseDeadlineMisses: this.responseDeadlineMisses,
       staleOutputBlocks: this.staleOutputBlocks,
       droppedInputBlocks: this.droppedInputBlocks,
@@ -495,6 +513,8 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.queuedOutputBlocks = boundedInteger(stats.queuedOutputBlocks, this.queuedOutputBlocks, 0, 64);
     this.outputLatencyBlocks = boundedInteger(stats.outputLatencyBlocks, this.outputLatencyBlocks, 0, 64);
     this.transportLatencySamples = boundedInteger(stats.transportLatencySamples, this.transportLatencySamples, 0, 1_048_576);
+    this.latencyIncreases = boundedInteger(stats.latencyIncreases, this.latencyIncreases, 0, Number.MAX_SAFE_INTEGER);
+    this.latencyDecreases = boundedInteger(stats.latencyDecreases, this.latencyDecreases, 0, Number.MAX_SAFE_INTEGER);
     this.responseDeadlineLeadSamples =
       boundedOptionalNumber(stats.responseDeadlineLeadSamples, -1_048_576, 1_048_576) ?? this.responseDeadlineLeadSamples;
     this.responseJitterSamples = boundedInteger(stats.responseJitterSamples, this.responseJitterSamples, 0, 1_048_576);
@@ -523,7 +543,36 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (typeof stats.sharedAudioEnabled === "boolean") {
       this.sharedAudioEnabled = stats.sharedAudioEnabled;
     }
+    this.reportLatencyChange(previous, stats);
     this.reportTransportPressure(previous, stats);
+  }
+
+  private reportLatencyChange(
+    previous: {
+      outputLatencyBlocks: number;
+      transportLatencySamples: number;
+      latencyIncreases: number;
+      latencyDecreases: number;
+    },
+    stats: unknown
+  ): void {
+    const changed =
+      this.outputLatencyBlocks !== previous.outputLatencyBlocks ||
+      this.transportLatencySamples !== previous.transportLatencySamples ||
+      this.latencyIncreases > previous.latencyIncreases ||
+      this.latencyDecreases > previous.latencyDecreases;
+    if (!changed) {
+      return;
+    }
+    const direction =
+      this.latencyIncreases > previous.latencyIncreases
+        ? "increased"
+        : this.latencyDecreases > previous.latencyDecreases
+          ? "decreased"
+          : "changed";
+    this.latencyChangeEvents = Math.min(1024, this.latencyChangeEvents + 1);
+    this.lastLatencyChangeDirection = direction;
+    this.dispatchEvent(new CustomEvent("latencychange", { detail: { direction, previous, stats, health: this.health } }));
   }
 
   private reportTransportPressure(

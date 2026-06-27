@@ -685,6 +685,10 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.queuedOutputBlocks = 0;
     this.outputLatencyBlocks = 0;
     this.transportLatencySamples = 0;
+    this.latencyIncreases = 0;
+    this.latencyDecreases = 0;
+    this.latencyChangeEvents = 0;
+    this.lastLatencyChangeDirection = undefined;
     this.responseDeadlineLeadSamples = 0;
     this.responseJitterSamples = 0;
     this.responseDeadlineMisses = 0;
@@ -814,6 +818,10 @@ export class SoundBridgeAudioNode extends EventTarget {
       queuedOutputBlocks: this.queuedOutputBlocks,
       outputLatencyBlocks: this.outputLatencyBlocks,
       transportLatencySamples: this.transportLatencySamples,
+      latencyIncreases: this.latencyIncreases,
+      latencyDecreases: this.latencyDecreases,
+      latencyChangeEvents: this.latencyChangeEvents,
+      lastLatencyChangeDirection: this.lastLatencyChangeDirection,
       responseDeadlineLeadSamples: this.responseDeadlineLeadSamples,
       responseJitterSamples: this.responseJitterSamples,
       responseDeadlineMisses: this.responseDeadlineMisses,
@@ -950,6 +958,10 @@ export class SoundBridgeAudioNode extends EventTarget {
 
   recordStats(stats) {
     const previous = {
+      outputLatencyBlocks: this.outputLatencyBlocks,
+      transportLatencySamples: this.transportLatencySamples,
+      latencyIncreases: this.latencyIncreases,
+      latencyDecreases: this.latencyDecreases,
       responseDeadlineMisses: this.responseDeadlineMisses,
       staleOutputBlocks: this.staleOutputBlocks,
       droppedInputBlocks: this.droppedInputBlocks,
@@ -962,6 +974,8 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.queuedOutputBlocks = boundedAudioNodeInteger(stats.queuedOutputBlocks, this.queuedOutputBlocks, 0, 64);
     this.outputLatencyBlocks = boundedAudioNodeInteger(stats.outputLatencyBlocks, this.outputLatencyBlocks, 0, 64);
     this.transportLatencySamples = boundedAudioNodeInteger(stats.transportLatencySamples, this.transportLatencySamples, 0, 1048576);
+    this.latencyIncreases = boundedAudioNodeInteger(stats.latencyIncreases, this.latencyIncreases, 0, Number.MAX_SAFE_INTEGER);
+    this.latencyDecreases = boundedAudioNodeInteger(stats.latencyDecreases, this.latencyDecreases, 0, Number.MAX_SAFE_INTEGER);
     this.responseDeadlineLeadSamples =
       boundedAudioNodeOptionalNumber(stats.responseDeadlineLeadSamples, -1048576, 1048576) ?? this.responseDeadlineLeadSamples;
     this.responseJitterSamples = boundedAudioNodeInteger(stats.responseJitterSamples, this.responseJitterSamples, 0, 1048576);
@@ -995,7 +1009,28 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (typeof stats.sharedAudioEnabled === "boolean") {
       this.sharedAudioEnabled = stats.sharedAudioEnabled;
     }
+    this.reportLatencyChange(previous, stats);
     this.reportTransportPressure(previous, stats);
+  }
+
+  reportLatencyChange(previous, stats) {
+    const changed =
+      this.outputLatencyBlocks !== previous.outputLatencyBlocks ||
+      this.transportLatencySamples !== previous.transportLatencySamples ||
+      this.latencyIncreases > previous.latencyIncreases ||
+      this.latencyDecreases > previous.latencyDecreases;
+    if (!changed) {
+      return;
+    }
+    const direction =
+      this.latencyIncreases > previous.latencyIncreases
+        ? "increased"
+        : this.latencyDecreases > previous.latencyDecreases
+          ? "decreased"
+          : "changed";
+    this.latencyChangeEvents = Math.min(1024, this.latencyChangeEvents + 1);
+    this.lastLatencyChangeDirection = direction;
+    this.dispatchEvent(new CustomEvent("latencychange", { detail: { direction, previous, stats, health: this.health } }));
   }
 
   reportTransportPressure(previous, stats) {

@@ -253,12 +253,20 @@ liveNode.addEventListener("transport-pressure", (event) => {
   transportPressureEvents += 1;
   transportPressureDetail = event.detail;
 });
+let latencyEvents = 0;
+let latencyDetail;
+liveNode.addEventListener("latencychange", (event) => {
+  latencyEvents += 1;
+  latencyDetail = event.detail;
+});
 const pressureStats = {
   type: "stats",
   inFlightBlocks: 3,
   queuedOutputBlocks: 2,
   outputLatencyBlocks: 2,
   transportLatencySamples: 256,
+  latencyIncreases: 1,
+  latencyDecreases: 0,
   responseDeadlineLeadSamples: -128,
   responseJitterSamples: 384,
   responseDeadlineMisses: 4,
@@ -279,6 +287,10 @@ assert(liveNode.health.inFlightBlocks === 3, "SoundBridgeAudioNode health tracks
 assert(liveNode.health.queuedOutputBlocks === 2, "SoundBridgeAudioNode health tracks queued output blocks");
 assert(liveNode.health.outputLatencyBlocks === 2, "SoundBridgeAudioNode health tracks output latency blocks");
 assert(liveNode.health.transportLatencySamples === 256, "SoundBridgeAudioNode health tracks transport latency samples");
+assert(liveNode.health.latencyIncreases === 1, "SoundBridgeAudioNode health tracks adaptive latency increases");
+assert(liveNode.health.latencyDecreases === 0, "SoundBridgeAudioNode health tracks adaptive latency decreases");
+assert(liveNode.health.latencyChangeEvents === 1, "SoundBridgeAudioNode health counts latency changes");
+assert(liveNode.health.lastLatencyChangeDirection === "increased", "SoundBridgeAudioNode health tracks latency direction");
 assert(liveNode.health.responseDeadlineLeadSamples === -128, "SoundBridgeAudioNode health tracks deadline lead");
 assert(liveNode.health.responseJitterSamples === 384, "SoundBridgeAudioNode health tracks response jitter");
 assert(liveNode.health.responseDeadlineMisses === 4, "SoundBridgeAudioNode health tracks deadline misses");
@@ -289,6 +301,10 @@ assert(liveNode.health.underruns === 7, "SoundBridgeAudioNode health tracks unde
 assert(liveNode.health.sharedAudioEnabled === true, "SoundBridgeAudioNode health tracks shared audio mode");
 assert(liveNode.health.sharedInputDroppedBlocks === 5, "SoundBridgeAudioNode health tracks shared input drops");
 assert(liveNode.health.sharedOutputDroppedBlocks === 6, "SoundBridgeAudioNode health tracks shared output drops");
+assert(latencyEvents === 1, "SoundBridgeAudioNode emits latencychange when worklet latency changes");
+assert(latencyDetail?.direction === "increased", "latencychange reports adaptive latency increase direction");
+assert(latencyDetail?.previous?.outputLatencyBlocks === 0, "latencychange includes previous latency state");
+assert(latencyDetail?.health?.transportLatencySamples === 256, "latencychange includes updated health");
 assert(transportPressureEvents === 1, "SoundBridgeAudioNode emits transport-pressure on increased pressure counters");
 assert(
   transportPressureDetail?.reasons?.join(",") === "deadline-miss,stale-output,dropped-input,underrun,shared-input-drop,shared-output-drop",
@@ -301,6 +317,20 @@ assert(
 );
 FakeAudioWorkletNode.last.port.onmessage({ data: pressureStats });
 assert(transportPressureEvents === 1, "SoundBridgeAudioNode does not repeat transport-pressure for unchanged counters");
+assert(latencyEvents === 1, "SoundBridgeAudioNode does not repeat latencychange for unchanged latency stats");
+FakeAudioWorkletNode.last.port.onmessage({
+  data: {
+    ...pressureStats,
+    outputLatencyBlocks: 1,
+    transportLatencySamples: 128,
+    latencyDecreases: 1
+  }
+});
+assert(latencyEvents === 2, "SoundBridgeAudioNode emits latencychange when adaptive latency recovers");
+assert(latencyDetail?.direction === "decreased", "latencychange reports adaptive latency decrease direction");
+assert(liveNode.health.latencyDecreases === 1, "SoundBridgeAudioNode health tracks latency recovery decreases");
+assert(liveNode.health.lastLatencyChangeDirection === "decreased", "SoundBridgeAudioNode health tracks recovery direction");
+assert(transportPressureEvents === 1, "latency recovery without new pressure counters does not emit transport-pressure");
 let renderPressureEvents = 0;
 let renderPressureDetail;
 liveNode.addEventListener("render-budget-exceeded", (event) => {
