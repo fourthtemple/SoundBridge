@@ -1,5 +1,5 @@
 import type { LiveEffectBlockRequest, LiveEffectBlockResponse, LiveEffectRackHealth } from "./live-effect-rack";
-import { boundedLiveEffectChannels, dryChannels } from "./live-effect-rack-audio";
+import { boundedLiveEffectChannels, dryChannels, outputTail, transitionOutputChannels } from "./live-effect-rack-audio";
 import { boundedLatencySamples, boundedLiveEffectInteger, boundedLiveEffectNumber, boundedOptionalNumber, liveEffectNowMs } from "./live-effect-rack-metrics";
 import type { LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
 
@@ -18,6 +18,7 @@ export interface LiveEffectRackChainOptions {
   processBudgetMs?: number;
   maxConsecutiveProcessBudgetMisses?: number;
   processBudgetRecoveryBlocks?: number;
+  transitionFadeSamples?: number;
   nowMs?: () => number;
 }
 
@@ -55,6 +56,7 @@ export interface LiveEffectRackChainHealth {
   processBudgetMs: number;
   maxConsecutiveProcessBudgetMisses: number;
   processBudgetRecoveryBlocks: number;
+  transitionFadeSamples: number;
   processBudgetMisses: number;
   lastProcessDurationMs?: number;
   processBudgetExceeded: boolean;
@@ -70,6 +72,7 @@ export class LiveEffectRackChain extends EventTarget {
   readonly processBudgetMs: number;
   readonly maxConsecutiveProcessBudgetMisses: number;
   readonly processBudgetRecoveryBlocks: number;
+  readonly transitionFadeSamples: number;
   private readonly outputChannels?: number;
   private readonly nowMs: () => number;
   private processBudgetMisses = 0;
@@ -78,6 +81,8 @@ export class LiveEffectRackChain extends EventTarget {
   private unhealthyReason?: LiveEffectRackChainResponse["chainUnhealthyReason"];
   private lastProcessDurationMs?: number;
   private lastProcessBudgetExceeded = false;
+  private lastOutputPath?: "wet" | "dry";
+  private lastOutputTail?: number[];
 
   constructor(options: LiveEffectRackChainOptions) {
     super();
@@ -89,6 +94,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
     this.maxConsecutiveProcessBudgetMisses = boundedLiveEffectInteger(options.maxConsecutiveProcessBudgetMisses, 0, 0, 1024);
     this.processBudgetRecoveryBlocks = boundedLiveEffectInteger(options.processBudgetRecoveryBlocks, 0, 0, 4096);
+    this.transitionFadeSamples = boundedLiveEffectInteger(options.transitionFadeSamples, 0, 0, 4096);
     this.outputChannels = options.outputChannels === undefined
       ? undefined
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
@@ -102,6 +108,7 @@ export class LiveEffectRackChain extends EventTarget {
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
       processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
+      transitionFadeSamples: this.transitionFadeSamples,
       processBudgetMisses: this.processBudgetMisses,
       lastProcessDurationMs: this.lastProcessDurationMs,
       processBudgetExceeded: this.lastProcessBudgetExceeded,
@@ -216,7 +223,7 @@ export class LiveEffectRackChain extends EventTarget {
     healthy = this.unhealthyReason === undefined
   ): LiveEffectRackChainResponse {
     const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
-    return {
+    return this.finishOutputResponse({
       blockId: request.blockId,
       channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
       latencySamples: 0,
@@ -235,7 +242,7 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
-    };
+    }, outputChannels);
   }
 
   private chainOutputChannels(channels: ArrayLike<number>[]): number {
@@ -263,7 +270,7 @@ export class LiveEffectRackChain extends EventTarget {
       this.lastError = error;
       this.unhealthyReason = "process-budget-exceeded";
       this.recoveryDryBlocks = 0;
-      const finalResponse = {
+      const finalResponse = this.finishOutputResponse({
         ...response,
         channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
         latencySamples: 0,
@@ -279,11 +286,11 @@ export class LiveEffectRackChain extends EventTarget {
         chainProcessBudgetMisses: this.processBudgetMisses,
         chainProcessBudgetTripped,
         chainUnhealthyReason: this.unhealthyReason
-      };
+      }, outputChannels);
       this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
       return finalResponse;
     }
-    const finalResponse = {
+    const finalResponse = this.finishOutputResponse({
       ...response,
       healthy: response.healthy !== false,
       error,
@@ -293,9 +300,18 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
-    };
+    }, outputChannels);
     this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
     return finalResponse;
+  }
+
+  private finishOutputResponse(response: LiveEffectRackChainResponse, outputChannels: number): LiveEffectRackChainResponse {
+    const outputPath = response.bypassed ? "dry" : "wet";
+    const normalized = boundedLiveEffectChannels(response.channels, outputChannels, this.maxBlockSize);
+    const channels = transitionOutputChannels(normalized, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
+    this.lastOutputTail = outputTail(channels, outputChannels);
+    this.lastOutputPath = outputPath;
+    return channels === response.channels ? response : { ...response, channels };
   }
 
   private dispatchChainPressureEvents(

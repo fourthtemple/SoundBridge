@@ -54,7 +54,7 @@ For a DJ app or live-performance tool, treat SoundBridge as an out-of-process ef
 The web client exports `SoundBridgeLiveEffectRack` as a small host-side pattern for this mode:
 
 - create one rack per deck, bus, send, or master insert
-- use `createLiveEffectRackChain()` when a deck, send, or master insert owns a bounded serial chain of racks; it pipes stage output forward, reports per-stage health and duration, exposes `chain.health` plus chain budget/retry/recovery events, skips stale scheduled blocks, fails dry on repeated chain budget misses until `retry()` or an optional bounded dry cooldown clears the recoverable pressure, and fails dry to the last known audio if a stage throws
+- use `createLiveEffectRackChain()` when a deck, send, or master insert owns a bounded serial chain of racks; it pipes stage output forward, reports per-stage health and duration, exposes `chain.health` plus chain budget/retry/recovery events, can apply bounded wet/dry transition fades, skips stale scheduled blocks, fails dry on repeated chain budget misses until `retry()` or an optional bounded dry cooldown clears the recoverable pressure, and fails dry to the last known audio if a stage throws
 - process stereo main-bus blocks through binary `processBlock()` by default when the plugin is healthy
 - use `setWetMix()` or per-block `wetMix` for host-side dry/wet control without treating mix-zero as a plugin failure
 - drive parameters, block automation events/curves, stored timeline lanes, presets, and MIDI through rack helpers bound to the owned instance

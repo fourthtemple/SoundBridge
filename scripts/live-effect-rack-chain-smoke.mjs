@@ -9,6 +9,10 @@ function assert(condition, message) {
   }
 }
 
+function near(value, expected, tolerance = 0.000001) {
+  return Math.abs(value - expected) <= tolerance;
+}
+
 let fakeNowMs = 0;
 
 class FakeStage {
@@ -76,6 +80,39 @@ const timed = await timedChain.processBlock({ blockId: 5, channels: [[1, 1]], sa
 assert(timed.chainProcessDurationMs === 9, "live rack chain reports bounded chain process duration");
 assert(timed.chainProcessBudgetMs === 12 && timed.chainProcessBudgetExceeded === false, "live rack chain reports in-budget chain timing");
 assert(timed.stageResults[0].durationMs === 4 && timed.stageResults[1].durationMs === 5, "live rack chain reports per-stage duration");
+
+fakeNowMs = 0;
+const fadeStage = new FakeStage("fade", 4, 0, 0, 0);
+const fadeChain = createLiveEffectRackChain({
+  stages: [fadeStage],
+  outputChannels: 1,
+  maxBlockSize: 3,
+  processBudgetMs: 1,
+  maxConsecutiveProcessBudgetMisses: 1,
+  transitionFadeSamples: 2,
+  nowMs: () => fakeNowMs
+});
+const fadeWet = await fadeChain.processBlock({ blockId: 50, channels: [[1, 1, 1]], sampleRate: 48000 });
+assert(fadeWet.channels[0][0] === 4 && fadeChain.health.transitionFadeSamples === 2, "live rack chain exposes transition fade policy");
+fadeStage.durationMs = 2;
+const fadedDry = await fadeChain.processBlock({ blockId: 51, channels: [[0, 0, 0]], sampleRate: 48000 });
+assert(
+  fadedDry.bypassed === true &&
+    near(fadedDry.channels[0][0], 8 / 3) &&
+    near(fadedDry.channels[0][1], 4 / 3) &&
+    fadedDry.channels[0][2] === 0,
+  "live rack chain fades wet output into dry failover"
+);
+assert(fadeChain.retry() === true, "live rack chain fade test can retry after pressure");
+fadeStage.durationMs = 0;
+const fadedWet = await fadeChain.processBlock({ blockId: 52, channels: [[1, 1, 1]], sampleRate: 48000 });
+assert(
+  fadedWet.bypassed === false &&
+    near(fadedWet.channels[0][0], 4 / 3) &&
+    near(fadedWet.channels[0][1], 8 / 3) &&
+    fadedWet.channels[0][2] === 4,
+  "live rack chain fades dry output back into wet processing"
+);
 
 fakeNowMs = 0;
 const pressureStage = new FakeStage("pressure", 4, 0, 0, 3);

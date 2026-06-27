@@ -2042,6 +2042,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
     this.maxConsecutiveProcessBudgetMisses = boundedLiveEffectInteger(options.maxConsecutiveProcessBudgetMisses, 0, 0, 1024);
     this.processBudgetRecoveryBlocks = boundedLiveEffectInteger(options.processBudgetRecoveryBlocks, 0, 0, 4096);
+    this.transitionFadeSamples = boundedLiveEffectInteger(options.transitionFadeSamples, 0, 0, 4096);
     this.outputChannels = options.outputChannels === void 0
       ? void 0
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
@@ -2052,6 +2053,8 @@ export class LiveEffectRackChain extends EventTarget {
     this.unhealthyReason = void 0;
     this.lastProcessDurationMs = void 0;
     this.lastProcessBudgetExceeded = false;
+    this.lastOutputPath = void 0;
+    this.lastOutputTail = void 0;
   }
 
   get health() {
@@ -2061,6 +2064,7 @@ export class LiveEffectRackChain extends EventTarget {
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
       processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
+      transitionFadeSamples: this.transitionFadeSamples,
       processBudgetMisses: this.processBudgetMisses,
       lastProcessDurationMs: this.lastProcessDurationMs,
       processBudgetExceeded: this.lastProcessBudgetExceeded,
@@ -2169,7 +2173,7 @@ export class LiveEffectRackChain extends EventTarget {
 
   chainDryResponse(request, renderEngine, outputChannels, error, healthy = this.unhealthyReason === void 0) {
     const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
-    return {
+    return this.finishOutputResponse({
       blockId: request.blockId,
       channels: dryLiveEffectChannels(request.channels, outputChannels, this.maxBlockSize),
       latencySamples: 0,
@@ -2188,7 +2192,7 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
-    };
+    }, outputChannels);
   }
 
   chainOutputChannels(channels) {
@@ -2209,7 +2213,7 @@ export class LiveEffectRackChain extends EventTarget {
       this.lastError = error;
       this.unhealthyReason = "process-budget-exceeded";
       this.recoveryDryBlocks = 0;
-      const finalResponse = {
+      const finalResponse = this.finishOutputResponse({
         ...response,
         channels: dryLiveEffectChannels(request.channels, outputChannels, this.maxBlockSize),
         latencySamples: 0,
@@ -2225,11 +2229,11 @@ export class LiveEffectRackChain extends EventTarget {
         chainProcessBudgetMisses: this.processBudgetMisses,
         chainProcessBudgetTripped,
         chainUnhealthyReason: this.unhealthyReason
-      };
+      }, outputChannels);
       this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
       return finalResponse;
     }
-    const finalResponse = {
+    const finalResponse = this.finishOutputResponse({
       ...response,
       healthy: response.healthy !== false,
       error,
@@ -2239,9 +2243,18 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
-    };
+    }, outputChannels);
     this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
     return finalResponse;
+  }
+
+  finishOutputResponse(response, outputChannels) {
+    const outputPath = response.bypassed ? "dry" : "wet";
+    const normalized = boundedLiveEffectChannels(response.channels, outputChannels, this.maxBlockSize);
+    const channels = transitionLiveEffectOutputChannels(normalized, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
+    this.lastOutputTail = liveEffectOutputTail(channels, outputChannels);
+    this.lastOutputPath = outputPath;
+    return channels === response.channels ? response : { ...response, channels };
   }
 
   dispatchChainPressureEvents(response, previousMisses, previousUnhealthyReason) {
