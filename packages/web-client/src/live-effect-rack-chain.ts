@@ -12,6 +12,7 @@ export interface LiveEffectRackChainStage {
 
 export interface LiveEffectRackChainOptions {
   stages: ArrayLike<LiveEffectRackChainStage>;
+  bypassed?: boolean;
   maxStages?: number;
   outputChannels?: number;
   maxBlockSize?: number;
@@ -51,6 +52,7 @@ export interface LiveEffectRackChainResponse extends LiveEffectBlockResponse {
 }
 
 export interface LiveEffectRackChainHealth {
+  bypassed: boolean;
   healthy: boolean;
   stageCount: number;
   processBudgetMs: number;
@@ -75,6 +77,7 @@ export class LiveEffectRackChain extends EventTarget {
   readonly transitionFadeSamples: number;
   private readonly outputChannels?: number;
   private readonly nowMs: () => number;
+  private bypassed: boolean;
   private processBudgetMisses = 0;
   private recoveryDryBlocks = 0;
   private lastError?: unknown;
@@ -99,10 +102,12 @@ export class LiveEffectRackChain extends EventTarget {
       ? undefined
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
     this.nowMs = typeof options.nowMs === "function" ? options.nowMs : liveEffectNowMs;
+    this.bypassed = options.bypassed === true;
   }
 
   get health(): LiveEffectRackChainHealth {
     return {
+      bypassed: this.bypassed,
       healthy: this.unhealthyReason === undefined,
       stageCount: this.stages.length,
       processBudgetMs: this.processBudgetMs,
@@ -125,6 +130,11 @@ export class LiveEffectRackChain extends EventTarget {
   ): Promise<LiveEffectRackChainResponse> {
     const processStartedAt = this.nowMs();
     const outputChannels = this.chainOutputChannels(request.channels);
+    if (this.bypassed) {
+      const response = this.chainDryResponse(request, "chain-bypass", outputChannels);
+      this.maybeRecoverFromProcessBudget();
+      return response;
+    }
     if (this.unhealthyReason === "process-budget-exceeded") {
       const response = this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
       this.maybeRecoverFromProcessBudget();
@@ -199,6 +209,14 @@ export class LiveEffectRackChain extends EventTarget {
       ));
     }
     return this.processBlock(scheduled.request, options);
+  }
+
+  setBypassed(bypassed: boolean): void {
+    if (this.bypassed === bypassed) {
+      return;
+    }
+    this.bypassed = bypassed;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 
   retry(): boolean {

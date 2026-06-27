@@ -114,6 +114,63 @@ assert(
   "live rack chain fades dry output back into wet processing"
 );
 
+const initiallyBypassedStage = new FakeStage("initial-bypass", 10);
+const initiallyBypassedChain = createLiveEffectRackChain({
+  stages: [initiallyBypassedStage],
+  bypassed: true,
+  outputChannels: 1,
+  maxBlockSize: 3
+});
+const initiallyBypassed = await initiallyBypassedChain.processBlock({ blockId: 53, channels: [[0.2, 0.3]], sampleRate: 48000 });
+assert(
+  initiallyBypassedChain.health.bypassed === true &&
+    initiallyBypassed.bypassed === true &&
+    initiallyBypassed.renderEngine === "chain-bypass" &&
+    initiallyBypassed.channels[0][0] === 0.2 &&
+    initiallyBypassedStage.requests.length === 0,
+  "live rack chain can start manually bypassed without processing stages"
+);
+
+const bypassStage = new FakeStage("manual-bypass", 10);
+const bypassChain = createLiveEffectRackChain({
+  stages: [bypassStage],
+  outputChannels: 1,
+  maxBlockSize: 3,
+  transitionFadeSamples: 2
+});
+let bypassHealthEvents = 0;
+bypassChain.addEventListener("healthchange", () => {
+  bypassHealthEvents += 1;
+});
+const bypassWet = await bypassChain.processBlock({ blockId: 54, channels: [[1, 1, 1]], sampleRate: 48000 });
+bypassChain.setBypassed(true);
+const bypassDry = await bypassChain.processBlock({ blockId: 55, channels: [[0, 0, 0]], sampleRate: 48000 });
+const bypassHealthDuringDry = bypassChain.health;
+const bypassRequestsAfterDry = bypassStage.requests.length;
+bypassChain.setBypassed(false);
+const bypassWetAgain = await bypassChain.processBlock({ blockId: 56, channels: [[1, 1, 1]], sampleRate: 48000 });
+assert(bypassWet.bypassed === false && bypassWet.channels[0][0] === 10, "live rack chain starts manual bypass tests wet");
+assert(
+  bypassDry.bypassed === true &&
+    bypassDry.renderEngine === "chain-bypass" &&
+    bypassHealthDuringDry.bypassed === true &&
+    bypassRequestsAfterDry === 1 &&
+    near(bypassDry.channels[0][0], 20 / 3) &&
+    near(bypassDry.channels[0][1], 10 / 3) &&
+    bypassDry.channels[0][2] === 0,
+  "live rack chain manual bypass skips stages and fades wet output dry"
+);
+assert(
+  bypassWetAgain.bypassed === false &&
+    near(bypassWetAgain.channels[0][0], 10 / 3) &&
+    near(bypassWetAgain.channels[0][1], 20 / 3) &&
+    bypassWetAgain.channels[0][2] === 10 &&
+    bypassChain.health.bypassed === false &&
+    bypassStage.requests.length === 2 &&
+    bypassHealthEvents === 2,
+  "live rack chain manual unbypass fades dry output back to wet processing"
+);
+
 fakeNowMs = 0;
 const pressureStage = new FakeStage("pressure", 4, 0, 0, 3);
 const pressureChain = createLiveEffectRackChain({

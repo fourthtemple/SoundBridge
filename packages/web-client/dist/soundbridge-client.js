@@ -2047,6 +2047,7 @@ export class LiveEffectRackChain extends EventTarget {
       ? void 0
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
     this.nowMs = typeof options.nowMs === "function" ? options.nowMs : liveEffectNowMs;
+    this.bypassed = options.bypassed === true;
     this.processBudgetMisses = 0;
     this.recoveryDryBlocks = 0;
     this.lastError = void 0;
@@ -2059,6 +2060,7 @@ export class LiveEffectRackChain extends EventTarget {
 
   get health() {
     return {
+      bypassed: this.bypassed,
       healthy: this.unhealthyReason === void 0,
       stageCount: this.stages.length,
       processBudgetMs: this.processBudgetMs,
@@ -2078,6 +2080,11 @@ export class LiveEffectRackChain extends EventTarget {
   async processBlock(request, options = {}) {
     const processStartedAt = this.nowMs();
     const outputChannels = this.chainOutputChannels(request.channels);
+    if (this.bypassed) {
+      const response = this.chainDryResponse(request, "chain-bypass", outputChannels);
+      this.maybeRecoverFromProcessBudget();
+      return response;
+    }
     if (this.unhealthyReason === "process-budget-exceeded") {
       const response = this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
       this.maybeRecoverFromProcessBudget();
@@ -2155,6 +2162,14 @@ export class LiveEffectRackChain extends EventTarget {
       ));
     }
     return this.processBlock(scheduled.request, options);
+  }
+
+  setBypassed(bypassed) {
+    if (this.bypassed === bypassed) {
+      return;
+    }
+    this.bypassed = bypassed;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 
   retry() {
