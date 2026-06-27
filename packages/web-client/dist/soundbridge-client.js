@@ -1889,6 +1889,97 @@ export function createLivePerformanceAudioNodeRecoveryController(options) {
   return new LivePerformanceAudioNodeRecoveryController(options);
 }
 
+const LIVE_AUDIO_NODE_RECREATE_BLOCKS = 16;
+const LIVE_AUDIO_NODE_RECREATE_ATTEMPTS = 1;
+export class LivePerformanceAudioNodeRecreateController {
+  constructor(options) {
+    this.recreateAttempts = 0;
+    this.dryBlocks = 0;
+    this.lastFallbackOutputBlocks = void 0;
+    this.activeReason = void 0;
+    this.node = options.node;
+    this.recreateTarget = options.recreate;
+    this.recreateBlocks = boundedAudioNodeInteger(options.recreateBlocks, LIVE_AUDIO_NODE_RECREATE_BLOCKS, 0, 4096);
+    this.maxRecreateAttempts = boundedAudioNodeInteger(options.maxRecreateAttempts, LIVE_AUDIO_NODE_RECREATE_ATTEMPTS, 0, 1024);
+  }
+
+  async record(health = this.node.health) {
+    const reason = this.recreateReason(health);
+    if (reason === void 0) {
+      this.resetWindow(health);
+      return this.snapshot(false, false, false, void 0, health);
+    }
+    if (reason !== this.activeReason) {
+      this.activeReason = reason;
+      this.dryBlocks = 0;
+      this.lastFallbackOutputBlocks = boundedAudioNodeInteger(health.fallbackOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
+    } else {
+      this.recordDryBlocks(health);
+    }
+    const exhausted = this.recreateAttempts >= this.maxRecreateAttempts;
+    if (!exhausted && this.dryBlocks >= this.recreateBlocks) {
+      this.recreateAttempts = Math.min(1024, this.recreateAttempts + 1);
+      try {
+        const result = await this.recreateTarget(health);
+        const snapshot = this.snapshot(true, true, this.recreateAttempts >= this.maxRecreateAttempts, reason, this.node.health, result);
+        this.resetWindow(this.node.health);
+        return snapshot;
+      } catch (error) {
+        return this.snapshot(false, true, this.recreateAttempts >= this.maxRecreateAttempts, reason, health, void 0, error);
+      }
+    }
+    return this.snapshot(false, true, exhausted, reason, health);
+  }
+
+  reset() {
+    this.recreateAttempts = 0;
+    this.dryBlocks = 0;
+    this.lastFallbackOutputBlocks = void 0;
+    this.activeReason = void 0;
+  }
+
+  recreateReason(health) {
+    return health.bypassed && health.unhealthyReason === "process-timeout" ? "process-timeout" : void 0;
+  }
+
+  recordDryBlocks(health) {
+    const fallbackBlocks = boundedAudioNodeInteger(health.fallbackOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
+    if (this.lastFallbackOutputBlocks === void 0) {
+      this.lastFallbackOutputBlocks = fallbackBlocks;
+      return;
+    }
+    this.dryBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryBlocks + Math.max(0, fallbackBlocks - this.lastFallbackOutputBlocks));
+    this.lastFallbackOutputBlocks = fallbackBlocks;
+  }
+
+  resetWindow(health) {
+    this.dryBlocks = 0;
+    this.lastFallbackOutputBlocks = boundedAudioNodeInteger(health.fallbackOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
+    this.activeReason = void 0;
+  }
+
+  snapshot(applied, active, exhausted, reason, health, result, error) {
+    return {
+      applied,
+      active,
+      exhausted,
+      reason,
+      dryBlocks: this.dryBlocks,
+      recreateBlocks: this.recreateBlocks,
+      recreateBlocksRemaining: Math.max(0, this.recreateBlocks - this.dryBlocks),
+      recreateAttempts: this.recreateAttempts,
+      maxRecreateAttempts: this.maxRecreateAttempts,
+      health,
+      result,
+      error
+    };
+  }
+}
+
+export function createLivePerformanceAudioNodeRecreateController(options) {
+  return new LivePerformanceAudioNodeRecreateController(options);
+}
+
 function audioNodeDeadlineLeadBlocks(responseDeadlineLeadSamples, maxBlockFrames) {
   const leadSamples = boundedAudioNodeOptionalNumber(responseDeadlineLeadSamples, -1048576, 1048576);
   if (leadSamples === undefined) return undefined;
