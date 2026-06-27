@@ -103,7 +103,7 @@ export interface SoundBridgeAudioNodeHealth {
   maxConsecutiveAudioErrors: number;
   audioErrorAutoBypassed: boolean;
   lastAudioError?: unknown;
-  unhealthyReason?: "audio-error" | "render-budget-exceeded" | "transport-pressure" | "destroyed";
+  unhealthyReason?: "audio-error" | "process-timeout" | "render-budget-exceeded" | "transport-pressure" | "destroyed";
 }
 
 const LIVE_AUDIO_NODE_MAX_IN_FLIGHT_BLOCKS = 4;

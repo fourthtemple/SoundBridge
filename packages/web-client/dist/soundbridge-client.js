@@ -1334,7 +1334,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.audioErrors = Math.min(1024, this.audioErrors + 1);
     this.consecutiveAudioErrors = Math.min(1024, this.consecutiveAudioErrors + 1);
     this.lastAudioError = error;
-    this.unhealthyReason = "audio-error";
+    this.unhealthyReason = isRenderDeadlineProtocolError(error) ? "process-timeout" : "audio-error";
     if (this.maxConsecutiveAudioErrors > 0 && this.consecutiveAudioErrors >= this.maxConsecutiveAudioErrors && !this.bypassed && !this.audioErrorAutoBypassed) {
       this.audioErrorAutoBypassed = true;
       this.setBypassed(true);
@@ -1343,7 +1343,7 @@ export class SoundBridgeAudioNode extends EventTarget {
   }
 
   clearAudioError() {
-    if (this.unhealthyReason === "audio-error") {
+    if (this.unhealthyReason === "audio-error" || this.unhealthyReason === "process-timeout") {
       this.lastAudioError = undefined;
       this.consecutiveAudioErrors = 0;
       this.unhealthyReason = undefined;
@@ -1358,7 +1358,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.consecutiveAudioErrors = 0;
     this.consecutiveTransportPressureEvents = 0;
     this.lastAudioError = undefined;
-    if (this.unhealthyReason === "render-budget-exceeded" || this.unhealthyReason === "audio-error" || this.unhealthyReason === "transport-pressure") this.unhealthyReason = undefined;
+    if (this.unhealthyReason === "render-budget-exceeded" || this.unhealthyReason === "audio-error" || this.unhealthyReason === "process-timeout" || this.unhealthyReason === "transport-pressure") this.unhealthyReason = undefined;
     return true;
   }
 
@@ -1833,6 +1833,7 @@ export class LivePerformanceAudioNodeRecoveryController {
 
   recoveryReason(health) {
     if (!health.bypassed) return void 0;
+    if (health.unhealthyReason === "process-timeout") return void 0;
     if (this.recoverTransportPressure && health.transportPressureAutoBypassed) return "transport-pressure";
     if (this.recoverRenderBudget && health.renderBudgetAutoBypassed) return "render-budget";
     if (this.recoverAudioErrors && health.audioErrorAutoBypassed) return "audio-error";
@@ -5077,7 +5078,8 @@ function liveEffectDryReason(renderEngine, fallback) {
 }
 
 function isRenderDeadlineProtocolError(error) {
-  return error instanceof SoundBridgeProtocolError && (error.code === "render_timeout" || error.code === "render_quarantined");
+  const code = error instanceof SoundBridgeProtocolError ? error.code : typeof error === "object" && error !== null ? error.code : void 0;
+  return code === "render_timeout" || code === "render_quarantined";
 }
 
 function renderDeadlineDetails(error) {

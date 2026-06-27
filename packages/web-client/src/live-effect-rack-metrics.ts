@@ -3,6 +3,10 @@ import { SoundBridgeProtocolError } from "./client";
 const LIVE_EFFECT_MAX_LATENCY_SAMPLES = 1048576;
 export type LiveEffectFailureReason = "processing-error" | "process-timeout";
 export type LiveEffectDryReason = LiveEffectFailureReason | "backpressure" | "bypass" | "deadline-pressure" | "destroyed" | "process-budget-exceeded" | "render-budget-exceeded" | "stale-input" | "stale-output" | "state-changed";
+export interface RenderDeadlineProtocolErrorLike {
+  code: "render_timeout" | "render_quarantined";
+  details?: unknown;
+}
 
 export interface LiveEffectRackTiming {
   sampleRate: number;
@@ -143,11 +147,12 @@ export function liveEffectDryReason(renderEngine: unknown, fallback: unknown): L
   return renderEngine === "dry-state-changed" ? "state-changed" : "bypass";
 }
 
-export function isRenderDeadlineProtocolError(error: unknown): error is SoundBridgeProtocolError {
-  return error instanceof SoundBridgeProtocolError && (error.code === "render_timeout" || error.code === "render_quarantined");
+export function isRenderDeadlineProtocolError(error: unknown): error is SoundBridgeProtocolError | RenderDeadlineProtocolErrorLike {
+  const code = error instanceof SoundBridgeProtocolError ? error.code : typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+  return code === "render_timeout" || code === "render_quarantined";
 }
 
-export function renderDeadlineDetails(error: SoundBridgeProtocolError): Record<string, unknown> {
+export function renderDeadlineDetails(error: SoundBridgeProtocolError | RenderDeadlineProtocolErrorLike): Record<string, unknown> {
   return typeof error.details === "object" && error.details !== null ? error.details as Record<string, unknown> : {};
 }
 

@@ -89,6 +89,7 @@ export class LivePerformanceAudioNodeRecoveryController {
 
   private recoveryReason(health: SoundBridgeAudioNodeHealth): LivePerformanceAudioNodeRecoveryReason | undefined {
     if (!health.bypassed) return undefined;
+    if (health.unhealthyReason === "process-timeout") return undefined;
     if (this.recoverTransportPressure && health.transportPressureAutoBypassed) return "transport-pressure";
     if (this.recoverRenderBudget && health.renderBudgetAutoBypassed) return "render-budget";
     if (this.recoverAudioErrors && health.audioErrorAutoBypassed) return "audio-error";

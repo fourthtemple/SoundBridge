@@ -110,11 +110,7 @@ globalThis.Worker = FakeWorker;
 globalThis.AudioWorkletNode = FakeAudioWorkletNode;
 globalThis.WebSocket = FakeMainSocket;
 
-const {
-  SoundBridgeAudioNode,
-  SoundBridgeClient,
-  createLivePerformanceAudioNodeOptions
-} = await import("../packages/web-client/dist/soundbridge-client.js");
+const { SoundBridgeAudioNode, SoundBridgeClient, createLivePerformanceAudioNodeOptions } = await import("../packages/web-client/dist/soundbridge-client.js");
 const client = new SoundBridgeClient({
   url: "ws://127.0.0.1:47370/bridge",
   origin: "http://127.0.0.1:5173",
@@ -577,6 +573,10 @@ assert(liveNode.health.consecutiveAudioErrors === 0, "AudioNode retry clears con
 assert(liveNode.health.lastAudioError === undefined, "AudioNode retry clears the latest audio error");
 assert(liveNode.health.audioErrors === 1, "SoundBridgeAudioNode keeps cumulative audio error count after recovery");
 assert(retryEvents === 3 && retryDetail?.health?.audioErrorAutoBypassed === false, "AudioNode retry emits audio-error recovery health");
+FakeAudioWorkletNode.last.port.onmessage({ data: { type: "audio-error", blockId: 93, error: { code: "render_quarantined", message: "native render quarantined" } } });
+assert(audioErrorEvents === 2 && audioErrorDetail?.code === "render_quarantined" && liveNode.health.unhealthyReason === "process-timeout", "SoundBridgeAudioNode classifies serialized render deadline errors");
+assert(liveNode.health.audioErrorAutoBypassed === true && audioErrorAutoBypassEvents === 2 && audioErrorAutoBypassDetail?.health?.unhealthyReason === "process-timeout", "render deadline errors fail dry with process-timeout health");
+assert(liveNode.retry() === true && retryEvents === 4 && liveNode.health.unhealthyReason === undefined, "manual AudioNode retry clears render-deadline auto-bypass health");
 
 const fallbackCalls = [];
 const fallbackClient = {
