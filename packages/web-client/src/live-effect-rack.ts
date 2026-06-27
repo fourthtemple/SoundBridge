@@ -1,7 +1,6 @@
 import type {
   AudioBlockResponse,
   CreateInstanceResponse,
-  HostTransportState,
   PluginMetadata
 } from "../../protocol/src/messages";
 import { SoundBridgeClient } from "./client";
@@ -34,105 +33,22 @@ import {
   withLiveEffectTimeout
 } from "./live-effect-rack-metrics";
 import type { LiveEffectDryReason, LiveEffectRackTiming } from "./live-effect-rack-metrics";
+import type {
+  LiveEffectBlockRequest,
+  LiveEffectBlockResponse,
+  LiveEffectRackHealth,
+  LiveEffectRackOptions,
+  LiveEffectRackProcessOptions,
+  LivePerformanceRackOptions
+} from "./live-effect-rack-types";
 import { createLiveEffectRackPolicy } from "./live-effect-rack-policy";
 export { calibrateLiveEffectRackPolicy, createLiveEffectRackPolicy } from "./live-effect-rack-policy";
 export type { LiveEffectRackCalibration, LiveEffectRackCalibrationOptions, LiveEffectRackPolicy, LiveEffectRackPolicyOptions } from "./live-effect-rack-policy";
 export { LiveEffectRackCalibrationWindow, LiveEffectRackChainCalibrationWindow, createLiveEffectRackCalibrationWindow, createLiveEffectRackChainCalibrationWindow, liveEffectRackPolicyOptionsFromCalibration, refreshLiveEffectRackLatencyFromCalibration } from "./live-effect-rack-calibration";
 export type { LiveEffectRackCalibrationHealthSample, LiveEffectRackCalibrationWindowOptions, LiveEffectRackCalibrationWindowSnapshot, LiveEffectRackChainCalibrationHealthSample, LiveEffectRackLatencyRefresher } from "./live-effect-rack-calibration";
+export type { LiveEffectBlockRequest, LiveEffectBlockResponse, LiveEffectRackHealth, LiveEffectRackOptions, LiveEffectRackProcessOptions, LivePerformanceRackOptions } from "./live-effect-rack-types";
+import type { LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
 import { liveTransportForBlock } from "./live-transport";
-export interface LiveEffectRackOptions {
-  client: SoundBridgeClient;
-  plugin: PluginMetadata;
-  sampleRate: number;
-  maxBlockSize: number;
-  inputChannels?: number;
-  outputChannels?: number;
-  audioTransport?: "binary" | "json";
-  maxInputAgeMs?: number;
-  maxInFlightBlocks?: number;
-  processBudgetMs?: number;
-  processTimeoutMs?: number;
-  transitionFadeSamples?: number;
-  wetMix?: number;
-  maxConsecutiveProcessBudgetMisses?: number;
-  maxConsecutiveRenderBudgetMisses?: number;
-  processBudgetRecoveryBlocks?: number;
-  renderBudgetRecoveryBlocks?: number;
-  processTimeoutRecoveryBlocks?: number;
-  maxProcessTimeoutRecoveries?: number;
-}
-export interface LivePerformanceRackOptions extends LiveEffectRackOptions {
-  maxInputAgeBlocks?: number;
-  processBudgetBlocks?: number;
-  processTimeoutBlocks?: number;
-  transitionFadeBlocks?: number;
-}
-
-export interface LiveEffectBlockRequest {
-  blockId: number;
-  channels: ArrayLike<number>[];
-  sampleRate?: number;
-  inputBuses?: BinaryAudioBlockRequest["inputBuses"];
-  transport?: HostTransportState;
-  timestamp?: number;
-  wetMix?: number;
-}
-
-export interface LiveEffectBlockResponse extends Omit<AudioBlockResponse, "channels"> {
-  channels: ArrayLike<number>[];
-  bypassed: boolean;
-  healthy: boolean;
-  error?: unknown;
-}
-
-export interface LiveEffectRackHealth {
-  bypassed: boolean;
-  healthy: boolean;
-  instanceId?: string;
-  lastError?: unknown;
-  latencySamples: number;
-  pluginLatencySamples: number;
-  transportLatencySamples: number;
-  reportedLatencySamples: number;
-  latencyMs: number;
-  pluginLatencyMs: number;
-  transportLatencyMs: number;
-  reportedLatencyMs: number;
-  processBudgetMisses: number;
-  lastProcessDurationMs?: number;
-  lastProcessBudgetMs?: number;
-  processBudgetExceeded: boolean;
-  lastResponseDeadlineLeadMs?: number; lastResponseDeadlineLeadBlocks?: number; responseJitterBlocks: number; responseDeadlineMisses: number;
-  renderBudgetMisses: number;
-  lastRenderDurationMs?: number;
-  lastRenderBudgetMs?: number;
-  renderBudgetExceeded: boolean;
-  lastRenderTimeoutMs?: number;
-  lastRenderTimeoutBudgetMs?: number;
-  lastRenderTimeoutBudgetDeltaMs?: number;
-  renderTimeouts: number;
-  consecutiveRenderTimeouts: number;
-  renderQuarantined: boolean;
-  lastDryReason?: LiveEffectDryReason;
-  unhealthyReason?: "processing-error" | "process-timeout" | "process-budget-exceeded" | "render-budget-exceeded" | "destroyed";
-  recoveryDryBlocks: number;
-  recoveryInProgress: boolean;
-  processBudgetRecoveryBlocks: number;
-  renderBudgetRecoveryBlocks: number;
-  processTimeoutRecoveryBlocks: number;
-  processTimeoutRecoveryAttempts: number;
-  maxProcessTimeoutRecoveries: number;
-  processBudgetMs: number;
-  processTimeoutMs: number;
-  maxInputAgeMs: number;
-  inFlightBlocks: number;
-  maxInFlightBlocks: number;
-  droppedInputBlocks: number;
-  staleInputBlocks: number;
-  staleOutputBlocks: number;
-  transitionFadeSamples: number;
-  wetMix: number;
-}
 
 export function createLivePerformanceRackOptions(options: LivePerformanceRackOptions): LiveEffectRackOptions {
   const {
@@ -480,6 +396,25 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       return this.dryResponse(request, error);
     }
   }
+
+  async processScheduledBlock(
+    scheduled: LiveEffectRackScheduledBlock,
+    options: LiveEffectRackProcessOptions = {}
+  ): Promise<LiveEffectBlockResponse> {
+    if (scheduled.stale) {
+      this.staleInputBlocks = Math.min(1024, this.staleInputBlocks + 1);
+      const response = this.dryResponse(scheduled.request, undefined, "dry-stale-input");
+      this.dispatchEvent(new CustomEvent("stale-input", { detail: { response, health: this.health } }));
+      return response;
+    }
+    if (options.skipOnDeadlinePressure === true && scheduled.deadlinePressure.pressure) {
+      const response = this.dryResponse(scheduled.request, undefined, "dry-deadline-pressure");
+      this.dispatchEvent(new CustomEvent("deadline-pressure", { detail: { response, health: this.health } }));
+      return response;
+    }
+    return this.processBlock(scheduled.request);
+  }
+
   private async createInstance(): Promise<void> {
     this.destroyed = false;
     this.created = await this.client.createInstance({

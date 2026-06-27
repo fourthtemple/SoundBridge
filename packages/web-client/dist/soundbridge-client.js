@@ -3296,6 +3296,21 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     }
   }
 
+  async processScheduledBlock(scheduled, options = {}) {
+    if (scheduled.stale) {
+      this.staleInputBlocks = Math.min(1024, this.staleInputBlocks + 1);
+      const response = this.dryResponse(scheduled.request, void 0, "dry-stale-input");
+      this.dispatchEvent(new CustomEvent("stale-input", { detail: { response, health: this.health } }));
+      return response;
+    }
+    if (options.skipOnDeadlinePressure === true && scheduled.deadlinePressure.pressure) {
+      const response = this.dryResponse(scheduled.request, void 0, "dry-deadline-pressure");
+      this.dispatchEvent(new CustomEvent("deadline-pressure", { detail: { response, health: this.health } }));
+      return response;
+    }
+    return this.processBlock(scheduled.request);
+  }
+
   async createInstance() {
     this.destroyed = false;
     this.created = await this.client.createInstance({
@@ -3689,6 +3704,7 @@ function liveEffectFailureReason(error) {
 function liveEffectDryReason(renderEngine, fallback) {
   if (fallback === "processing-error" || fallback === "process-timeout" || fallback === "process-budget-exceeded" || fallback === "render-budget-exceeded" || fallback === "destroyed") return fallback;
   if (renderEngine === "dry-backpressure") return "backpressure";
+  if (renderEngine === "dry-deadline-pressure") return "deadline-pressure";
   if (renderEngine === "dry-stale-input") return "stale-input";
   if (renderEngine === "dry-stale-output") return "stale-output";
   return renderEngine === "dry-state-changed" ? "state-changed" : "bypass";
