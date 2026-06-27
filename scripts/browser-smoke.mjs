@@ -72,6 +72,7 @@ try {
       { timeout: 5000 }
     );
     await assertRealtimeStats(page);
+    await assertRetryControl(page);
     const hasProgramDataTargets = await assertProgramDataControls(page, {
       expectInstanceTargets: format === "vst3",
       label: `${format} instance`
@@ -191,6 +192,13 @@ async function assertRealtimeStats(page) {
   assert(/^(None|bypass|latency-safety|underrun)$/.test((fallbackReason ?? "").trim()), "Fallback reason reports live worklet fallback output.");
   const pressureReasons = await page.locator("#transportPressureReasons").textContent();
   assert(/^(None|[a-z-]+(, [a-z-]+)*)$/.test((pressureReasons ?? "").trim()), "Pressure reason reports latest live transport pressure.");
+}
+
+async function assertRetryControl(page) {
+  const disabled = await page.locator("#retryEngineButton").evaluate((button) => button.disabled);
+  if (disabled) return;
+  await page.getByRole("button", { name: "Retry Engine" }).click();
+  await page.waitForFunction(() => (document.querySelector("#log")?.value ?? "") === "Engine retry requested.");
 }
 
 async function assertFileGrantControls(page, option, label) {

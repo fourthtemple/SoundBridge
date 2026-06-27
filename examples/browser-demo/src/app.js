@@ -3,6 +3,7 @@ import {
   SoundBridgeClient,
   renderParameterControls
 } from "/packages/web-client/dist/soundbridge-client.js";
+import { bindBridgeMonitorEvents, createEngineRetryController } from "./bridge-monitor-events.js";
 import { setCapabilityStatus } from "./capability-status.js";
 import { createFileGrantActions } from "./file-grant-actions.js";
 import { createPluginBrowser } from "./plugin-browser.js";
@@ -32,6 +33,7 @@ const elements = {
   restoreProgramDataButton: document.querySelector("#restoreProgramDataButton"),
   programDataText: document.querySelector("#programDataText"),
   latencyButton: document.querySelector("#latencyButton"),
+  retryEngineButton: document.querySelector("#retryEngineButton"),
   parameterControls: document.querySelector("#parameterControls"),
   stateText: document.querySelector("#stateText"),
   connectionStatus: document.querySelector("#connectionStatus"),
@@ -63,6 +65,13 @@ const realtimeStats = createRealtimeStats({
   onTransportLatencySamples: (samples) => {
     latestTransportLatencySamples = samples || latestTransportLatencySamples;
   }
+});
+const retryController = createEngineRetryController({
+  button: elements.retryEngineButton,
+  getBridge: () => bridge,
+  controlsEnabled: () => controlsEnabled,
+  setEngineStatus: (text, mode) => setStatus(elements.engineStatus, text, mode),
+  log
 });
 const fileGrantActions = createFileGrantActions({
   client: () => {
@@ -361,30 +370,20 @@ async function doEnsureBridgeInstance(recreate = false) {
   bridge.connect(analyser);
   analyser.connect(audioContext.destination);
 
-  bridge.addEventListener("stats", (event) => {
-    realtimeStats.update(event.detail);
-  });
-  bridge.addEventListener("latencychange", (event) => {
-    realtimeStats.updateLatencyHealth(event.detail?.health ?? event.detail);
-  });
-  bridge.addEventListener("healthchange", (event) => {
-    realtimeStats.updateLatencyHealth(event.detail);
-  });
-  bridge.addEventListener("transport-pressure", (event) => {
-    realtimeStats.updateTransportPressure(event.detail);
-  });
-  bridge.addEventListener("audio-error", (event) => {
-    logError(event.detail);
-  });
-  bridge.addEventListener("process-diagnostics", (event) => {
-    realtimeStats.updateRenderDiagnostics(event.detail);
-    elements.renderEngine.textContent = formatRenderEngine(event.detail?.renderEngine);
+  bindBridgeMonitorEvents({
+    bridge,
+    realtimeStats,
+    elements,
+    logError,
+    formatRenderEngine,
+    onHealth: retryController.updateHealth
   });
 
   const { parameters } = await client.getParameters(instanceId);
   renderCurrentParameterControls(parameters);
 
   setStatus(elements.engineStatus, "Engine running", "ready");
+  retryController.update();
   pluginBrowser.updateFileGrantControls();
   vst3ProgramDataControls.update();
   await refreshLatency();
@@ -576,10 +575,12 @@ function setControlsEnabled(enabled) {
     elements.restoreProgramDataButton,
     elements.programDataText,
     elements.latencyButton,
+    elements.retryEngineButton,
     ...elements.keyboard.querySelectorAll("button")
   ]) {
     control.disabled = !enabled;
   }
+  retryController.update();
   pluginBrowser.updatePresetControls();
   pluginBrowser.updateFileGrantControls();
   vst3ProgramDataControls.update();
