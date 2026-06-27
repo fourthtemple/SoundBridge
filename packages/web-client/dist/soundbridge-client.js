@@ -943,6 +943,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.lastRenderBudgetExceeded = false;
     this.lastOutputPath = void 0;
     this.lastOutputTail = void 0;
+    this.transportLatencySamples = 0;
+    this.reportedLatencySamples = 0;
     this.client = options.client;
     this.plugin = options.plugin;
     this.sampleRate = options.sampleRate;
@@ -981,6 +983,9 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       instanceId: this.instanceId,
       lastError: this.lastError,
       latencySamples: this.created?.latencySamples ?? 0,
+      pluginLatencySamples: this.created?.latencySamples ?? 0,
+      transportLatencySamples: this.transportLatencySamples,
+      reportedLatencySamples: this.reportedLatencySamples,
       renderBudgetMisses: this.renderBudgetMisses,
       lastRenderDurationMs: this.lastRenderDurationMs,
       lastRenderBudgetMs: this.lastRenderBudgetMs,
@@ -1032,6 +1037,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (this.created) {
       this.created.latencySamples = latency.pluginLatencySamples;
     }
+    this.transportLatencySamples = latency.transportLatencySamples;
+    this.reportedLatencySamples = latency.reportedLatencySamples;
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     return this.health;
   }
@@ -1113,6 +1120,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.inFlightBlocks = 0;
     this.droppedInputBlocks = 0;
     this.staleInputBlocks = 0;
+    this.transportLatencySamples = 0;
+    this.reportedLatencySamples = this.created.latencySamples;
     this.renderBudgetMisses = 0;
     this.lastRenderDurationMs = void 0;
     this.lastRenderBudgetMs = void 0;

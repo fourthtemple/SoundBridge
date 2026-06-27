@@ -152,7 +152,21 @@ const rack = await SoundBridgeLiveEffectRack.create({
 
 assert(rack.instanceId === "inst-live-1", "live effect rack creates a plugin instance");
 assert(rack.health.healthy === true && rack.health.latencySamples === 12, "live effect rack starts healthy");
+assert(
+  rack.health.pluginLatencySamples === 12 &&
+    rack.health.transportLatencySamples === 0 &&
+    rack.health.reportedLatencySamples === 12,
+  "live effect rack starts with plugin-only latency health"
+);
 assert(rack.health.renderBudgetMisses === 0 && rack.health.renderBudgetExceeded === false, "live effect rack starts without budget pressure");
+
+const refreshedLatency = await rack.refreshLatency(128);
+assert(
+  refreshedLatency.pluginLatencySamples === 12 &&
+    refreshedLatency.transportLatencySamples === 128 &&
+    refreshedLatency.reportedLatencySamples === 140,
+  "live effect rack reports plugin plus transport latency for host compensation"
+);
 
 const inputChannels = [
   [1, 0.5, -0.5, 0],

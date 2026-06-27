@@ -39,7 +39,7 @@ Hosts should:
 - clearly show when audio is being routed through a local daemon
 - use `createInstance().layout` or `getLayout()` when sizing host nodes and meters
 - store opaque plugin state without editing it
-- account for `getLatency()` in timeline scheduling and monitoring UI
+- account for `getLatency()` in timeline scheduling and monitoring UI; `SoundBridgeLiveEffectRack.refreshLatency()` keeps plugin, transport, and total reported latency in rack health
 - send bounded `processAudioBlock.transport` context when the host knows play state, sample position, tempo, time signature, or loop range
 - check each plugin's `editorKinds` before showing editor actions; native editor buttons should require both `editorKinds: ["native-window"]` and `hello.capabilities.nativeEditor`, and hosts should honor `hello.capabilities.security.nativeEditorFileDialogs` / `nativeEditorClipboard` / `nativeEditorDragAndDrop` before surfacing those UI affordances
 - apply only daemon-listed preset ids and pass native-approved preset/sample/cache/license files through opaque session-owned file grants attached to the owning plugin instance; check each plugin's `fileGrantOperations` before showing file-backed actions, use `useFileGrant restoreState` / `loadPreset` / `saveStateDirectory` for advertised worker-native preset/state files, and avoid arbitrary filesystem access for remaining file workflows

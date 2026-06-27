@@ -54,6 +54,9 @@ export interface LiveEffectRackHealth {
   instanceId?: string;
   lastError?: unknown;
   latencySamples: number;
+  pluginLatencySamples: number;
+  transportLatencySamples: number;
+  reportedLatencySamples: number;
   renderBudgetMisses: number;
   lastRenderDurationMs?: number;
   lastRenderBudgetMs?: number;
@@ -143,6 +146,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
   private lastRenderBudgetExceeded = false;
   private lastOutputPath?: "wet" | "dry";
   private lastOutputTail?: number[];
+  private transportLatencySamples = 0;
+  private reportedLatencySamples = 0;
 
   private constructor(options: LiveEffectRackOptions) {
     super();
@@ -184,6 +189,9 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       instanceId: this.instanceId,
       lastError: this.lastError,
       latencySamples: this.created?.latencySamples ?? 0,
+      pluginLatencySamples: this.created?.latencySamples ?? 0,
+      transportLatencySamples: this.transportLatencySamples,
+      reportedLatencySamples: this.reportedLatencySamples,
       renderBudgetMisses: this.renderBudgetMisses,
       lastRenderDurationMs: this.lastRenderDurationMs,
       lastRenderBudgetMs: this.lastRenderBudgetMs,
@@ -235,6 +243,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (this.created) {
       this.created.latencySamples = latency.pluginLatencySamples;
     }
+    this.transportLatencySamples = latency.transportLatencySamples;
+    this.reportedLatencySamples = latency.reportedLatencySamples;
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     return this.health;
   }
@@ -316,6 +326,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.inFlightBlocks = 0;
     this.droppedInputBlocks = 0;
     this.staleInputBlocks = 0;
+    this.transportLatencySamples = 0;
+    this.reportedLatencySamples = this.created.latencySamples;
     this.renderBudgetMisses = 0;
     this.lastRenderDurationMs = undefined;
     this.lastRenderBudgetMs = undefined;
