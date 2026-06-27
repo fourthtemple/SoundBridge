@@ -10,8 +10,8 @@ import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeHealth, Sound
 import { SoundBridgeClient } from "./client";
 import { liveTransportForBlock } from "./live-transport";
 
-export { createLivePerformanceAudioNodeOptions } from "./bridge-node-options";
-export type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
+export { calibrateLivePerformanceAudioNodePolicy, createLivePerformanceAudioNodeOptions, createLivePerformanceAudioNodePolicy } from "./bridge-node-options";
+export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
 
 export class SoundBridgeAudioNode extends EventTarget {
   readonly node: AudioWorkletNode;

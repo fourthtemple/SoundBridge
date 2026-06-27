@@ -27,17 +27,7 @@ try {
   assert(/Audio Unit scanner/.test(capabilityTitle ?? ""), "Browser demo exposes native AU host-status notes.");
   assert(/LV2 (scanner|audio\/control host|host worker)|Basic LV2/.test(capabilityTitle ?? ""), "Browser demo exposes native LV2 host-status notes.");
 
-  const options = await page.locator("#pluginSelect option").evaluateAll((nodes) =>
-    nodes.map((node) => ({
-      value: node.value,
-      text: node.textContent ?? "",
-      kind: node.dataset.kind,
-      format: node.dataset.format,
-      hostable: node.dataset.hostable,
-      fileGrantOperations: node.dataset.fileGrantOperations ?? "",
-      disabled: node.disabled
-    }))
-  );
+  const options = await readPluginOptions(page);
 
   assert(
     options.some((option) => option.format === "vst3" && option.kind === "instrument" && /example (bundle|built-in example)/.test(option.text)),
@@ -66,7 +56,8 @@ try {
   }
 
   for (const format of ["vst3", "au", "lv2"]) {
-    const option = options.find((candidate) => candidate.format === format && candidate.kind === "instrument" && candidate.hostable !== "false");
+    const formatOptions = format === "vst3" ? options : await reconnectDemo(page);
+    const option = formatOptions.find((candidate) => candidate.format === format && candidate.kind === "instrument" && candidate.hostable !== "false");
     assert(option, `${format} example instrument option exists.`);
 
     await page.locator("#pluginSelect").selectOption(option.value);
@@ -74,6 +65,13 @@ try {
     await assertProgramDataControls(page, { expectInstanceTargets: false, label: `${format} before instance` });
     await page.getByRole("button", { name: "Create Instance" }).click();
     await page.waitForFunction(() => document.querySelector("#engineStatus")?.textContent === "Engine running");
+    await playKeyUntilProcessed(page, format);
+    await page.waitForFunction(
+      () => document.querySelector("#renderEngine")?.textContent === "Bundle worker",
+      undefined,
+      { timeout: 5000 }
+    );
+    await assertRealtimeStats(page);
     const hasProgramDataTargets = await assertProgramDataControls(page, {
       expectInstanceTargets: format === "vst3",
       label: `${format} instance`
@@ -83,14 +81,6 @@ try {
     }
     await assertPresetApply(page, format);
     await assertParameterStateRoundTrip(page, format);
-
-    await playKeyUntilProcessed(page);
-    await page.waitForFunction(
-      () => document.querySelector("#renderEngine")?.textContent === "Bundle worker",
-      undefined,
-      { timeout: 5000 }
-    );
-    await assertRealtimeStats(page);
   }
 
   console.log("SoundBridge browser smoke test passed.");
@@ -102,9 +92,34 @@ async function processedBlocks(page) {
   return Number(await page.locator("#processedBlocks").textContent());
 }
 
-async function playKeyUntilProcessed(page) {
+async function reconnectDemo(page) {
+  await page.goto(DEMO_URL, { waitUntil: "networkidle" });
+  await page.locator("#pairingToken").fill(PAIRING_TOKEN);
+  await page.getByRole("button", { name: "Connect" }).click();
+  await page.waitForFunction(() => document.querySelector("#connectionStatus")?.textContent === "Paired");
+  await page.waitForFunction(() => /AU(\/VST3)? host \+ examples|AU\/VST\/LV2 host ready|AU\/VST\/LV2 (bundle )?examples/.test(document.querySelector("#capabilityStatus")?.textContent ?? ""));
+  return readPluginOptions(page);
+}
+
+async function readPluginOptions(page) {
+  return page.locator("#pluginSelect option").evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      value: node.value,
+      text: node.textContent ?? "",
+      kind: node.dataset.kind,
+      format: node.dataset.format,
+      hostable: node.dataset.hostable,
+      fileGrantOperations: node.dataset.fileGrantOperations ?? "",
+      disabled: node.disabled
+    }))
+  );
+}
+
+async function playKeyUntilProcessed(page, label) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.waitForTimeout(100);
     const before = await processedBlocks(page);
+    if (before > 0) return;
     const key = page.locator('.piano-key[data-note="60"]');
     if (attempt === 0) {
       await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
@@ -121,13 +136,25 @@ async function playKeyUntilProcessed(page) {
     }
     try {
       await page.waitForFunction(
-        (previous) => Number(document.querySelector("#processedBlocks")?.textContent ?? 0) > previous,
+        (previous) => {
+          const current = Number(document.querySelector("#processedBlocks")?.textContent ?? 0);
+          return current > 0 && current !== previous;
+        },
         before,
         { timeout: 5000 }
       );
       return;
     } catch (error) {
-      if (attempt === 1) throw error;
+      if (attempt === 1) {
+        const detail = await page.evaluate(() => ({
+          processedBlocks: document.querySelector("#processedBlocks")?.textContent ?? "",
+          engineStatus: document.querySelector("#engineStatus")?.textContent ?? "",
+          renderEngine: document.querySelector("#renderEngine")?.textContent ?? "",
+          log: document.querySelector("#log")?.value ?? "",
+          selectedPlugin: document.querySelector("#pluginSelect")?.selectedOptions[0]?.textContent ?? ""
+        }));
+        throw new Error(`${label} key path did not process audio: ${JSON.stringify(detail)}`, { cause: error });
+      }
     }
   }
 }

@@ -154,6 +154,7 @@ elements.pluginSelect.addEventListener("change", () => {
   pluginBrowser.updateAll();
   vst3ProgramDataControls.update();
   if (bridge) {
+    setStatus(elements.engineStatus, "Starting", "warn");
     void ensureBridgeInstance(true).catch(logError);
   }
 });
@@ -302,6 +303,8 @@ async function doEnsureBridgeInstance(recreate = false) {
     return bridge;
   }
 
+  setStatus(elements.engineStatus, "Starting", "warn");
+  realtimeStats.update();
   if (bridge) {
     await allNotesOff();
     await bridge.destroy();
