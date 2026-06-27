@@ -67,6 +67,61 @@ assert(response.stageResults[0].instanceId === "inst-left", "live rack chain rep
 assert(left.requests[0].wetMix === 0.25 && right.requests[0].wetMix === 0.75, "live rack chain applies per-stage wet mix overrides");
 assert(response.chainProcessBudgetExceeded === false && response.chainProcessBudgetMisses === 0, "live rack chain starts without chain budget pressure");
 
+const mixStage = new FakeStage("chain-mix", 5);
+const mixChain = createLiveEffectRackChain({
+  stages: [mixStage],
+  wetMix: 0.25,
+  outputChannels: 1,
+  maxBlockSize: 2
+});
+let wetMixEvents = 0;
+let wetMixHealthEvents = 0;
+mixChain.addEventListener("wetmixchange", (event) => {
+  wetMixEvents += 1;
+  assert(event.detail.wetMix === mixChain.health.wetMix, "live rack chain wet mix events include health");
+});
+mixChain.addEventListener("healthchange", () => {
+  wetMixHealthEvents += 1;
+});
+const mixed = await mixChain.processBlock({ blockId: 40, channels: [[2, 4]], sampleRate: 48000 });
+assert(
+  mixChain.health.wetMix === 0.25 &&
+    mixed.bypassed === false &&
+    mixed.channels[0][0] === 4 &&
+    mixed.channels[0][1] === 8 &&
+    mixStage.requests[0].wetMix === undefined,
+  "live rack chain applies constructor wet mix across the whole chain"
+);
+mixChain.setWetMix(0.5);
+mixChain.setWetMix(0.5);
+const macroMixed = await mixChain.processBlock({ blockId: 41, channels: [[2, 4]], sampleRate: 48000 });
+const dryOverride = await mixChain.processBlock({ blockId: 42, channels: [[2, 4]], sampleRate: 48000 }, { wetMix: 0 });
+const wetOverride = await mixChain.processBlock(
+  { blockId: 43, channels: [[2, 4]], sampleRate: 48000 },
+  { wetMix: 1, stageWetMixes: [0.33] }
+);
+assert(
+  mixChain.health.wetMix === 0.5 &&
+    macroMixed.channels[0][0] === 6 &&
+    macroMixed.channels[0][1] === 12 &&
+    wetMixEvents === 1 &&
+    wetMixHealthEvents === 1,
+  "live rack chain updates whole-chain wet mix with bounded change events"
+);
+assert(
+  dryOverride.channels[0][0] === 2 &&
+    dryOverride.channels[0][1] === 4 &&
+    mixStage.requests.length === 4 &&
+    mixChain.health.wetMix === 0.5,
+  "live rack chain per-block wet mix can return dry output while stages keep processing"
+);
+assert(
+  wetOverride.channels[0][0] === 10 &&
+    wetOverride.channels[0][1] === 20 &&
+    mixStage.requests[3].wetMix === 0.33,
+  "live rack chain separates whole-chain wet mix overrides from per-stage wet mix overrides"
+);
+
 fakeNowMs = 0;
 const timedChain = createLiveEffectRackChain({
   stages: [new FakeStage("timed-left", 1, 0, 0, 4), new FakeStage("timed-right", 1, 0, 0, 5)],

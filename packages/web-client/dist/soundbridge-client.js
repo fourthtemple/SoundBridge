@@ -2048,6 +2048,7 @@ export class LiveEffectRackChain extends EventTarget {
       : boundedLiveEffectInteger(options.outputChannels, 2, 1, 32);
     this.nowMs = typeof options.nowMs === "function" ? options.nowMs : liveEffectNowMs;
     this.bypassed = options.bypassed === true;
+    this.wetMix = boundedLiveEffectWetMix(options.wetMix, 1);
     this.processBudgetMisses = 0;
     this.recoveryDryBlocks = 0;
     this.lastError = void 0;
@@ -2061,6 +2062,7 @@ export class LiveEffectRackChain extends EventTarget {
   get health() {
     return {
       bypassed: this.bypassed,
+      wetMix: this.wetMix,
       healthy: this.unhealthyReason === void 0,
       stageCount: this.stages.length,
       processBudgetMs: this.processBudgetMs,
@@ -2093,6 +2095,7 @@ export class LiveEffectRackChain extends EventTarget {
     if (this.stages.length === 0) {
       return this.chainDryResponse(request, "chain-empty", outputChannels);
     }
+    const chainWetMix = boundedLiveEffectWetMix(options.wetMix, this.wetMix);
     let channels = boundedLiveEffectChannels(request.channels, outputChannels, this.maxBlockSize);
     let latencySamples = 0;
     let tailSamples = 0;
@@ -2135,7 +2138,7 @@ export class LiveEffectRackChain extends EventTarget {
           processedStages: stageResults.length,
           failedStageIndex: index,
           stageResults
-        }, processStartedAt, request, outputChannels);
+        }, processStartedAt, request, outputChannels, chainWetMix);
       }
     }
     return this.finishChainResponse({
@@ -2150,7 +2153,7 @@ export class LiveEffectRackChain extends EventTarget {
       stageCount: this.stages.length,
       processedStages: stageResults.length,
       stageResults
-    }, processStartedAt, request, outputChannels);
+    }, processStartedAt, request, outputChannels, chainWetMix);
   }
 
   processScheduledBlock(scheduled, options = {}) {
@@ -2169,6 +2172,16 @@ export class LiveEffectRackChain extends EventTarget {
       return;
     }
     this.bypassed = bypassed;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+  }
+
+  setWetMix(wetMix) {
+    const bounded = boundedLiveEffectWetMix(wetMix, this.wetMix);
+    if (bounded === this.wetMix) {
+      return;
+    }
+    this.wetMix = bounded;
+    this.dispatchEvent(new CustomEvent("wetmixchange", { detail: this.health }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 
@@ -2214,7 +2227,7 @@ export class LiveEffectRackChain extends EventTarget {
     return this.outputChannels ?? boundedLiveEffectInteger(channels.length, 2, 1, 32);
   }
 
-  finishChainResponse(response, processStartedAt, request, outputChannels) {
+  finishChainResponse(response, processStartedAt, request, outputChannels, wetMix) {
     const previousMisses = this.processBudgetMisses;
     const previousUnhealthyReason = this.unhealthyReason;
     const durationMs = boundedLiveEffectOptionalNumber(this.nowMs() - processStartedAt, 0, 60000);
@@ -2250,6 +2263,7 @@ export class LiveEffectRackChain extends EventTarget {
     }
     const finalResponse = this.finishOutputResponse({
       ...response,
+      channels: wetMixedLiveEffectChannels(response.channels, request.channels, outputChannels, wetMix, this.maxBlockSize),
       healthy: response.healthy !== false,
       error,
       chainProcessDurationMs: durationMs,
