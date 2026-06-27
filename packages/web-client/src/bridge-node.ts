@@ -37,6 +37,9 @@ export interface SoundBridgeAudioNodeHealth {
   lastRenderBudgetMs?: number;
   renderBudgetExceeded: boolean;
   renderBudgetMisses: number;
+  audioErrors: number;
+  lastAudioError?: unknown;
+  unhealthyReason?: "audio-error" | "destroyed";
 }
 
 const LIVE_AUDIO_NODE_MAX_IN_FLIGHT_BLOCKS = 4;
@@ -116,6 +119,9 @@ export class SoundBridgeAudioNode extends EventTarget {
   private lastRenderBudgetMs?: number;
   private renderBudgetExceeded = false;
   private renderBudgetMisses = 0;
+  private audioErrors = 0;
+  private lastAudioError?: unknown;
+  private unhealthyReason?: SoundBridgeAudioNodeHealth["unhealthyReason"];
 
   private constructor(context: AudioContext, client: SoundBridgeClient, options: Required<SoundBridgeAudioNodeOptions>) {
     super();
@@ -233,7 +239,7 @@ export class SoundBridgeAudioNode extends EventTarget {
 
   get health(): SoundBridgeAudioNodeHealth {
     return {
-      healthy: !this.destroyed,
+      healthy: !this.destroyed && this.unhealthyReason === undefined,
       instanceId: this.instanceId,
       audioTransport: this.audioTransport,
       audioRequestTimeoutMs: this.audioRequestTimeoutMs,
@@ -243,12 +249,16 @@ export class SoundBridgeAudioNode extends EventTarget {
       lastRenderDurationMs: this.lastRenderDurationMs,
       lastRenderBudgetMs: this.lastRenderBudgetMs,
       renderBudgetExceeded: this.renderBudgetExceeded,
-      renderBudgetMisses: this.renderBudgetMisses
+      renderBudgetMisses: this.renderBudgetMisses,
+      audioErrors: this.audioErrors,
+      lastAudioError: this.lastAudioError,
+      unhealthyReason: this.unhealthyReason
     };
   }
 
   async destroy(): Promise<void> {
     this.destroyed = true;
+    this.unhealthyReason = "destroyed";
     this.node.port.postMessage({ type: "destroy" });
     await this.client.destroyInstance(this.instanceId);
   }
@@ -323,6 +333,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     }
 
     if (typed.type === "audio-error") {
+      this.recordAudioError(typed.error ?? typed);
       this.dispatchEvent(new CustomEvent("audio-error", { detail: typed.error ?? typed }));
       return;
     }
@@ -369,6 +380,7 @@ export class SoundBridgeAudioNode extends EventTarget {
         if (this.destroyed) {
           return;
         }
+        this.clearAudioError();
         if (typeof response.renderEngine === "string") {
           const diagnostics = {
             blockId: response.blockId,
@@ -398,6 +410,7 @@ export class SoundBridgeAudioNode extends EventTarget {
         if (this.destroyed) {
           return;
         }
+        this.recordAudioError(error);
         this.dispatchEvent(new CustomEvent("audio-error", { detail: error }));
         this.node.port.postMessage({ type: "audio-error", blockId: typed.blockId, error: String(error instanceof Error ? error.message : error) });
       })
@@ -412,6 +425,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     renderBudgetMs?: unknown;
     renderBudgetExceeded?: unknown;
   }): void {
+    this.clearAudioError();
     if (typeof diagnostics.renderEngine === "string") {
       this.lastRenderEngine = diagnostics.renderEngine;
     }
@@ -421,6 +435,19 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.renderBudgetMisses = this.renderBudgetExceeded ? Math.min(1024, this.renderBudgetMisses + 1) : 0;
     if (this.renderBudgetExceeded) {
       this.dispatchEvent(new CustomEvent("render-budget-exceeded", { detail: { diagnostics, health: this.health } }));
+    }
+  }
+
+  private recordAudioError(error: unknown): void {
+    this.audioErrors = Math.min(1024, this.audioErrors + 1);
+    this.lastAudioError = error;
+    this.unhealthyReason = "audio-error";
+  }
+
+  private clearAudioError(): void {
+    if (this.unhealthyReason === "audio-error") {
+      this.lastAudioError = undefined;
+      this.unhealthyReason = undefined;
     }
   }
 }

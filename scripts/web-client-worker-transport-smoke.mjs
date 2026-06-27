@@ -291,6 +291,37 @@ FakeAudioWorkletNode.last.port.onmessage({
 });
 assert(liveNode.health.renderBudgetMisses === 0, "SoundBridgeAudioNode clears render pressure after on-budget blocks");
 assert(liveNode.health.renderBudgetExceeded === false, "SoundBridgeAudioNode health records recovered render budget");
+let audioErrorEvents = 0;
+let audioErrorDetail;
+liveNode.addEventListener("audio-error", (event) => {
+  audioErrorEvents += 1;
+  audioErrorDetail = event.detail;
+});
+FakeAudioWorkletNode.last.port.onmessage({
+  data: {
+    type: "audio-error",
+    blockId: 90,
+    error: "native render timeout"
+  }
+});
+assert(audioErrorEvents === 1 && audioErrorDetail === "native render timeout", "SoundBridgeAudioNode emits audio errors");
+assert(liveNode.health.healthy === false, "SoundBridgeAudioNode health marks audio errors unhealthy");
+assert(liveNode.health.audioErrors === 1, "SoundBridgeAudioNode health counts audio errors");
+assert(liveNode.health.lastAudioError === "native render timeout", "SoundBridgeAudioNode health tracks the latest audio error");
+assert(liveNode.health.unhealthyReason === "audio-error", "SoundBridgeAudioNode health records the audio error reason");
+FakeAudioWorkletNode.last.port.onmessage({
+  data: {
+    type: "process-diagnostics",
+    blockId: 91,
+    renderEngine: "native-vst3",
+    renderDurationMs: 1.25,
+    renderBudgetMs: 2.667,
+    renderBudgetExceeded: false
+  }
+});
+assert(liveNode.health.healthy === true, "SoundBridgeAudioNode health recovers after successful render diagnostics");
+assert(liveNode.health.lastAudioError === undefined, "SoundBridgeAudioNode clears the latest audio error after recovery");
+assert(liveNode.health.audioErrors === 1, "SoundBridgeAudioNode keeps cumulative audio error count after recovery");
 
 const fallbackCalls = [];
 const fallbackClient = {

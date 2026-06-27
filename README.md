@@ -110,6 +110,9 @@ Then create a plugin instance and put it in your Web Audio graph:
   pluginNode.addEventListener("render-budget-exceeded", () => {
     console.warn("Plugin render exceeded the live block budget.", pluginNode.health);
   });
+  pluginNode.addEventListener("audio-error", () => {
+    console.warn("Plugin audio path reported an error.", pluginNode.health);
+  });
 
   const oscillator = new OscillatorNode(audioContext, { frequency: 110 });
   oscillator.connect(pluginNode.node);
