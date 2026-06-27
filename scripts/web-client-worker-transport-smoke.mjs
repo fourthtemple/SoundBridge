@@ -246,6 +246,7 @@ await Promise.resolve();
 await Promise.resolve();
 assert(fallbackCalls[0]?.timeoutMs === 250, "live AudioNode page fallback uses the live audio timeout");
 assert(fallbackCalls[0]?.request.instanceId === "inst-fallback", "live AudioNode fallback forwards instance id");
+assert(fallbackCalls[0]?.request.renderTimeoutMs === 250, "live AudioNode fallback forwards render deadlines");
 assert(
   fallbackPort.messages.some((message) => message.type === "processed" && message.blockId === 77),
   "live AudioNode fallback posts processed blocks"

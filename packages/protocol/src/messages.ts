@@ -500,6 +500,7 @@ export interface AudioBlockRequest {
   inputBuses?: AudioBusBlock[];
   transport?: HostTransportState;
   timestamp?: number;
+  renderTimeoutMs?: number;
 }
 
 export interface AudioBlockResponse {

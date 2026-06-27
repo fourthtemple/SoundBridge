@@ -400,6 +400,7 @@
         "instanceId": { "type": "string", "minLength": 1 },
         "blockId": { "type": "number" },
         "timestamp": { "type": "number" },
+        "renderTimeoutMs": { "type": "number", "minimum": 0, "maximum": 60000 },
         "frames": { "type": "integer", "minimum": 1, "maximum": 8192 },
         "sampleRate": { "type": "number", "minimum": 8000, "maximum": 384000 },
         "channels": {

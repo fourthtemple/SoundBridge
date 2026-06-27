@@ -19,7 +19,7 @@ SoundBridge already has the core security and host shape in place:
 - optional browser worker transport that owns WebSocket, JSON, and binary audio frame encode/decode, with direct `AudioWorklet` audio ports, initial `SharedArrayBuffer` audio rings, atomic wakeups where available, bounded shared-path in-flight audio requests and timeouts, newest-input/output overwrite under shared ring pressure, recycled worklet and transport-worker buffers, host-tunable adaptive output latency and recovery, proactive deadline-pressure latency raises, measured render-duration and response deadline/jitter stats, and transferred binary output buffers for live processing
 - generic parameter editor sessions
 - opt-in file grant broker foundation with path-free browser responses
-- native worker IPC limits for command size, pending commands, stdout/stderr lines, diagnostics, startup, timeout, and termination
+- native worker IPC limits for command size, pending commands, stdout/stderr lines, diagnostics, startup, timeout, termination, and live per-render deadlines
 - source-size guardrails: source, schema, config, and documentation files must stay below 800 lines (799 lines maximum), with a 750-line near-limit threshold and zero reviewed exceptions
 
 ## Near-Term Core Hosting Work
@@ -74,7 +74,7 @@ Generic parameter editors work today. Native plugin UI is intentionally still a 
 The current worker-owned WebSocket audio path is good for correctness and demos. It now avoids the page thread, uses initial `SharedArrayBuffer` rings where browser isolation allows them, wakes the transport worker with `Atomics.waitAsync`/`notify` where supported, bounds browser audio requests at the configured in-flight limit and timeout, applies the same request timeout to page-fallback processing, suppresses stale worker responses after request deadlines, overwrites the oldest shared input/output blocks with newest live audio under shared ring pressure, recycles worklet input/output buffers and transport-worker shared-input copy buffers, avoids extra binary-output cloning, reports native render duration plus response deadline lead/jitter in render blocks and samples, proactively raises bounded output latency under sustained deadline pressure, and adapts plus recovers output latency within host-configured bounded blocks, but it is not the final low-latency transport.
 
 - Tune the `SharedArrayBuffer` ring path for sustained live sets, including ring-depth policy, underrun recovery, fallback timer behavior, and jitter thresholds.
-- Define a daemon/native worker render-cancellation policy that can stop or quarantine AU/VST renders that miss a host's live deadline without making normal copy-protected plugins brittle.
+- Refine daemon/native worker render quarantine beyond first-cut per-render deadline termination, especially recovery policy for AU/VST plugins that miss one host live deadline but are otherwise usable.
 - Extend latency compensation from worklet diagnostics into host scheduling and monitoring UIs.
 - Keep the protocol transport abstraction open for WebRTC data channels, shared-memory helpers, or desktop-host transports.
 - Keep the same pairing, origin, session, instance, and resource-limit model across browser and local desktop hosts.

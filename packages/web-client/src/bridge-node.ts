@@ -310,7 +310,8 @@ export class SoundBridgeAudioNode extends EventTarget {
         playing: true,
         samplePosition
       },
-      timestamp: performance.now()
+      timestamp: performance.now(),
+      renderTimeoutMs: this.audioRequestTimeoutMs > 0 ? this.audioRequestTimeoutMs : undefined
     };
     const processed =
       this.audioTransport === "binary"

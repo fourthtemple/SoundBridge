@@ -115,7 +115,8 @@ function sendAudioProcess(port, config, message) {
     sampleRate: config.sampleRate,
     ...(binary ? {} : { channels: channels.map((channel) => Array.from(channel)) }),
     transport: { playing: true, samplePosition },
-    timestamp: performance.now()
+    timestamp: performance.now(),
+    renderTimeoutMs: config.audioRequestTimeoutMs > 0 ? config.audioRequestTimeoutMs : void 0
   };
   const envelope = {
     type: "request",
@@ -297,7 +298,8 @@ function sendSharedAudioProcess(config, shared, block) {
     sampleRate: config.sampleRate,
     ...(binary ? {} : { channels: block.channels.map((channel) => Array.from(channel)) }),
     transport: { playing: true, samplePosition },
-    timestamp: performance.now()
+    timestamp: performance.now(),
+    renderTimeoutMs: config.audioRequestTimeoutMs > 0 ? config.audioRequestTimeoutMs : void 0
   };
   const envelope = {
     type: "request",

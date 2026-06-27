@@ -824,7 +824,8 @@ export class SoundBridgeAudioNode extends EventTarget {
         playing: true,
         samplePosition
       },
-      timestamp: performance.now()
+      timestamp: performance.now(),
+      renderTimeoutMs: this.audioRequestTimeoutMs > 0 ? this.audioRequestTimeoutMs : void 0
     };
     const processed =
       this.audioTransport === "binary"
@@ -1038,7 +1039,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         channels: request.channels,
         inputBuses: request.inputBuses,
         transport: request.transport,
-        timestamp: request.timestamp
+        timestamp: request.timestamp,
+        renderTimeoutMs: this.processTimeoutMs > 0 ? this.processTimeoutMs : void 0
       };
       const requestTimeoutMs = this.processTimeoutMs > 0 ? this.processTimeoutMs : void 0;
       const processed =

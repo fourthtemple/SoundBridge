@@ -570,6 +570,7 @@ async function processAudioBlock(payload, session) {
   const requestedFrames = firstAudioFrameCount(payload, instance.maxBlockSize);
   const frames = boundedFrames(requestedFrames, instance.maxBlockSize);
   validateRenderBlockSizeProfile(instance, requestedFrames, frames);
+  const renderTimeoutMs = boundedRenderTimeoutMs(payload.renderTimeoutMs);
   const blockSampleRate = clampSampleRate(payload.sampleRate, instance.sampleRate);
   const mainInputChannels = normalizeAudioChannels(payload.channels, MAX_AUDIO_CHANNELS, frames);
   const inputBuses = normalizeAudioBusBlocks(payload.inputBuses, mainInputChannels, instance.layout?.inputBusLayouts, frames, {
@@ -582,7 +583,7 @@ async function processAudioBlock(payload, session) {
 
   if (instance.kind === "instrument") {
     const renderStartedAt = renderTimestampMs();
-    const processed = await processInstrumentBlock(instance, frames, blockSampleRate, { inputBuses, transport });
+    const processed = await processInstrumentBlock(instance, frames, blockSampleRate, { inputBuses, transport, renderTimeoutMs });
     const renderDurationMs = boundedRenderDurationMs(renderStartedAt);
     const processedChannels = normalizeAudioChannels(processed.channels, instance.outputChannels, frames);
     return {
@@ -606,7 +607,8 @@ async function processAudioBlock(payload, session) {
       sampleRate: blockSampleRate,
       channels,
       inputBuses,
-      transport
+      transport,
+      renderTimeoutMs
     });
     const renderDurationMs = boundedRenderDurationMs(renderStartedAt);
     const renderedChannels = Array.isArray(rendered) ? rendered : rendered.channels;
@@ -670,6 +672,11 @@ function renderBudgetDiagnostics(renderDurationMs, frames, sampleRate) {
   const budget = (Number(frames) / Number(sampleRate)) * 1000;
   const renderBudgetMs = Number.isFinite(budget) ? Math.max(0, Math.min(60000, Math.round(budget * 1000) / 1000)) : 0;
   return { renderBudgetMs, renderBudgetExceeded: renderBudgetMs > 0 && renderDurationMs > renderBudgetMs };
+}
+
+function boundedRenderTimeoutMs(value) {
+  const timeout = Math.floor(Number(value));
+  return Number.isFinite(timeout) && timeout > 0 ? Math.max(1, Math.min(60000, timeout)) : undefined;
 }
 
 function getInstance(instanceId, session) {

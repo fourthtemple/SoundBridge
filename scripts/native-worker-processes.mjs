@@ -98,14 +98,8 @@ export function createNativeWorkerProcesses({
   const workerDiagnosticLogLimit = normalizeWorkerDiagnosticLogLimit(maxWorkerDiagnosticLogChars);
   const workerReadyTimeout = normalizeWorkerReadyTimeout(workerReadyTimeoutMs);
   const workerTerminationGrace = normalizeWorkerTerminationGrace(workerTerminationGraceMs);
-  const exampleCommandTimeout = normalizeWorkerCommandTimeout(
-    exampleWorkerCommandTimeoutMs,
-    DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS
-  );
-  const nativeCommandTimeout = normalizeWorkerCommandTimeout(
-    nativeWorkerCommandTimeoutMs,
-    DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS
-  );
+  const exampleCommandTimeout = normalizeWorkerCommandTimeout(exampleWorkerCommandTimeoutMs, DEFAULT_EXAMPLE_WORKER_COMMAND_TIMEOUT_MS);
+  const nativeCommandTimeout = normalizeWorkerCommandTimeout(nativeWorkerCommandTimeoutMs, DEFAULT_NATIVE_WORKER_COMMAND_TIMEOUT_MS);
 
   function requestWorkerQuit(process) {
     const stdin = process?.stdin;
@@ -164,7 +158,7 @@ export function createNativeWorkerProcesses({
         request.detune
       ].join(" ");
 
-      return this.request(command).then((parsed) => {
+      return this.request(command, request.renderTimeoutMs).then((parsed) => {
         if (!Array.isArray(parsed.channels)) {
           throw new Error("worker returned invalid channels");
         }
@@ -182,7 +176,7 @@ export function createNativeWorkerProcesses({
       }
     }
 
-    request(command) {
+    request(command, timeoutMs = this.commandTimeoutMs) {
       if (!this.process || this.process.killed || !this.process.stdin.writable) {
         return Promise.reject(new Error("worker is not writable"));
       }
@@ -197,10 +191,11 @@ export function createNativeWorkerProcesses({
         return Promise.reject(workerPendingCommandBytesError(this.maxPendingCommandBytes));
       }
 
+      const commandTimeoutMs = Math.min(normalizeWorkerCommandTimeout(timeoutMs, this.commandTimeoutMs), this.commandTimeoutMs);
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          this.abortWorker(workerCommandTimeoutError(this.commandTimeoutMs));
-        }, this.commandTimeoutMs);
+          this.abortWorker(workerCommandTimeoutError(commandTimeoutMs));
+        }, commandTimeoutMs);
         this.pending.push({ resolve, reject, timeout, commandBytes });
         this.pendingCommandBytes += commandBytes;
         this.process.stdin.write(`${command}\n`, "utf8", (error) => {
@@ -355,7 +350,7 @@ export function createNativeWorkerProcesses({
         encodeTransportState(request.transport)
       ].join(" ");
 
-      return this.request(command).then((parsed) => {
+      return this.request(command, request.renderTimeoutMs).then((parsed) => {
         if (!Array.isArray(parsed.channels)) {
           throw new Error("worker returned invalid channels");
         }
@@ -530,7 +525,7 @@ export function createNativeWorkerProcesses({
       return normalizePluginLayout(parsed, this.fallbackLayout);
     }
 
-    request(command) {
+    request(command, timeoutMs = this.commandTimeoutMs) {
       if (!this.process || this.process.killed || !this.process.stdin.writable) {
         return Promise.reject(new Error("worker is not writable"));
       }
@@ -545,10 +540,11 @@ export function createNativeWorkerProcesses({
         return Promise.reject(workerPendingCommandBytesError(this.maxPendingCommandBytes));
       }
 
+      const commandTimeoutMs = Math.min(normalizeWorkerCommandTimeout(timeoutMs, this.commandTimeoutMs), this.commandTimeoutMs);
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          this.abortWorker(workerCommandTimeoutError(this.commandTimeoutMs));
-        }, this.commandTimeoutMs);
+          this.abortWorker(workerCommandTimeoutError(commandTimeoutMs));
+        }, commandTimeoutMs);
         this.pending.push({ resolve, reject, timeout, commandBytes });
         this.pendingCommandBytes += commandBytes;
         this.process.stdin.write(`${command}\n`, "utf8", (error) => {

@@ -241,7 +241,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         channels: request.channels,
         inputBuses: request.inputBuses,
         transport: request.transport,
-        timestamp: request.timestamp
+        timestamp: request.timestamp,
+        renderTimeoutMs: this.processTimeoutMs > 0 ? this.processTimeoutMs : undefined
       };
       const requestTimeoutMs = this.processTimeoutMs > 0 ? this.processTimeoutMs : undefined;
       const processed =

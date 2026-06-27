@@ -157,6 +157,7 @@ audioPort.onmessage({
   }
 });
 assert(socket.sent.length === 1, "transport worker sends the audio process frame");
+assert(encodedBinaryEnvelopes[0]?.payload.renderTimeoutMs === 2000, "transport worker forwards default render deadlines");
 assert(audioPort.messages[0]?.type === "recycle-input", "transport worker recycles worklet input after send");
 assert(audioPort.messages[0]?.channels?.[0] === input, "transport worker returns the original input channel");
 assert(audioPort.transfers[0]?.[0] === input.buffer, "transport worker transfers the recycled input buffer");
@@ -322,6 +323,7 @@ timeoutPort.onmessage({
     channels: [Float32Array.from([0.4, 0.4])]
   }
 });
+assert(encodedBinaryEnvelopes.at(-1)?.payload.renderTimeoutMs === 25, "transport worker forwards custom direct render deadlines");
 runTimerWithDelay(25);
 assert(
   timeoutPort.messages.some((message) => message.type === "audio-error" && message.blockId === 40 && /timed out/.test(message.error)),
@@ -357,6 +359,7 @@ self.onmessage({
   }
 });
 assert(socket.sent.length === sentBeforeSharedTimeout + 1, "transport worker sends one shared block before timeout backpressure");
+assert(encodedBinaryEnvelopes.at(-1)?.payload.renderTimeoutMs === 30, "transport worker forwards custom shared render deadlines");
 runTimerWithDelay(30);
 assert(
   sharedTimeoutPort.messages.some((message) => message.type === "audio-error" && message.blockId === 50 && /timed out/.test(message.error)),

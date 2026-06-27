@@ -14,6 +14,7 @@ export function createDaemonInstrumentRendering({
           channels: [],
           inputBuses: options.inputBuses,
           transport: options.transport,
+          renderTimeoutMs: options.renderTimeoutMs,
           gain: parameterValue(instance, "gain", 0.5),
           tone: parameterValue(instance, "tone", 0.5),
           detune: parameterValue(instance, "detune", 0.5)
@@ -46,6 +47,7 @@ export function createDaemonInstrumentRendering({
             instance,
             frames,
             sampleRate,
+            renderTimeoutMs: options.renderTimeoutMs,
             parameterValue
           }),
           renderEngine: instance.executablePath ? "bundle-executable" : "native-example"
@@ -66,7 +68,7 @@ export function createDaemonInstrumentRendering({
   };
 }
 
-function renderNativeExampleBlock({ rendererExecutable, instance, frames, sampleRate, parameterValue }) {
+function renderNativeExampleBlock({ rendererExecutable, instance, frames, sampleRate, renderTimeoutMs, parameterValue }) {
   const args = instance.executablePath
     ? [
         "--render-example-block",
@@ -92,7 +94,8 @@ function renderNativeExampleBlock({ rendererExecutable, instance, frames, sample
     args,
     {
       encoding: "utf8",
-      maxBuffer: 1024 * 1024
+      maxBuffer: 1024 * 1024,
+      timeout: renderTimeoutMs > 0 ? renderTimeoutMs : undefined
     }
   );
   const parsed = JSON.parse(output);

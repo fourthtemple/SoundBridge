@@ -330,6 +330,10 @@ assert(
   client.binaryProcessTimeouts.at(-1) === livePerformanceOptions.processTimeoutMs,
   "live performance rack passes block-derived timeouts to binary audio requests"
 );
+assert(
+  client.binaryProcessed.at(-1)?.renderTimeoutMs === livePerformanceOptions.processTimeoutMs,
+  "live performance rack passes render deadlines to the daemon"
+);
 await livePerformanceRack.destroy();
 
 const jsonRack = await SoundBridgeLiveEffectRack.create({
@@ -351,6 +355,7 @@ assert(client.processed.length === beforeJsonProcessed + 1, "json live rack call
 assert(client.binaryProcessed.length === beforeJsonBinaryProcessed, "json live rack avoids processAudioBlockBinary");
 assert(Array.isArray(client.processed.at(-1)?.inputBuses?.[0]?.channels?.[0]), "json live rack clones input bus channels to arrays");
 assert(client.processTimeouts.at(-1) === 7, "json live rack passes process timeout to audio requests");
+assert(client.processed.at(-1)?.renderTimeoutMs === 7, "json live rack passes render deadlines to the daemon");
 await jsonRack.destroy();
 
 await rack.destroy();

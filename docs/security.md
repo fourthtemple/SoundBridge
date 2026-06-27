@@ -124,7 +124,7 @@ The reference daemon enforces these defaults (all overridable by environment var
 | WebSocket message size | 1 MiB, enforced before pairing | all frames |
 | Native worker ready timeout | 5 seconds, then the worker is rejected and terminated | VST3/AU/LV2 worker startup |
 | Native worker termination grace | 250 ms after the first termination signal before escalating to SIGKILL | VST3/AU/LV2/example worker shutdown |
-| Native worker command timeout | 5 seconds for VST3/AU/LV2, 1.5 seconds for repo-local example workers; then the worker is rejected and terminated | worker IPC commands |
+| Native worker command timeout | 5 seconds for VST3/AU/LV2, 1.5 seconds for repo-local example workers; live `processAudioBlock.renderTimeoutMs` can set a shorter bounded per-render deadline; then the worker is rejected and terminated | worker IPC commands |
 | Native worker command line size | 16 MiB, rejected before being written to worker stdin | worker IPC commands |
 | Native worker pending command bytes | 64 MiB per worker; additional commands are rejected before being written to worker stdin | worker IPC commands |
 | Native worker pending commands | 64 per worker; additional commands are rejected before being written to worker stdin | worker IPC commands |
