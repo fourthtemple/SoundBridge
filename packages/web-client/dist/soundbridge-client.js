@@ -1582,8 +1582,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         instanceId: this.instanceId,
         blockId: request.blockId,
         sampleRate: request.sampleRate ?? this.sampleRate,
-        channels: request.channels,
-        inputBuses: request.inputBuses,
+        channels: boundedLiveEffectChannels(request.channels, this.inputChannels, this.maxBlockSize),
+        inputBuses: boundedLiveEffectBusBlocks(request.inputBuses, this.maxBlockSize),
         transport: request.transport ?? liveTransportForBlock({ sampleRate: request.sampleRate ?? this.sampleRate, maxBlockSize: this.maxBlockSize, blockId: request.blockId, reportedLatencySamples: this.transportLatencySamples, compensateOutputLatency: true }),
         timestamp: request.timestamp,
         renderTimeoutMs: this.processTimeoutMs > 0 ? this.processTimeoutMs : void 0
@@ -1595,8 +1595,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
           : this.client.processAudioBlock(
               {
                 ...processRequest,
-                channels: cloneLiveEffectChannels(request.channels),
-                inputBuses: cloneLiveEffectBusBlocks(request.inputBuses)
+                channels: cloneLiveEffectChannels(processRequest.channels, this.maxBlockSize),
+                inputBuses: cloneLiveEffectBusBlocks(processRequest.inputBuses, this.maxBlockSize)
               },
               requestTimeoutMs
             );
@@ -1625,7 +1625,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         this.failClosed(error, "render-budget-exceeded");
         return this.dryResponse(request, error);
       }
-      return this.finishResponse({ ...response, bypassed: false, healthy: true }, request.channels, request.wetMix);
+      return this.finishResponse({ ...response, bypassed: false, healthy: true }, processRequest.channels, request.wetMix);
     } catch (error) {
       if (this.outputStateChanged(inFlightEpoch, outputStateVersion)) {
         return this.dryResponse(request, void 0, this.bypassed ? "dry-bypass" : "dry-state-changed");
@@ -1691,7 +1691,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
   dryResponse(request, error, renderEngine = "dry-bypass") {
     return this.finishResponse({
       blockId: request.blockId,
-      channels: dryLiveEffectChannels(request.channels, this.outputChannels),
+      channels: dryLiveEffectChannels(request.channels, this.outputChannels, this.maxBlockSize),
       latencySamples: 0,
       tailSamples: 0,
       infiniteTail: false,
@@ -1884,7 +1884,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       this.lastDryReason = dryReason;
       this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     }
-    const mixed = response.bypassed ? response.channels : wetMixedLiveEffectChannels(response.channels, dryInput, this.outputChannels, boundedLiveEffectWetMix(wetMixOverride, this.wetMix));
+    const mixed = response.bypassed ? boundedLiveEffectChannels(response.channels, this.outputChannels, this.maxBlockSize) : wetMixedLiveEffectChannels(response.channels, dryInput, this.outputChannels, boundedLiveEffectWetMix(wetMixOverride, this.wetMix), this.maxBlockSize);
     const channels = transitionLiveEffectOutputChannels(mixed, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = liveEffectOutputTail(channels, this.outputChannels);
     this.lastOutputPath = outputPath;
@@ -2080,20 +2080,53 @@ function transitionLiveEffectOutputChannels(channels, previousTail, previousPath
   });
 }
 
-function wetMixedLiveEffectChannels(wetChannels, dryInput, outputChannels, wetMix) {
+function wetMixedLiveEffectChannels(wetChannels, dryInput, outputChannels, wetMix, maxFrames = Number.MAX_SAFE_INTEGER) {
+  const wetOutput = boundedLiveEffectChannels(wetChannels, outputChannels, maxFrames);
   if (wetMix >= 1) {
-    return wetChannels;
+    return wetOutput;
   }
-  const dry = dryLiveEffectChannels(dryInput ?? [], outputChannels);
+  const dry = dryLiveEffectChannels(dryInput ?? [], outputChannels, maxFrames);
   if (wetMix <= 0) {
     return dry;
   }
   return Array.from({ length: outputChannels }, (_, channelIndex) => {
-    const wet = wetChannels.length > 0 ? wetChannels[channelIndex % wetChannels.length] : [];
+    const wet = wetOutput.length > 0 ? wetOutput[channelIndex % wetOutput.length] : [];
     const dryChannel = dry[channelIndex];
     const frames = Math.max(wet.length, dryChannel.length);
     return Array.from({ length: frames }, (_unused, frame) => Number(dryChannel[frame] ?? 0) * (1 - wetMix) + Number(wet[frame] ?? 0) * wetMix);
   });
+}
+
+function boundedLiveEffectChannels(channels, channelCount, maxFrames) {
+  const count = boundedLiveEffectAudioCount(channelCount);
+  const frames = boundedLiveEffectAudioFrames(channels[0]?.length ?? 0, maxFrames);
+  let changed = channels.length !== count;
+  const bounded = Array.from({ length: count }, (_, index) => {
+    const source = channels.length > 0 ? channels[index % channels.length] : void 0;
+    if (!source) {
+      changed = true;
+      return Array.from({ length: frames }, () => 0);
+    }
+    if (source.length > frames) {
+      changed = true;
+      return sliceLiveEffectChannel(source, frames);
+    }
+    return source;
+  });
+  return changed ? bounded : channels;
+}
+
+function boundedLiveEffectBusBlocks(buses, maxFrames) {
+  const bounded = [];
+  const seen = new Set();
+  for (const bus of buses ?? []) {
+    const index = Math.floor(Number(bus.index));
+    if (!Number.isFinite(index) || index < 0 || index > 31 || seen.has(index)) continue;
+    seen.add(index);
+    bounded.push({ index, channels: boundedLiveEffectChannels(bus.channels ?? [], bus.channels?.length ?? 1, maxFrames) });
+    if (bounded.length >= 32) break;
+  }
+  return bounded.length > 0 ? bounded : void 0;
 }
 
 function liveEffectOutputTail(channels, outputChannels) {
@@ -2104,20 +2137,39 @@ function liveEffectOutputTail(channels, outputChannels) {
   });
 }
 
-function cloneLiveEffectChannels(channels) {
-  return channels.map((channel) => Array.from(channel));
+function cloneLiveEffectChannels(channels, maxFrames = Number.MAX_SAFE_INTEGER) {
+  return boundedLiveEffectChannels(channels, channels.length, maxFrames).map((channel) => Array.from(channel));
 }
 
-function cloneLiveEffectBusBlocks(buses) {
-  return buses?.map((bus) => ({ index: bus.index, channels: cloneLiveEffectChannels(bus.channels) }));
+function cloneLiveEffectBusBlocks(buses, maxFrames = Number.MAX_SAFE_INTEGER) {
+  return boundedLiveEffectBusBlocks(buses, maxFrames)?.map((bus) => ({ index: bus.index, channels: cloneLiveEffectChannels(bus.channels, maxFrames) }));
 }
 
-function dryLiveEffectChannels(channels, outputChannels) {
-  const frames = channels[0]?.length ?? 0;
+function dryLiveEffectChannels(channels, outputChannels, maxFrames = Number.MAX_SAFE_INTEGER) {
+  const bounded = boundedLiveEffectChannels(channels, outputChannels, maxFrames);
+  const frames = bounded[0]?.length ?? 0;
   return Array.from({ length: outputChannels }, (_, index) => {
-    const source = channels.length > 0 ? channels[index % channels.length] : void 0;
+    const source = bounded.length > 0 ? bounded[index % bounded.length] : void 0;
     return source ? Array.from(source) : Array.from({ length: frames }, () => 0);
   });
+}
+
+function boundedLiveEffectAudioCount(value) {
+  const count = Math.floor(Number(value));
+  return Number.isFinite(count) ? Math.max(1, Math.min(32, count)) : 1;
+}
+
+function boundedLiveEffectAudioFrames(length, maxFrames) {
+  const frames = Math.floor(Number(length));
+  const max = Math.floor(Number(maxFrames));
+  if (!Number.isFinite(frames) || frames <= 0) return 0;
+  return Number.isFinite(max) && max > 0 ? Math.min(frames, Math.min(max, 8192)) : Math.min(frames, 8192);
+}
+
+function sliceLiveEffectChannel(channel, frames) {
+  if ("subarray" in channel && typeof channel.subarray === "function") return channel.subarray(0, frames);
+  if (Array.isArray(channel)) return channel.slice(0, frames);
+  return Array.from({ length: frames }, (_unused, index) => channel[index] ?? 0);
 }
 
 const PARAMETER_CATEGORY_PATTERNS = [

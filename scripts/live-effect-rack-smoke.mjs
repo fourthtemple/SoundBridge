@@ -255,18 +255,19 @@ assert(rackTiming.blockDurationMs === 2.667 && rackTiming.transportLatencyBlocks
 assert(latencyEvents === 1, "live rack emits latencychange when refreshed latency changes");
 
 const inputChannels = [
-  [1, 0.5, -0.5, 0],
-  [0.25, -0.25, 0.75, -0.75]
+  [1, 0.5, -0.5, 0, ...Array(130).fill(0.1)],
+  [0.25, -0.25, 0.75, -0.75, ...Array(130).fill(-0.1)]
 ];
 const wet = await rack.processBlock({
   blockId: 1,
   channels: inputChannels,
+  inputBuses: [{ index: 1, channels: inputChannels }],
   transport: { playing: true, samplePosition: 0 }
 });
 assert(wet.bypassed === false && wet.healthy === true, "healthy live rack returns processed audio");
-assert(wet.channels[0][0] === 0.5 && wet.channels[1][3] === -0.375, "processed audio comes from the plugin");
+assert(wet.channels[0].length === 128 && wet.channels[0][0] === 0.5 && wet.channels[1][3] === -0.375, "processed audio comes from the plugin with bounded live block frames");
 assert(rack.health.lastRenderBudgetMs === 2.667, "live rack records render budget telemetry");
-assert(client.binaryProcessed.length === 1, "healthy live rack uses binary processAudioBlock by default");
+assert(client.binaryProcessed.length === 1 && client.binaryProcessed.at(-1).channels[0].length === 128 && client.binaryProcessed.at(-1).inputBuses?.[0]?.channels[0]?.length === 128, "healthy live rack uses bounded binary processAudioBlock by default");
 assert(client.processed.length === 1, "binary live rack still reaches the fake processor");
 
 client.latencySamples = 48;

@@ -27,17 +27,19 @@ export function wetMixedChannels(
   wetChannels: ArrayLike<number>[],
   dryInput: ArrayLike<number>[] | undefined,
   outputChannels: number,
-  wetMix: number
+  wetMix: number,
+  maxFrames = Number.MAX_SAFE_INTEGER
 ): ArrayLike<number>[] {
+  const wetOutput = boundedLiveEffectChannels(wetChannels, outputChannels, maxFrames);
   if (wetMix >= 1) {
-    return wetChannels;
+    return wetOutput;
   }
-  const dry = dryChannels(dryInput ?? [], outputChannels);
+  const dry = dryChannels(dryInput ?? [], outputChannels, maxFrames);
   if (wetMix <= 0) {
     return dry;
   }
   return Array.from({ length: outputChannels }, (_, channelIndex) => {
-    const wet = wetChannels.length > 0 ? wetChannels[channelIndex % wetChannels.length] : [];
+    const wet = wetOutput.length > 0 ? wetOutput[channelIndex % wetOutput.length] : [];
     const dryChannel = dry[channelIndex];
     const frames = Math.max(wet.length, dryChannel.length);
     return Array.from(
@@ -45,6 +47,42 @@ export function wetMixedChannels(
       (_unused, frame) => Number(dryChannel[frame] ?? 0) * (1 - wetMix) + Number(wet[frame] ?? 0) * wetMix
     );
   });
+}
+
+export function boundedLiveEffectChannels(
+  channels: ArrayLike<number>[],
+  channelCount: number,
+  maxFrames: number
+): ArrayLike<number>[] {
+  const count = boundedAudioCount(channelCount);
+  const frames = boundedAudioFrames(channels[0]?.length ?? 0, maxFrames);
+  let changed = channels.length !== count;
+  const bounded = Array.from({ length: count }, (_, index) => {
+    const source = channels.length > 0 ? channels[index % channels.length] : undefined;
+    if (!source) {
+      changed = true;
+      return Array.from({ length: frames }, () => 0);
+    }
+    if (source.length > frames) {
+      changed = true;
+      return sliceChannel(source, frames);
+    }
+    return source;
+  });
+  return changed ? bounded : channels;
+}
+
+export function boundedLiveEffectBusBlocks(buses: BinaryAudioBusBlock[] | undefined, maxFrames: number): BinaryAudioBusBlock[] | undefined {
+  const bounded: BinaryAudioBusBlock[] = [];
+  const seen = new Set<number>();
+  for (const bus of buses ?? []) {
+    const index = Math.floor(Number(bus.index));
+    if (!Number.isFinite(index) || index < 0 || index > 31 || seen.has(index)) continue;
+    seen.add(index);
+    bounded.push({ index, channels: boundedLiveEffectChannels(bus.channels ?? [], bus.channels?.length ?? 1, maxFrames) });
+    if (bounded.length >= 32) break;
+  }
+  return bounded.length > 0 ? bounded : undefined;
 }
 
 export function outputTail(channels: ArrayLike<number>[], outputChannels: number): number[] {
@@ -55,18 +93,37 @@ export function outputTail(channels: ArrayLike<number>[], outputChannels: number
   });
 }
 
-export function cloneChannels(channels: ArrayLike<number>[]): number[][] {
-  return channels.map((channel) => Array.from(channel));
+export function cloneChannels(channels: ArrayLike<number>[], maxFrames = Number.MAX_SAFE_INTEGER): number[][] {
+  return boundedLiveEffectChannels(channels, channels.length, maxFrames).map((channel) => Array.from(channel));
 }
 
-export function cloneBusBlocks(buses?: BinaryAudioBusBlock[]): AudioBlockRequest["inputBuses"] {
-  return buses?.map((bus) => ({ index: bus.index, channels: cloneChannels(bus.channels) }));
+export function cloneBusBlocks(buses?: BinaryAudioBusBlock[], maxFrames = Number.MAX_SAFE_INTEGER): AudioBlockRequest["inputBuses"] {
+  return boundedLiveEffectBusBlocks(buses, maxFrames)?.map((bus) => ({ index: bus.index, channels: cloneChannels(bus.channels, maxFrames) }));
 }
 
-export function dryChannels(channels: ArrayLike<number>[], outputChannels: number): number[][] {
-  const frames = channels[0]?.length ?? 0;
+export function dryChannels(channels: ArrayLike<number>[], outputChannels: number, maxFrames = Number.MAX_SAFE_INTEGER): number[][] {
+  const bounded = boundedLiveEffectChannels(channels, outputChannels, maxFrames);
+  const frames = bounded[0]?.length ?? 0;
   return Array.from({ length: outputChannels }, (_, index) => {
-    const source = channels.length > 0 ? channels[index % channels.length] : undefined;
+    const source = bounded.length > 0 ? bounded[index % bounded.length] : undefined;
     return source ? Array.from(source) : Array.from({ length: frames }, () => 0);
   });
+}
+
+function boundedAudioCount(value: number): number {
+  const count = Math.floor(Number(value));
+  return Number.isFinite(count) ? Math.max(1, Math.min(32, count)) : 1;
+}
+
+function boundedAudioFrames(length: number, maxFrames: number): number {
+  const frames = Math.floor(Number(length));
+  const max = Math.floor(Number(maxFrames));
+  if (!Number.isFinite(frames) || frames <= 0) return 0;
+  return Number.isFinite(max) && max > 0 ? Math.min(frames, Math.min(max, 8192)) : Math.min(frames, 8192);
+}
+
+function sliceChannel(channel: ArrayLike<number>, frames: number): ArrayLike<number> {
+  if ("subarray" in channel && typeof channel.subarray === "function") return channel.subarray(0, frames);
+  if (Array.isArray(channel)) return channel.slice(0, frames);
+  return Array.from({ length: frames }, (_unused, index) => channel[index] ?? 0);
 }

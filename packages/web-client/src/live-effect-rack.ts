@@ -7,6 +7,8 @@ import type {
 import { SoundBridgeClient } from "./client";
 import type { BinaryAudioBlockRequest } from "./client";
 import {
+  boundedLiveEffectBusBlocks,
+  boundedLiveEffectChannels,
   cloneBusBlocks,
   cloneChannels,
   dryChannels,
@@ -429,7 +431,6 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       this.dispatchEvent(new CustomEvent("input-backpressure", { detail: { response, health: this.health } }));
       return response;
     }
-
     let inFlightEpoch = this.inFlightEpoch;
     let outputStateVersion = this.outputStateVersion;
     const processStartedAt = liveEffectNowMs();
@@ -438,8 +439,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         instanceId: this.instanceId,
         blockId: request.blockId,
         sampleRate: request.sampleRate ?? this.sampleRate,
-        channels: request.channels,
-        inputBuses: request.inputBuses,
+        channels: boundedLiveEffectChannels(request.channels, this.inputChannels, this.maxBlockSize),
+        inputBuses: boundedLiveEffectBusBlocks(request.inputBuses, this.maxBlockSize),
         transport: request.transport ?? liveTransportForBlock({ sampleRate: request.sampleRate ?? this.sampleRate, maxBlockSize: this.maxBlockSize, blockId: request.blockId, reportedLatencySamples: this.transportLatencySamples, compensateOutputLatency: true }),
         timestamp: request.timestamp,
         renderTimeoutMs: this.processTimeoutMs > 0 ? this.processTimeoutMs : undefined
@@ -451,8 +452,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
           : this.client.processAudioBlock(
               {
                 ...processRequest,
-                channels: cloneChannels(request.channels),
-                inputBuses: cloneBusBlocks(request.inputBuses)
+                channels: cloneChannels(processRequest.channels, this.maxBlockSize),
+                inputBuses: cloneBusBlocks(processRequest.inputBuses, this.maxBlockSize)
               },
               requestTimeoutMs
             );
@@ -481,7 +482,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         this.failClosed(error, "render-budget-exceeded");
         return this.dryResponse(request, error);
       }
-      return this.finishResponse({ ...response, bypassed: false, healthy: true }, request.channels, request.wetMix);
+      return this.finishResponse({ ...response, bypassed: false, healthy: true }, processRequest.channels, request.wetMix);
     } catch (error) {
       if (this.outputStateChanged(inFlightEpoch, outputStateVersion)) {
         return this.dryResponse(request, undefined, this.bypassed ? "dry-bypass" : "dry-state-changed");
@@ -491,7 +492,6 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       return this.dryResponse(request, error);
     }
   }
-
   private async createInstance(): Promise<void> {
     this.destroyed = false;
     this.created = await this.client.createInstance({
@@ -547,7 +547,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
   private dryResponse(request: LiveEffectBlockRequest, error: unknown, renderEngine = "dry-bypass"): LiveEffectBlockResponse {
     return this.finishResponse({
       blockId: request.blockId,
-      channels: dryChannels(request.channels, this.outputChannels),
+      channels: dryChannels(request.channels, this.outputChannels, this.maxBlockSize),
       latencySamples: 0,
       tailSamples: 0,
       infiniteTail: false,
@@ -736,7 +736,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     const outputPath = response.bypassed ? "dry" : "wet";
     const dryReason = response.bypassed ? liveEffectDryReason(response.renderEngine, this.unhealthyReason) : undefined;
     if (this.lastDryReason !== dryReason) { this.lastDryReason = dryReason; this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health })); }
-    const mixed = response.bypassed ? response.channels : wetMixedChannels(response.channels, dryInput, this.outputChannels, boundedWetMix(wetMixOverride, this.wetMix));
+    const mixed = response.bypassed ? boundedLiveEffectChannels(response.channels, this.outputChannels, this.maxBlockSize) : wetMixedChannels(response.channels, dryInput, this.outputChannels, boundedWetMix(wetMixOverride, this.wetMix), this.maxBlockSize);
     const channels = transitionOutputChannels(mixed, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = outputTail(channels, this.outputChannels);
     this.lastOutputPath = outputPath;
