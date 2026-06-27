@@ -190,6 +190,26 @@ bypassMainPort.onmessage({ data: { type: "set-bypassed", bypassed: false } });
 bypassProcessor.process([[Float32Array.from([32, 33])]], [[new Float32Array(2)]]);
 assert(bypassTransportPort.messages.at(-1)?.type === "process", "unbypassed worklet resumes render work");
 
+const bypassLeakProcessor = new processorCtor({
+  processorOptions: {
+    outputChannels: 1,
+    maxInFlightBlocks: 1,
+    maxQueuedOutputBlocks: 4,
+    outputLatencyBlocks: 2
+  }
+});
+const bypassLeakMainPort = lastPort;
+const bypassLeakTransportPort = new TestPort();
+bypassLeakMainPort.onmessage({ data: { type: "connect-transport", port: bypassLeakTransportPort } });
+bypassLeakProcessor.process([[Float32Array.from([40])]], [[new Float32Array(1)]]);
+assert(bypassLeakProcessor.inFlightBlocks === 1, "worklet tracks pre-bypass in-flight render work");
+bypassLeakMainPort.onmessage({ data: { type: "set-bypassed", bypassed: true } });
+assert(bypassLeakProcessor.inFlightBlocks === 0, "bypassed worklet releases stale in-flight render accounting");
+bypassLeakProcessor.process([[Float32Array.from([41])]], [[new Float32Array(1)]]);
+bypassLeakMainPort.onmessage({ data: { type: "set-bypassed", bypassed: false } });
+bypassLeakTransportPort.onmessage({ data: { type: "processed", blockId: 0, channels: [Float32Array.from([400])] } });
+assert(bypassLeakProcessor.outputBlocks.size === 0, "unbypassed worklet drops wet responses requested before bypass");
+
 directMainPort.onmessage({ data: { type: "destroy" } });
 assert(directTransportPort.messages.at(-1)?.type === "destroy", "worklet destroy notifies the transport port");
 const directMessagesBeforeDestroyedProcess = directTransportPort.messages.length;

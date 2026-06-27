@@ -50,11 +50,9 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private responseDeadlineMisses = 0;
   private responseDeadlineMissesSinceLastStats = 0;
   private responseDeadlineLeadBlocks = 0;
-  private responseDeadlineLeadMinBlocks?: number;
-  private responseDeadlineLeadMaxBlocks?: number;
+  private responseDeadlineLeadMinBlocks?: number; private responseDeadlineLeadMaxBlocks?: number;
   private readonly outputBlocks = new Map<number, Float32Array[]>();
-  private readonly inputBufferPool = new Map<number, Float32Array[]>();
-  private readonly outputBufferPool = new Map<number, Float32Array[]>();
+  private readonly inputBufferPool = new Map<number, Float32Array[]>(); private readonly outputBufferPool = new Map<number, Float32Array[]>();
   private readonly maxInFlightBlocks: number;
   private readonly maxRecycledInputBuffers: number;
   private readonly maxRecycledOutputBuffers: number;
@@ -62,6 +60,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private sharedAudio?: NormalizedSharedAudio;
   private destroyed = false;
   private bypassed = false;
+  private bypassResponseBlockFloor = 0;
   private sharedAudioWakeMode: "none" | "pending" | "atomics" | "timer" = "none";
 
   constructor(options: AudioWorkletNodeOptions) {
@@ -233,7 +232,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
 
     if (typed.type === "set-bypassed") {
       this.bypassed = typed.bypassed === true;
-      if (this.bypassed) { this.outputBlocks.clear(); this.latencySafetyBlocks = 0; this.resetResponseDeadlineState(); }
+      if (this.bypassed) { this.outputBlocks.clear(); this.inFlightBlocks = 0; this.bypassResponseBlockFloor = this.blockId; this.latencySafetyBlocks = 0; this.resetResponseDeadlineState(); }
       return;
     }
 
@@ -270,6 +269,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     if (!Number.isFinite(blockId) || blockId < 0) {
       return;
     }
+    if (blockId < this.bypassResponseBlockFloor) return;
 
     this.recordResponseDeadline(blockId);
     if (blockId < this.blockId - this.outputLatencyBlocks) {
@@ -401,6 +401,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     slotIndex: number,
     shared: NormalizedSharedAudio
   ): void {
+    if (blockId < this.bypassResponseBlockFloor) return;
     this.recordResponseDeadline(blockId);
     if (blockId < this.blockId - this.outputLatencyBlocks) {
       this.staleOutputBlocks += 1;

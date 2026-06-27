@@ -61,6 +61,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.outputBufferPool = new Map();
     this.destroyed = false;
     this.bypassed = processorOptions.bypassed === true;
+    this.bypassResponseBlockFloor = 0;
     this.maxInFlightBlocks = this.boundedInteger(processorOptions.maxInFlightBlocks, 8, 1, 64);
     this.maxRecycledInputBuffers = this.outputChannels * Math.max(2, this.maxInFlightBlocks);
     this.maxRecycledOutputBuffers = this.outputChannels * Math.max(2, this.maxQueuedOutputBlocks + this.maxOutputLatencyBlocks);
@@ -188,7 +189,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
 
     if (message.type === "set-bypassed") {
       this.bypassed = message.bypassed === true;
-      if (this.bypassed) { this.outputBlocks.clear(); this.latencySafetyBlocks = 0; this.resetResponseDeadlineState(); }
+      if (this.bypassed) { this.outputBlocks.clear(); this.inFlightBlocks = 0; this.bypassResponseBlockFloor = this.blockId; this.latencySafetyBlocks = 0; this.resetResponseDeadlineState(); }
       return;
     }
 
@@ -225,6 +226,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     if (!Number.isFinite(blockId) || blockId < 0) {
       return;
     }
+    if (blockId < this.bypassResponseBlockFloor) return;
 
     this.recordResponseDeadline(blockId);
     if (blockId < this.blockId - this.outputLatencyBlocks) {
@@ -350,6 +352,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   }
 
   queueSharedOutputBlock(blockId, frames, channels, slotIndex, shared) {
+    if (blockId < this.bypassResponseBlockFloor) return;
     this.recordResponseDeadline(blockId);
     if (blockId < this.blockId - this.outputLatencyBlocks) {
       this.staleOutputBlocks += 1;
