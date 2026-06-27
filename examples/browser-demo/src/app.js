@@ -365,6 +365,7 @@ async function doEnsureBridgeInstance(recreate = false) {
     logError(event.detail);
   });
   bridge.addEventListener("process-diagnostics", (event) => {
+    realtimeStats.updateRenderDiagnostics(event.detail);
     elements.renderEngine.textContent = formatRenderEngine(event.detail?.renderEngine);
   });
 

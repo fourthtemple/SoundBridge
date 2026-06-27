@@ -17,7 +17,10 @@ export function createRealtimeStats({ onTransportLatencySamples } = {}) {
     sharedDroppedBlocks: document.querySelector("#sharedDroppedBlocks"),
     inputBufferAllocations: document.querySelector("#inputBufferAllocations"),
     inputBufferReuses: document.querySelector("#inputBufferReuses"),
-    latencyRecoveryBlocks: document.querySelector("#latencyRecoveryBlocks")
+    latencyRecoveryBlocks: document.querySelector("#latencyRecoveryBlocks"),
+    renderDurationMs: document.querySelector("#renderDurationMs"),
+    renderBudgetMs: document.querySelector("#renderBudgetMs"),
+    renderBudgetStatus: document.querySelector("#renderBudgetStatus")
   };
 
   return {
@@ -39,6 +42,13 @@ export function createRealtimeStats({ onTransportLatencySamples } = {}) {
       setText(elements.latencyRecoveryBlocks, stats.latencyRecoveryBlocks);
       setSharedAudio(elements, stats);
       onTransportLatencySamples?.(Number(stats.transportLatencySamples ?? 0) || 0);
+    },
+    updateRenderDiagnostics(diagnostics = {}) {
+      setText(elements.renderDurationMs, formatMilliseconds(diagnostics.renderDurationMs));
+      setText(elements.renderBudgetMs, formatMilliseconds(diagnostics.renderBudgetMs));
+      if (elements.renderBudgetStatus) {
+        elements.renderBudgetStatus.textContent = diagnostics.renderBudgetExceeded === true ? "Over" : "OK";
+      }
     }
   };
 }
@@ -64,4 +74,9 @@ function setSharedAudio(elements, stats) {
   if (elements.sharedDroppedBlocks) {
     elements.sharedDroppedBlocks.textContent = `${stats.sharedInputDroppedBlocks ?? 0}/${stats.sharedOutputDroppedBlocks ?? 0}`;
   }
+}
+
+function formatMilliseconds(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(60000, number)).toFixed(3) : "0";
 }

@@ -121,11 +121,15 @@ async function assertRealtimeStats(page) {
     "#responseDeadlineLeadSamples",
     "#responseJitterSamples",
     "#sharedDroppedBlocks",
-    "#latencyRecoveryBlocks"
+    "#latencyRecoveryBlocks",
+    "#renderDurationMs",
+    "#renderBudgetMs"
   ]) {
     const text = await page.locator(selector).textContent();
     assert(/^-?\d+(\.\d+)?(\/-?\d+(\.\d+)?)?$/.test((text ?? "").trim()), `${selector} reports realtime stats.`);
   }
+  const renderBudgetStatus = await page.locator("#renderBudgetStatus").textContent();
+  assert(/^(OK|Over)$/.test((renderBudgetStatus ?? "").trim()), "Render budget status reports live render pressure.");
 }
 
 async function assertFileGrantControls(page, option, label) {
