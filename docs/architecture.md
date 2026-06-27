@@ -14,7 +14,7 @@ The SDK is a small TypeScript package that gives Web DAWs:
 - protocol message types shared with daemon implementations
 - format-aware plugin metadata for VST3, AU, LV2, and mock/test plugins
 
-The `AudioWorkletProcessor` never blocks. It copies input blocks, posts them through the host page to the web client's optional transport worker, and consumes returned processed blocks by `blockId` at a configured block latency so out-of-order WebSocket responses cannot reshuffle audio during live effects processing. If the target block is missing or stale, it falls back to dry audio for that block and reports underrun, stale-output, dropped-input, queue-depth, and latency-block stats. A production build should use `SharedArrayBuffer` ring buffers when cross-origin isolation is available.
+The `AudioWorkletProcessor` never blocks. It copies input blocks, posts them over an optional direct `MessagePort` to the web client's transport worker, and consumes returned processed blocks by `blockId` at a configured block latency so out-of-order WebSocket responses cannot reshuffle audio during live effects processing. The page thread sets up that port and remains the fallback path for hosts that do not opt into worker transport. If the target block is missing or stale, the worklet falls back to dry audio for that block and reports underrun, stale-output, dropped-input, queue-depth, and latency-block stats. A production build should use `SharedArrayBuffer` ring buffers when cross-origin isolation is available.
 
 ### Local Bridge Daemon
 
@@ -96,7 +96,7 @@ Protocol:
 
 ## Latency Tradeoffs
 
-The MVP prioritizes correctness over ultra-low latency. Binary WebSocket audio blocks and worker-owned socket transport reduce main-thread work, but the current MessagePort queue is not a final real-time transport. It is useful because it exposes:
+The MVP prioritizes correctness over ultra-low latency. Binary WebSocket audio blocks plus a direct worklet-to-worker `MessagePort` reduce page-thread work, but that queue is not a final real-time transport. It is useful because it exposes:
 
 - browser scheduling behavior
 - AudioWorklet queue depth requirements

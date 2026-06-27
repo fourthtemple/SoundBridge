@@ -10,8 +10,10 @@ let lastPort;
 
 class TestPort {
   onmessage = undefined;
+  messages = [];
 
   postMessage(message) {
+    this.messages.push(message);
     postedMessages.push(message);
   }
 }
@@ -78,6 +80,34 @@ assert(processor.droppedInputBlocks === 1, "dropped input blocks are counted");
 
 const processIds = postedMessages.filter((message) => message.type === "process").map((message) => message.blockId);
 assert(equal(processIds, [0, 1, 2, 3, 4]), "worklet emits monotonic process block ids");
+
+const directProcessor = new processorCtor({
+  processorOptions: {
+    outputChannels: 1,
+    maxInFlightBlocks: 1,
+    maxQueuedOutputBlocks: 4,
+    outputLatencyBlocks: 1
+  }
+});
+const directMainPort = lastPort;
+const directTransportPort = new TestPort();
+directMainPort.onmessage({ data: { type: "connect-transport", port: directTransportPort } });
+directProcessor.process([[Float32Array.from([5, 5])]], [[new Float32Array(2)]]);
+assert(directTransportPort.messages[0]?.type === "process", "direct worklet transport posts process blocks to the transport port");
+assert(!directMainPort.messages.some((message) => message.type === "process"), "direct worklet transport avoids page-thread process messages");
+directTransportPort.onmessage({
+  data: {
+    type: "processed",
+    blockId: 0,
+    channels: [[50, 50]],
+    renderEngine: "direct-worker"
+  }
+});
+assert(directProcessor.inFlightBlocks === 0, "direct worklet transport releases in-flight blocks on response");
+assert(
+  directMainPort.messages.some((message) => message.type === "process-diagnostics" && message.renderEngine === "direct-worker"),
+  "direct worklet transport forwards render diagnostics to the page port"
+);
 
 console.log("Worklet sequencing smoke checks passed.");
 

@@ -7,12 +7,16 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private processedBlocks = 0;
   private staleOutputBlocks = 0;
   private droppedInputBlocks = 0;
+  private inFlightBlocks = 0;
   private readonly outputBlocks = new Map<number, Float32Array[]>();
+  private readonly maxInFlightBlocks: number;
+  private transportPort?: MessagePort;
 
   constructor(options: AudioWorkletNodeOptions) {
     super();
     const processorOptions = options.processorOptions ?? {};
     this.outputChannels = processorOptions.outputChannels ?? 2;
+    this.maxInFlightBlocks = this.boundedInteger(processorOptions.maxInFlightBlocks, 8, 1, 64);
     this.maxQueuedOutputBlocks = this.boundedInteger(processorOptions.maxQueuedOutputBlocks, 16, 1, 64);
     this.outputLatencyBlocks = this.boundedInteger(
       processorOptions.outputLatencyBlocks,
@@ -42,15 +46,23 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     }
     this.dropStaleOutputBlocks(targetBlockId);
 
-    this.port.postMessage(
-      {
-        type: "process",
-        blockId: currentBlockId,
-        frames,
-        channels: outgoing
-      },
-      outgoing.map((channel) => channel.buffer)
-    );
+    const processMessage = {
+      type: "process",
+      blockId: currentBlockId,
+      frames,
+      channels: outgoing
+    };
+    const transfer = outgoing.map((channel) => channel.buffer);
+    if (this.transportPort) {
+      if (this.inFlightBlocks >= this.maxInFlightBlocks) {
+        this.droppedInputBlocks += 1;
+      } else {
+        this.inFlightBlocks += 1;
+        this.transportPort.postMessage(processMessage, transfer);
+      }
+    } else {
+      this.port.postMessage(processMessage, transfer);
+    }
 
     if (this.blockId % 128 === 0) {
       this.port.postMessage({
@@ -72,9 +84,17 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
-    const typed = message as { type?: string; blockId?: number; channels?: number[][] };
+    const typed = message as { type?: string; blockId?: number; channels?: number[][]; port?: MessagePort; renderEngine?: string; error?: unknown };
     if (typed.type === "destroy") {
       this.outputBlocks.clear();
+      this.transportPort?.postMessage({ type: "destroy" });
+      this.transportPort = undefined;
+      return;
+    }
+
+    if (typed.type === "connect-transport" && typed.port) {
+      this.transportPort = typed.port;
+      this.transportPort.onmessage = (event) => this.handleMessage(event.data);
       return;
     }
 
@@ -83,9 +103,16 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
+    if (typed.type === "audio-error") {
+      this.inFlightBlocks = Math.max(0, this.inFlightBlocks - 1);
+      this.port.postMessage({ type: "audio-error", error: typed.error });
+      return;
+    }
+
     if (typed.type !== "processed" || !Array.isArray(typed.channels)) {
       return;
     }
+    this.inFlightBlocks = Math.max(0, this.inFlightBlocks - 1);
 
     const blockId = Math.floor(Number(typed.blockId));
     if (!Number.isFinite(blockId) || blockId < 0) {
@@ -102,6 +129,9 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     }
 
     this.outputBlocks.set(blockId, typed.channels.slice(0, this.outputChannels).map((channel) => Float32Array.from(channel)));
+    if (typeof typed.renderEngine === "string") {
+      this.port.postMessage({ type: "process-diagnostics", blockId, renderEngine: typed.renderEngine });
+    }
   }
 
   private copyInputBlock(input: Float32Array[], frames: number): Float32Array[] {

@@ -44,6 +44,12 @@ export interface BinaryAudioBlockRequest extends Omit<AudioBlockRequest, "channe
   inputBuses?: BinaryAudioBusBlock[];
 }
 
+export interface AudioWorkletTransportOptions {
+  instanceId: string;
+  sampleRate: number;
+  audioTransport?: "binary" | "json";
+}
+
 export class SoundBridgeProtocolError extends Error {
   readonly code: string;
   readonly details?: unknown;
@@ -272,6 +278,25 @@ export class SoundBridgeClient extends EventTarget {
   processAudioBlockBinary(request: BinaryAudioBlockRequest): Promise<AudioBlockResponse> {
     const { channels, ...payload } = request;
     return this.request("processAudioBlock", payload, true, 2000, channels);
+  }
+
+  createAudioWorkletTransportPort(options: AudioWorkletTransportOptions): MessagePort | undefined {
+    if (this.transport !== "worker" || !this.worker || !this.workerConnected || !this.sessionToken) {
+      return undefined;
+    }
+    const channel = new MessageChannel();
+    this.worker.postMessage(
+      {
+        type: "audio-port",
+        port: channel.port2,
+        instanceId: options.instanceId,
+        sampleRate: options.sampleRate,
+        sessionToken: this.sessionToken,
+        audioTransport: options.audioTransport === "json" ? "json" : "binary"
+      },
+      [channel.port2]
+    );
+    return channel.port1;
   }
 
   sendMidiEvents(instanceId: string, events: MidiEvent[]): Promise<{ accepted: boolean; eventCount: number }> {

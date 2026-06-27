@@ -46,6 +46,14 @@ export class SoundBridgeAudioNode extends EventTarget {
       }
     });
     this.node.port.onmessage = (event) => this.handleWorkletMessage(event.data);
+    const transportPort = client.createAudioWorkletTransportPort({
+      instanceId: options.instanceId,
+      sampleRate: context.sampleRate,
+      audioTransport: options.audioTransport
+    });
+    if (transportPort) {
+      this.node.port.postMessage({ type: "connect-transport", port: transportPort }, [transportPort]);
+    }
   }
 
   static async create(
@@ -102,10 +110,22 @@ export class SoundBridgeAudioNode extends EventTarget {
       outputLatencyBlocks?: number;
       staleOutputBlocks?: number;
       droppedInputBlocks?: number;
+      renderEngine?: string;
+      error?: unknown;
     };
 
     if (typed.type === "stats") {
       this.dispatchEvent(new CustomEvent("stats", { detail: typed }));
+      return;
+    }
+
+    if (typed.type === "process-diagnostics") {
+      this.dispatchEvent(new CustomEvent("process-diagnostics", { detail: typed }));
+      return;
+    }
+
+    if (typed.type === "audio-error") {
+      this.dispatchEvent(new CustomEvent("audio-error", { detail: typed.error ?? typed }));
       return;
     }
 

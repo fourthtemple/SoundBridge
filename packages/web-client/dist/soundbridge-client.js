@@ -177,6 +177,25 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("processAudioBlock", payload, true, 2000, channels);
   }
 
+  createAudioWorkletTransportPort(options) {
+    if (this.transport !== "worker" || !this.worker || !this.workerConnected || !this.sessionToken) {
+      return void 0;
+    }
+    const channel = new MessageChannel();
+    this.worker.postMessage(
+      {
+        type: "audio-port",
+        port: channel.port2,
+        instanceId: options.instanceId,
+        sampleRate: options.sampleRate,
+        sessionToken: this.sessionToken,
+        audioTransport: options.audioTransport === "json" ? "json" : "binary"
+      },
+      [channel.port2]
+    );
+    return channel.port1;
+  }
+
   sendMidiEvents(instanceId, events) {
     return this.request("sendMidiEvents", { instanceId, events });
   }
@@ -568,6 +587,14 @@ export class SoundBridgeAudioNode extends EventTarget {
       }
     });
     this.node.port.onmessage = (event) => this.handleWorkletMessage(event.data);
+    const transportPort = client.createAudioWorkletTransportPort({
+      instanceId: options.instanceId,
+      sampleRate: context.sampleRate,
+      audioTransport: options.audioTransport
+    });
+    if (transportPort) {
+      this.node.port.postMessage({ type: "connect-transport", port: transportPort }, [transportPort]);
+    }
   }
 
   static async create(context, client, options) {
@@ -612,6 +639,16 @@ export class SoundBridgeAudioNode extends EventTarget {
 
     if (message.type === "stats") {
       this.dispatchEvent(new CustomEvent("stats", { detail: message }));
+      return;
+    }
+
+    if (message.type === "process-diagnostics") {
+      this.dispatchEvent(new CustomEvent("process-diagnostics", { detail: message }));
+      return;
+    }
+
+    if (message.type === "audio-error") {
+      this.dispatchEvent(new CustomEvent("audio-error", { detail: message.error ?? message }));
       return;
     }
 

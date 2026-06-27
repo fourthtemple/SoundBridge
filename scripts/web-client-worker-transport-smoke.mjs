@@ -49,6 +49,17 @@ assert(FakeWorker.last.messages[0].type === "connect", "worker transport receive
 const pair = await client.pair("token");
 assert(pair.sessionToken === "session-1", "worker transport pair response resolves through client");
 
+const audioPort = client.createAudioWorkletTransportPort({
+  instanceId: "inst-1",
+  sampleRate: 48000,
+  audioTransport: "binary"
+});
+const audioPortMessage = FakeWorker.last.messages.at(-1);
+assert(audioPort, "worker transport creates an audio worklet port after pairing");
+assert(audioPortMessage.type === "audio-port", "worker transport registers audio worklet ports with the worker");
+assert(audioPortMessage.instanceId === "inst-1", "worker audio port registration includes instance id");
+audioPort.close();
+
 const processed = await client.processAudioBlockBinary({
   instanceId: "inst-1",
   blockId: 42,
