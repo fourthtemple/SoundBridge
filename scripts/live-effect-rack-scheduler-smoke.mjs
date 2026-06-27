@@ -1,5 +1,6 @@
 import {
   createLiveEffectRackBlockScheduler,
+  createLiveEffectRackCalibrationWindow,
   createLiveEffectRackChain,
   createLiveEffectRackChainCalibrationWindow
 } from "../packages/web-client/dist/soundbridge-client.js";
@@ -69,6 +70,47 @@ scheduler.updateFromRackHealth({
   responseDeadlineMisses: 2
 });
 assert(scheduler.snapshot().deadlinePressure.pressure === false, "live rack scheduler clears pressure after stable rack health");
+
+const rackWindow = createLiveEffectRackCalibrationWindow({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0,
+  processBudgetMs: 12,
+  processTimeoutMs: 16,
+  safetyMarginBlocks: 0
+});
+rackWindow.record({
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0,
+  lastResponseDeadlineLeadBlocks: 1,
+  dryOutputBlocks: 0
+});
+const rackCalibration = rackWindow.record({
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0,
+  lastResponseDeadlineLeadBlocks: 1,
+  dryOutputBlocks: 1
+}).calibration;
+const rackCalibrationScheduler = createLiveEffectRackBlockScheduler({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0,
+  nowMs: () => now
+});
+rackCalibrationScheduler.updateFromRackCalibration({
+  lastResponseDeadlineLeadBlocks: 1,
+  responseJitterBlocks: 0,
+  responseDeadlineMisses: 0
+}, rackCalibration);
+const calibratedRack = rackCalibrationScheduler.schedule([[0.1]], { samplePosition: 0, timestamp: now });
+assert(
+  calibratedRack.transport.samplePosition === 128 &&
+    rackCalibrationScheduler.snapshot().deadlinePressure.reasons.includes("dry-output-pressure") &&
+    rackCalibrationScheduler.snapshot().deadlinePressure.reasons.includes("increase-transport-latency"),
+  "live rack scheduler applies calibrated single-rack latency and pressure recommendations"
+);
 
 const chain = createLiveEffectRackChain({
   stages: [{

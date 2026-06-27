@@ -3004,6 +3004,12 @@ export class LiveEffectRackBlockScheduler {
     return this.transportLatencySamples;
   }
 
+  updateFromRackCalibration(health, calibration) {
+    this.updateLatency(calibration.recommendedTransportLatencySamples);
+    this.updateDeadlinePressure(health, calibration);
+    return this.transportLatencySamples;
+  }
+
   updateFromChainHealth(health) {
     this.updateLatency(health.latencySamples);
     this.updateDeadlinePressure(health);
