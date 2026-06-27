@@ -5,6 +5,8 @@ import {
 
 let socket: WebSocket | undefined;
 let audioRequestSeq = 0;
+const pendingRequests = new Map<string, ReturnType<typeof setTimeout> | undefined>();
+const staleRequestIds = new Set<string>();
 const pendingAudioPorts = new Map<string, PendingAudioPortRequest>();
 const pendingSharedAudio = new Map<string, PendingSharedAudioRequest>();
 const SHARED_AUDIO_HEADER_INTS = 8;
@@ -69,7 +71,7 @@ self.onmessage = (event: MessageEvent) => {
     return;
   }
   if (message.type === "request") {
-    sendRequest(message.envelope, message.binaryAudioChannels);
+    sendRequest(message.envelope, message.binaryAudioChannels, message.timeoutMs);
     return;
   }
   if (message.type === "audio-port" && message.port) {
@@ -99,6 +101,7 @@ function connect(url: string): void {
     post({ type: "connect-error", message: `Unable to connect to ${url}` });
   });
   socket.addEventListener("close", () => {
+    clearPendingRequests();
     rejectPendingAudioRequests("SoundBridge worker transport closed before audio response.");
     post({ type: "closed" });
   });
@@ -106,6 +109,9 @@ function connect(url: string): void {
     try {
       const envelope = typeof event.data === "string" ? JSON.parse(event.data) : decodeBinaryAudioEnvelope(event.data);
       if (routeAudioResponse(envelope)) {
+        return;
+      }
+      if (routeGenericResponse(envelope)) {
         return;
       }
       post({ type: "message", envelope });
@@ -564,20 +570,61 @@ function boundedFrames(value: unknown): number {
   return Number.isFinite(frames) ? Math.max(1, Math.min(8192, frames)) : 128;
 }
 
-function sendRequest(envelope: unknown, binaryAudioChannels?: ArrayLike<number>[]): void {
+function sendRequest(envelope: unknown, binaryAudioChannels?: ArrayLike<number>[], timeoutMs?: unknown): void {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     post({ type: "send-error", id: requestId(envelope), message: "SoundBridge worker transport is not connected." });
     return;
   }
+  const id = requestId(envelope);
+  const boundedTimeoutMs = boundedSharedInteger(timeoutMs, 0, 0, 60000);
   try {
+    if (id) {
+      pendingRequests.set(id, startAudioRequestTimeout(boundedTimeoutMs, () => {
+        pendingRequests.delete(id);
+        staleRequestIds.add(id);
+        post({ type: "send-error", id, message: requestTimeoutMessage(boundedTimeoutMs) });
+      }));
+    }
     socket.send(binaryAudioChannels ? encodeBinaryAudioEnvelope(envelope, binaryAudioChannels) : JSON.stringify(envelope));
   } catch (error) {
-    post({ type: "send-error", id: requestId(envelope), message: String(error instanceof Error ? error.message : error) });
+    clearAudioRequestTimeout(id ? pendingRequests.get(id) : undefined);
+    if (id) {
+      pendingRequests.delete(id);
+    }
+    post({ type: "send-error", id, message: String(error instanceof Error ? error.message : error) });
   }
 }
 
 function requestId(envelope: unknown): string | undefined {
   return envelope && typeof envelope === "object" ? String((envelope as { id?: unknown }).id ?? "") : undefined;
+}
+
+function routeGenericResponse(envelope: { type?: string; id?: string }): boolean {
+  if (envelope.type !== "response" || typeof envelope.id !== "string") {
+    return false;
+  }
+  if (staleRequestIds.delete(envelope.id)) {
+    return true;
+  }
+  if (!pendingRequests.has(envelope.id)) {
+    return false;
+  }
+  clearAudioRequestTimeout(pendingRequests.get(envelope.id));
+  pendingRequests.delete(envelope.id);
+  post({ type: "message", envelope });
+  return true;
+}
+
+function clearPendingRequests(): void {
+  for (const timeout of pendingRequests.values()) {
+    clearAudioRequestTimeout(timeout);
+  }
+  pendingRequests.clear();
+  staleRequestIds.clear();
+}
+
+function requestTimeoutMessage(timeoutMs: number): string {
+  return `SoundBridge worker request timed out after ${timeoutMs} ms.`;
 }
 
 function post(message: unknown): void {

@@ -86,6 +86,7 @@ assert(FakeWorker.last.messages[0].type === "connect", "worker transport receive
 
 const pair = await client.pair("token");
 assert(pair.sessionToken === "session-1", "worker transport pair response resolves through client");
+assert(FakeWorker.last.messages.at(-1).timeoutMs === 5000, "worker transport receives default request deadlines");
 
 const audioPort = client.createAudioWorkletTransportPort({
   instanceId: "inst-1",
@@ -112,6 +113,7 @@ const processed = await client.processAudioBlockBinary({
 });
 const audioMessage = FakeWorker.last.messages.at(-1);
 assert(audioMessage.type === "request", "worker transport receives binary audio request");
+assert(audioMessage.timeoutMs === 2000, "worker transport receives audio request deadlines");
 assert(Array.isArray(audioMessage.binaryAudioChannels), "worker transport carries binary audio channels separately");
 assert(audioMessage.envelope.payload.inputBuses[0].index === 1, "worker transport preserves bus metadata");
 assert(!("channels" in audioMessage.envelope.payload), "worker transport keeps main channels out of JSON payload");

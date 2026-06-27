@@ -364,6 +364,51 @@ assert(
 );
 assert(socket.sent.length === sentBeforeSharedTimeout + 2, "shared timeout releases capacity and drains the next queued block");
 
+const genericEnvelope = {
+  type: "request",
+  id: "generic-ok",
+  command: "hello",
+  payload: {}
+};
+self.onmessage({ data: { type: "request", envelope: genericEnvelope, timeoutMs: 17 } });
+socket.emit("message", {
+  data: JSON.stringify({
+    type: "response",
+    id: "generic-ok",
+    ok: true,
+    payload: { version: "test" }
+  })
+});
+assert(
+  postedMessages.some((message) => message.type === "message" && message.envelope?.id === "generic-ok"),
+  "transport worker routes generic responses"
+);
+
+const genericTimeoutEnvelope = {
+  type: "request",
+  id: "generic-timeout",
+  command: "processAudioBlock",
+  payload: { instanceId: "inst-timeout", blockId: 90 }
+};
+const sentBeforeGenericTimeout = socket.sent.length;
+self.onmessage({ data: { type: "request", envelope: genericTimeoutEnvelope, timeoutMs: 15 } });
+assert(socket.sent.length === sentBeforeGenericTimeout + 1, "transport worker sends generic requests");
+runTimerWithDelay(15);
+assert(
+  postedMessages.some((message) => message.type === "send-error" && message.id === "generic-timeout" && /timed out/.test(message.message)),
+  "transport worker times out generic worker requests"
+);
+const postedBeforeLateGeneric = postedMessages.length;
+socket.emit("message", {
+  data: JSON.stringify({
+    type: "response",
+    id: "generic-timeout",
+    ok: true,
+    payload: { blockId: 90, channels: [[0.9]], latencySamples: 0 }
+  })
+});
+assert(postedMessages.length === postedBeforeLateGeneric, "transport worker suppresses late generic responses after timeout");
+
 console.log("Transport worker audio port smoke checks passed.");
 
 function createSharedAudio(slots, channels, frames) {

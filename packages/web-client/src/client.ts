@@ -454,7 +454,7 @@ export class SoundBridgeClient extends EventTarget {
       }, timeoutMs);
       this.pending.set(id, { resolve: resolve as (payload: unknown) => void, reject, timeout });
       if (this.transport === "worker") {
-        this.worker?.postMessage({ type: "request", envelope, binaryAudioChannels });
+        this.worker?.postMessage({ type: "request", envelope, binaryAudioChannels, timeoutMs });
       } else {
         this.socket?.send(
           binaryAudioChannels ? encodeBinaryAudioEnvelope(envelope, binaryAudioChannels) : JSON.stringify(envelope)
