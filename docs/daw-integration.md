@@ -45,6 +45,20 @@ Hosts should:
 - apply only daemon-listed preset ids and pass native-approved preset/sample/cache/license files through opaque session-owned file grants attached to the owning plugin instance; check each plugin's `fileGrantOperations` before showing file-backed actions, use `useFileGrant restoreState` / `loadPreset` / `saveStateDirectory` for advertised worker-native preset/state files, and avoid arbitrary filesystem access for remaining file workflows
 - degrade gracefully when the daemon disconnects
 
+## DJ And Live Performance Effects
+
+For a DJ app or live-performance tool, treat SoundBridge as an out-of-process effects rack rather than as a UI-first plugin panel. The host should own deck routing, metering, beat/grid timing, wet/dry controls, bypass, and emergency failover. SoundBridge should own plugin scanning, instance lifecycle, bounded parameter/state/preset operations, and native worker crash containment.
+
+The web client exports `SoundBridgeLiveEffectRack` as a small host-side pattern for this mode:
+
+- create one rack per deck, bus, send, or master insert
+- process stereo blocks through `processBlock()` when the plugin is healthy
+- return dry audio immediately when the rack is manually bypassed
+- return dry audio and mark the rack unhealthy when `processAudioBlock` fails
+- call `recreate()` only from a non-audio-control path after the UI/user decides to retry the plugin
+
+This is the right policy for live sets: a failed effect should become a dry bypass, not silence and not an app crash. It does not solve the final latency path by itself; production DJ use still needs binary audio frames, a worker-thread transport, or shared-memory/ring-buffer transport.
+
 ## Current Prototype Limitations
 
 - JSON audio blocks are for correctness testing, not final latency.

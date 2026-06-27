@@ -366,6 +366,148 @@ export class SoundBridgeAudioNode extends EventTarget {
   }
 }
 
+export class SoundBridgeLiveEffectRack extends EventTarget {
+  constructor(options) {
+    super();
+    this.created = void 0;
+    this.bypassed = false;
+    this.healthy = true;
+    this.lastError = void 0;
+    this.client = options.client;
+    this.plugin = options.plugin;
+    this.sampleRate = options.sampleRate;
+    this.maxBlockSize = options.maxBlockSize;
+    this.inputChannels = boundedLiveEffectChannelCount(options.inputChannels ?? options.plugin.inputs ?? 2);
+    this.outputChannels = boundedLiveEffectChannelCount(options.outputChannels ?? options.plugin.outputs ?? this.inputChannels);
+  }
+
+  static async create(options) {
+    const rack = new SoundBridgeLiveEffectRack(options);
+    await rack.createInstance();
+    return rack;
+  }
+
+  get instanceId() {
+    return this.created?.instanceId;
+  }
+
+  get health() {
+    return {
+      bypassed: this.bypassed,
+      healthy: this.healthy,
+      instanceId: this.instanceId,
+      lastError: this.lastError,
+      latencySamples: this.created?.latencySamples ?? 0
+    };
+  }
+
+  setBypassed(bypassed) {
+    this.bypassed = bypassed;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+  }
+
+  async recreate() {
+    await this.destroyInstance().catch(() => void 0);
+    await this.createInstance();
+  }
+
+  async destroy() {
+    await this.destroyInstance();
+    this.healthy = false;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+  }
+
+  async refreshLatency(transportLatencySamples = 0) {
+    if (!this.instanceId || !this.healthy) {
+      return this.health;
+    }
+    const latency = await this.client.getLatency(this.instanceId, transportLatencySamples);
+    if (this.created) {
+      this.created.latencySamples = latency.pluginLatencySamples;
+    }
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+    return this.health;
+  }
+
+  async processBlock(request) {
+    if (this.bypassed || !this.instanceId || !this.healthy) {
+      return this.dryResponse(request, void 0);
+    }
+
+    try {
+      const response = await this.client.processAudioBlock({
+        instanceId: this.instanceId,
+        blockId: request.blockId,
+        sampleRate: request.sampleRate ?? this.sampleRate,
+        channels: cloneLiveEffectChannels(request.channels),
+        inputBuses: request.inputBuses,
+        transport: request.transport,
+        timestamp: request.timestamp
+      });
+      return { ...response, bypassed: false, healthy: true };
+    } catch (error) {
+      this.healthy = false;
+      this.lastError = error;
+      this.dispatchEvent(new CustomEvent("effect-error", { detail: { error, health: this.health } }));
+      this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+      return this.dryResponse(request, error);
+    }
+  }
+
+  async createInstance() {
+    this.created = await this.client.createInstance({
+      pluginId: this.plugin.pluginId,
+      format: this.plugin.format,
+      sampleRate: this.sampleRate,
+      maxBlockSize: this.maxBlockSize,
+      inputChannels: this.inputChannels,
+      outputChannels: this.outputChannels
+    });
+    this.healthy = true;
+    this.lastError = void 0;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+  }
+
+  async destroyInstance() {
+    const instanceId = this.instanceId;
+    this.created = void 0;
+    if (instanceId) {
+      await this.client.destroyInstance(instanceId);
+    }
+  }
+
+  dryResponse(request, error) {
+    return {
+      blockId: request.blockId,
+      channels: dryLiveEffectChannels(request.channels, this.outputChannels),
+      latencySamples: 0,
+      tailSamples: 0,
+      infiniteTail: false,
+      renderEngine: "dry-bypass",
+      bypassed: true,
+      healthy: this.healthy,
+      error
+    };
+  }
+}
+
+function boundedLiveEffectChannelCount(value) {
+  const channels = Math.floor(Number(value));
+  return Number.isFinite(channels) ? Math.max(1, Math.min(32, channels)) : 2;
+}
+
+function cloneLiveEffectChannels(channels) {
+  return channels.map((channel) => Array.from(channel));
+}
+
+function dryLiveEffectChannels(channels, outputChannels) {
+  const frames = channels[0]?.length ?? 0;
+  return Array.from({ length: outputChannels }, (_, index) => {
+    const source = channels.length > 0 ? channels[index % channels.length] : void 0;
+    return source ? Array.from(source) : Array.from({ length: frames }, () => 0);
+  });
+}
+
 const PARAMETER_CATEGORY_PATTERNS = [
   ["wave", /\b(wave\s*shaper|waveshaper|wave\s*fold|wavefold|fold|shape|shaper)\b/u],
   ["drive", /\b(drive|distortion|saturat|clip|crush|fuzz|overdrive)\b/u],
