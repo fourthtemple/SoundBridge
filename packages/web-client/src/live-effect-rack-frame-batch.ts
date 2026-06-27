@@ -102,7 +102,27 @@ export interface LiveEffectRackFrameBatchResult {
   error?: unknown;
 }
 
-export class LiveEffectRackFrameBatchProcessor {
+export interface LiveEffectRackFrameBatchHealth {
+  healthy: boolean;
+  targetCount: number;
+  processedTargets: number;
+  skippedTargets: number;
+  failedTargets: number;
+  dryTargets: number;
+  bypassedTargets: number;
+  latencySamples: number;
+  reportedLatencySamples: number;
+  maxDurationMs: number;
+  totalDurationMs: number;
+  processBudgetMs?: number;
+  processBudgetExceeded: boolean;
+  processBudgetMisses: number;
+  processBudgetTripped: boolean;
+  recoveryDryBlocks: number;
+  lastError?: unknown;
+}
+
+export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   readonly scheduler: LiveEffectRackFrameBatchScheduler;
   readonly maxTargets: number;
   readonly processBudgetMs: number;
@@ -113,8 +133,11 @@ export class LiveEffectRackFrameBatchProcessor {
   private processBudgetTripped = false;
   private recoveryDryBlocks = 0;
   private lastError?: unknown;
+  private lastResult?: LiveEffectRackFrameBatchResult;
+  private lastHealthKey = "";
 
   constructor(options: LiveEffectRackFrameBatchProcessorOptions) {
+    super();
     this.scheduler = options.scheduler;
     this.maxTargets = boundedLiveEffectInteger(options.maxTargets, LIVE_EFFECT_FRAME_BATCH_TARGETS, 1, 32);
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
@@ -126,6 +149,10 @@ export class LiveEffectRackFrameBatchProcessor {
     );
     this.processBudgetRecoveryBlocks = boundedLiveEffectInteger(options.processBudgetRecoveryBlocks, 0, 0, 4096);
     this.nowMs = typeof options.nowMs === "function" ? options.nowMs : liveEffectNowMs;
+  }
+
+  get health(): LiveEffectRackFrameBatchHealth {
+    return this.healthFromResult(this.lastResult);
   }
 
   async process(
@@ -152,6 +179,9 @@ export class LiveEffectRackFrameBatchProcessor {
     this.processBudgetMisses = 0;
     this.recoveryDryBlocks = 0;
     this.lastError = undefined;
+    this.lastResult = undefined;
+    this.dispatchEvent(new CustomEvent("retry", { detail: { health: this.health } }));
+    this.dispatchHealthChangeIfNeeded();
     return true;
   }
 
@@ -262,15 +292,22 @@ export class LiveEffectRackFrameBatchProcessor {
       this.processBudgetTripped = true;
       this.recoveryDryBlocks = 0;
       this.lastError = new Error("frame_batch_process_budget_exceeded");
-      return this.result(
+      const result = this.result(
         frame,
         results.map((result) => this.dryTargetFromScheduledResult(result, this.lastError)),
         boundedDurationMs,
         true,
         this.lastError
       );
+      this.dispatchEvent(new CustomEvent("frame-batch-process-budget-exceeded", { detail: { result, health: this.health } }));
+      this.dispatchEvent(new CustomEvent("frame-batch-process-budget-tripped", { detail: { result, health: this.health } }));
+      return result;
     }
-    return this.result(frame, results, boundedDurationMs, processBudgetExceeded, undefined);
+    const result = this.result(frame, results, boundedDurationMs, processBudgetExceeded, undefined);
+    if (processBudgetExceeded) {
+      this.dispatchEvent(new CustomEvent("frame-batch-process-budget-exceeded", { detail: { result, health: this.health } }));
+    }
+    return result;
   }
 
   private dryTargetFromScheduledResult(
@@ -325,6 +362,9 @@ export class LiveEffectRackFrameBatchProcessor {
     this.processBudgetMisses = 0;
     this.recoveryDryBlocks = 0;
     this.lastError = undefined;
+    this.lastResult = undefined;
+    this.dispatchEvent(new CustomEvent("frame-batch-process-budget-recovered", { detail: { health: this.health } }));
+    this.dispatchHealthChangeIfNeeded();
   }
 
   private result(
@@ -338,7 +378,7 @@ export class LiveEffectRackFrameBatchProcessor {
     const dryTargets = results.filter((result) => result.dry).length;
     const bypassedTargets = results.filter((result) => result.bypassed).length;
     const skippedTargets = results.filter((result) => result.skipped).length;
-    return {
+    const result = {
       frame,
       results,
       targetCount: results.length,
@@ -359,6 +399,52 @@ export class LiveEffectRackFrameBatchProcessor {
       recoveryDryBlocks: this.recoveryDryBlocks,
       error
     };
+    this.lastResult = result;
+    this.dispatchHealthChangeIfNeeded();
+    return result;
+  }
+
+  private healthFromResult(result: LiveEffectRackFrameBatchResult | undefined): LiveEffectRackFrameBatchHealth {
+    const failedTargets = result?.failedTargets ?? 0;
+    return {
+      healthy: !this.processBudgetTripped && failedTargets === 0,
+      targetCount: result?.targetCount ?? 0,
+      processedTargets: result?.processedTargets ?? 0,
+      skippedTargets: result?.skippedTargets ?? 0,
+      failedTargets,
+      dryTargets: result?.dryTargets ?? 0,
+      bypassedTargets: result?.bypassedTargets ?? 0,
+      latencySamples: boundedLatencySamples(result?.latencySamples, 0),
+      reportedLatencySamples: boundedLatencySamples(result?.reportedLatencySamples, 0),
+      maxDurationMs: boundedOptionalNumber(result?.maxDurationMs, 0, 60000) ?? 0,
+      totalDurationMs: boundedOptionalNumber(result?.totalDurationMs, 0, 60000) ?? 0,
+      processBudgetMs: this.processBudgetMs > 0 ? this.processBudgetMs : undefined,
+      processBudgetExceeded: result?.processBudgetExceeded === true,
+      processBudgetMisses: this.processBudgetMisses,
+      processBudgetTripped: this.processBudgetTripped,
+      recoveryDryBlocks: this.recoveryDryBlocks,
+      lastError: this.lastError ?? result?.error
+    };
+  }
+
+  private dispatchHealthChangeIfNeeded(): void {
+    const health = this.health;
+    const key = [
+      health.healthy,
+      health.processBudgetMisses,
+      health.processBudgetTripped,
+      health.recoveryDryBlocks,
+      health.failedTargets,
+      health.dryTargets,
+      health.skippedTargets,
+      health.latencySamples,
+      health.reportedLatencySamples
+    ].join(":");
+    if (key === this.lastHealthKey) {
+      return;
+    }
+    this.lastHealthKey = key;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: health }));
   }
 }
 

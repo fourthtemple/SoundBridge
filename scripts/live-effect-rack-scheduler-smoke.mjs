@@ -363,6 +363,22 @@ const budgetProcessor = createLiveEffectRackFrameBatchProcessor({
   maxConsecutiveProcessBudgetMisses: 1,
   nowMs: () => now
 });
+const budgetEvents = { exceeded: 0, tripped: 0, retry: 0, health: 0 };
+budgetProcessor.addEventListener("frame-batch-process-budget-exceeded", (event) => {
+  budgetEvents.exceeded += 1;
+  assert(event.detail.health.processBudgetTripped === true, "live frame batch exceeded events include tripped health");
+});
+budgetProcessor.addEventListener("frame-batch-process-budget-tripped", (event) => {
+  budgetEvents.tripped += 1;
+  assert(event.detail.result.processBudgetTripped === true, "live frame batch trip events include the tripped result");
+});
+budgetProcessor.addEventListener("retry", (event) => {
+  budgetEvents.retry += 1;
+  assert(event.detail.health.processBudgetTripped === false, "live frame batch retry events include cleared health");
+});
+budgetProcessor.addEventListener("healthchange", () => {
+  budgetEvents.health += 1;
+});
 const budgetTrip = await budgetProcessor.process([
   { id: "deck-budget", target: budgetTarget, channels: [[0.75, 0.25]] }
 ]);
@@ -379,6 +395,14 @@ assert(
     budgetTrip.results[0].response.renderEngine === "frame-batch-process-budget-exceeded",
   "live frame batch returns dry skipped results when the aggregate budget trips"
 );
+assert(
+  budgetEvents.exceeded === 1 &&
+    budgetEvents.tripped === 1 &&
+    budgetEvents.health >= 1 &&
+    budgetProcessor.health.processBudgetTripped === true &&
+    budgetProcessor.health.skippedTargets === 1,
+  "live frame batch exposes aggregate budget pressure through events and health"
+);
 const budgetDry = await budgetProcessor.process([
   { id: "deck-budget", target: budgetTarget, channels: [[0.5, 0.5]] }
 ]);
@@ -390,6 +414,12 @@ assert(
   "live frame batch stays dry while the aggregate budget trip is active"
 );
 assert(budgetProcessor.retry() === true, "live frame batch retry clears an aggregate budget trip");
+assert(
+  budgetEvents.retry === 1 &&
+    budgetProcessor.health.processBudgetTripped === false &&
+    budgetProcessor.health.targetCount === 0,
+  "live frame batch health clears after manual retry"
+);
 budgetDurationMs = 0;
 const budgetRecovered = await budgetProcessor.process([
   { id: "deck-budget", target: budgetTarget, channels: [[0.25, 0.75]] }
@@ -400,6 +430,53 @@ assert(
     budgetRecovered.processBudgetTripped === false &&
     budgetRecovered.healthy === true,
   "live frame batch retry re-arms normal processing after budget pressure"
+);
+
+now = 5000;
+let recoveryTargetCalls = 0;
+let recoveryDurationMs = 5;
+const recoveryScheduler = createLiveEffectRackBlockScheduler({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  startBlockId: 400,
+  startSamplePosition: 51200,
+  nowMs: () => now
+});
+const recoveryTarget = {
+  health: { healthy: true },
+  async processScheduledBlock(scheduled) {
+    recoveryTargetCalls += 1;
+    now += recoveryDurationMs;
+    return {
+      blockId: scheduled.blockId,
+      channels: scheduled.request.channels,
+      latencySamples: 0,
+      renderEngine: "recovery-target",
+      bypassed: false,
+      healthy: true
+    };
+  }
+};
+const recoveryProcessor = createLiveEffectRackFrameBatchProcessor({
+  scheduler: recoveryScheduler,
+  processBudgetMs: 2,
+  maxConsecutiveProcessBudgetMisses: 1,
+  processBudgetRecoveryBlocks: 1,
+  nowMs: () => now
+});
+let recoveredEvents = 0;
+recoveryProcessor.addEventListener("frame-batch-process-budget-recovered", (event) => {
+  recoveredEvents += 1;
+  assert(event.detail.health.processBudgetTripped === false, "live frame batch recovered events include cleared health");
+});
+await recoveryProcessor.process([{ id: "recovering", target: recoveryTarget, channels: [[1]] }]);
+const recoveryDry = await recoveryProcessor.process([{ id: "recovering", target: recoveryTarget, channels: [[1]] }]);
+assert(
+  recoveryTargetCalls === 1 &&
+    recoveryDry.skippedTargets === 1 &&
+    recoveredEvents === 1 &&
+    recoveryProcessor.health.processBudgetTripped === false,
+  "live frame batch can auto-recover after a bounded dry budget window"
 );
 
 console.log("Live effect rack scheduler smoke checks passed.");
