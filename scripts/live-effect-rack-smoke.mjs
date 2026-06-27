@@ -19,6 +19,7 @@ class FakeLiveClient {
     this.processed = [];
     this.binaryProcessed = [];
     this.failProcessing = false;
+    this.processingDelayMs = 0;
     this.renderDurationMs = 0.5;
     this.renderBudgetMs = 2.667;
     this.renderBudgetExceeded = false;
@@ -49,6 +50,9 @@ class FakeLiveClient {
 
   async processAudioBlock(request) {
     this.processed.push(request);
+    if (this.processingDelayMs > 0) {
+      await delay(this.processingDelayMs);
+    }
     if (this.failProcessing) {
       throw new Error("plugin worker crashed");
     }
@@ -185,6 +189,22 @@ const pressureRecovered = await pressureRack.processBlock({ blockId: 11, channel
 assert(pressureRecovered.bypassed === false && pressureRack.health.renderBudgetMisses === 0, "recovered render pressure rack resumes wet processing");
 await pressureRack.destroy();
 
+const timeoutRack = await SoundBridgeLiveEffectRack.create({
+  client,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processTimeoutMs: 1
+});
+client.processingDelayMs = 20;
+const timedOut = await timeoutRack.processBlock({ blockId: 12, channels: inputChannels });
+assert(timedOut.bypassed === true && timedOut.healthy === false, "live rack fails dry when processBlock exceeds its timeout");
+assert(timeoutRack.health.unhealthyReason === "process-timeout", "live rack records process timeout as its health reason");
+const afterTimeout = await timeoutRack.processBlock({ blockId: 13, channels: inputChannels });
+assert(afterTimeout.bypassed === true && timeoutRack.health.healthy === false, "process timeout does not auto-recover");
+client.processingDelayMs = 0;
+await timeoutRack.destroy();
+
 const jsonRack = await SoundBridgeLiveEffectRack.create({
   client,
   plugin,
@@ -214,4 +234,8 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

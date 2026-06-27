@@ -16,6 +16,7 @@ export interface LiveEffectRackOptions {
   inputChannels?: number;
   outputChannels?: number;
   audioTransport?: "binary" | "json";
+  processTimeoutMs?: number;
   maxConsecutiveRenderBudgetMisses?: number;
   renderBudgetRecoveryBlocks?: number;
 }
@@ -46,9 +47,10 @@ export interface LiveEffectRackHealth {
   lastRenderDurationMs?: number;
   lastRenderBudgetMs?: number;
   renderBudgetExceeded: boolean;
-  unhealthyReason?: "processing-error" | "render-budget-exceeded" | "destroyed";
+  unhealthyReason?: "processing-error" | "process-timeout" | "render-budget-exceeded" | "destroyed";
   recoveryDryBlocks: number;
   renderBudgetRecoveryBlocks: number;
+  processTimeoutMs: number;
 }
 
 export class SoundBridgeLiveEffectRack extends EventTarget {
@@ -59,6 +61,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
   readonly inputChannels: number;
   readonly outputChannels: number;
   readonly audioTransport: "binary" | "json";
+  readonly processTimeoutMs: number;
   readonly maxConsecutiveRenderBudgetMisses: number;
   readonly renderBudgetRecoveryBlocks: number;
 
@@ -82,6 +85,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.inputChannels = boundedChannelCount(options.inputChannels ?? options.plugin.inputs ?? 2);
     this.outputChannels = boundedChannelCount(options.outputChannels ?? options.plugin.outputs ?? this.inputChannels);
     this.audioTransport = options.audioTransport === "json" ? "json" : "binary";
+    this.processTimeoutMs = boundedLiveEffectNumber(options.processTimeoutMs, 0, 0, 60000);
     this.maxConsecutiveRenderBudgetMisses = boundedLiveEffectInteger(options.maxConsecutiveRenderBudgetMisses, 3, 0, 1024);
     this.renderBudgetRecoveryBlocks = boundedLiveEffectInteger(options.renderBudgetRecoveryBlocks, 0, 0, 4096);
   }
@@ -109,7 +113,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       renderBudgetExceeded: this.lastRenderBudgetExceeded,
       unhealthyReason: this.unhealthyReason,
       recoveryDryBlocks: this.recoveryDryBlocks,
-      renderBudgetRecoveryBlocks: this.renderBudgetRecoveryBlocks
+      renderBudgetRecoveryBlocks: this.renderBudgetRecoveryBlocks,
+      processTimeoutMs: this.processTimeoutMs
     };
   }
 
@@ -159,14 +164,15 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         transport: request.transport,
         timestamp: request.timestamp
       };
-      const response =
+      const processed =
         this.audioTransport === "binary"
-          ? await this.client.processAudioBlockBinary(processRequest)
-          : await this.client.processAudioBlock({
+          ? this.client.processAudioBlockBinary(processRequest)
+          : this.client.processAudioBlock({
               ...processRequest,
               channels: cloneChannels(request.channels),
               inputBuses: cloneBusBlocks(request.inputBuses)
             });
+      const response = await withLiveEffectTimeout(processed, this.processTimeoutMs);
       if (this.recordRenderBudget(response)) {
         const error = new Error("render_budget_exceeded");
         this.failClosed(error, "render-budget-exceeded");
@@ -174,7 +180,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       }
       return { ...response, bypassed: false, healthy: true };
     } catch (error) {
-      this.failClosed(error, "processing-error");
+      this.failClosed(error, liveEffectFailureReason(error));
       return this.dryResponse(request, error);
     }
   }
@@ -270,9 +276,41 @@ function boundedLiveEffectInteger(value: unknown, fallback: number, min: number,
   return Number.isFinite(integer) ? Math.max(min, Math.min(max, integer)) : fallback;
 }
 
+function boundedLiveEffectNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const number = Number(value ?? fallback);
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+}
+
 function boundedOptionalNumber(value: unknown, min: number, max: number): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : undefined;
+}
+
+async function withLiveEffectTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  if (timeoutMs <= 0) {
+    return promise;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(liveEffectTimeoutError()), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+function liveEffectTimeoutError(): Error {
+  const error = new Error("process_block_timeout");
+  error.name = "SoundBridgeLiveEffectTimeout";
+  return error;
+}
+
+function liveEffectFailureReason(error: unknown): LiveEffectRackHealth["unhealthyReason"] {
+  return error instanceof Error && error.name === "SoundBridgeLiveEffectTimeout" ? "process-timeout" : "processing-error";
 }
 
 function cloneChannels(channels: ArrayLike<number>[]): number[][] {
