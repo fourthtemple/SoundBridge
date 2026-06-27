@@ -5,6 +5,7 @@ import type {
   LiveEffectRackCalibrationOptions,
   LiveEffectRackPolicyOptions
 } from "./live-effect-rack-policy";
+import type { LiveEffectRackChainHealth } from "./live-effect-rack-chain";
 
 const LIVE_EFFECT_CALIBRATION_WINDOW_SAMPLES = 256;
 
@@ -13,6 +14,9 @@ export interface LiveEffectRackCalibrationHealthSample {
   lastRenderDurationMs?: number;
   responseJitterBlocks?: number;
   lastResponseDeadlineLeadBlocks?: number;
+  latencySamples?: number;
+  pluginLatencySamples?: number;
+  dryOutputBlocks?: number;
   droppedInputBlocks?: number;
   staleInputBlocks?: number;
   staleOutputBlocks?: number;
@@ -40,8 +44,14 @@ interface LiveEffectRackCalibrationPressureCounters {
   droppedInputBlocks: number;
   staleInputBlocks: number;
   staleOutputBlocks: number;
+  dryOutputBlocks: number;
   responseDeadlineMisses: number;
   renderTimeouts: number;
+}
+
+export interface LiveEffectRackChainCalibrationHealthSample
+  extends Pick<LiveEffectRackChainHealth, "lastProcessDurationMs" | "latencySamples"> {
+  lastDryReason?: unknown;
 }
 
 export class LiveEffectRackCalibrationWindow {
@@ -54,9 +64,11 @@ export class LiveEffectRackCalibrationWindow {
   private droppedInputBlocks = 0;
   private staleInputBlocks = 0;
   private staleOutputBlocks = 0;
+  private dryOutputBlocks = 0;
   private responseDeadlineMisses = 0;
   private renderTimeouts = 0;
   private pressureBaseline?: LiveEffectRackCalibrationPressureCounters;
+  private pluginLatencySamples?: number;
   private droppedSamples = 0;
 
   constructor(options: LiveEffectRackCalibrationWindowOptions) {
@@ -71,6 +83,7 @@ export class LiveEffectRackCalibrationWindow {
     const renderDuration = boundedOptionalNumber(health.lastRenderDurationMs, 0, 60000);
     const responseJitter = boundedOptionalNumber(health.responseJitterBlocks, 0, 64);
     const deadlineLead = boundedOptionalNumber(health.lastResponseDeadlineLeadBlocks, -64, 64);
+    this.recordLatency(health);
     if (processDuration !== undefined) { dropped = this.append(this.processDurationsMs, processDuration) || dropped; accepted = true; }
     if (renderDuration !== undefined) { dropped = this.append(this.renderDurationsMs, renderDuration) || dropped; accepted = true; }
     if (responseJitter !== undefined) { dropped = this.append(this.responseJitterBlocks, responseJitter) || dropped; accepted = true; }
@@ -88,9 +101,11 @@ export class LiveEffectRackCalibrationWindow {
     this.droppedInputBlocks = 0;
     this.staleInputBlocks = 0;
     this.staleOutputBlocks = 0;
+    this.dryOutputBlocks = 0;
     this.responseDeadlineMisses = 0;
     this.renderTimeouts = 0;
     this.pressureBaseline = undefined;
+    this.pluginLatencySamples = undefined;
     this.droppedSamples = 0;
   }
 
@@ -107,6 +122,7 @@ export class LiveEffectRackCalibrationWindow {
   calibrate(): LiveEffectRackCalibration {
     const options: LiveEffectRackCalibrationOptions = {
       ...this.options,
+      pluginLatencySamples: this.pluginLatencySamples ?? this.options.pluginLatencySamples,
       processDurationsMs: this.processDurationsMs,
       renderDurationsMs: this.renderDurationsMs,
       responseJitterBlocks: this.responseJitterBlocks,
@@ -114,6 +130,7 @@ export class LiveEffectRackCalibrationWindow {
       droppedInputBlocks: this.droppedInputBlocks,
       staleInputBlocks: this.staleInputBlocks,
       staleOutputBlocks: this.staleOutputBlocks,
+      dryOutputBlocks: this.dryOutputBlocks,
       responseDeadlineMisses: this.responseDeadlineMisses,
       renderTimeouts: this.renderTimeouts
     };
@@ -144,8 +161,20 @@ export class LiveEffectRackCalibrationWindow {
     this.droppedInputBlocks = Math.max(this.droppedInputBlocks, pressureCounterDelta(counters.droppedInputBlocks, this.pressureBaseline.droppedInputBlocks));
     this.staleInputBlocks = Math.max(this.staleInputBlocks, pressureCounterDelta(counters.staleInputBlocks, this.pressureBaseline.staleInputBlocks));
     this.staleOutputBlocks = Math.max(this.staleOutputBlocks, pressureCounterDelta(counters.staleOutputBlocks, this.pressureBaseline.staleOutputBlocks));
+    this.dryOutputBlocks = Math.max(this.dryOutputBlocks, pressureCounterDelta(counters.dryOutputBlocks, this.pressureBaseline.dryOutputBlocks));
     this.responseDeadlineMisses = Math.max(this.responseDeadlineMisses, pressureCounterDelta(counters.responseDeadlineMisses, this.pressureBaseline.responseDeadlineMisses));
     this.renderTimeouts = Math.max(this.renderTimeouts, pressureCounterDelta(counters.renderTimeouts, this.pressureBaseline.renderTimeouts));
+  }
+
+  private recordLatency(health: LiveEffectRackCalibrationHealthSample): void {
+    const pluginLatencySamples = boundedOptionalNumber(
+      health.pluginLatencySamples ?? health.latencySamples,
+      0,
+      Number.MAX_SAFE_INTEGER
+    );
+    if (pluginLatencySamples !== undefined) {
+      this.pluginLatencySamples = Math.floor(pluginLatencySamples);
+    }
   }
 
   private pressureCounters(health: LiveEffectRackCalibrationHealthSample): LiveEffectRackCalibrationPressureCounters {
@@ -153,14 +182,62 @@ export class LiveEffectRackCalibrationWindow {
       droppedInputBlocks: boundedLiveEffectInteger(health.droppedInputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
       staleInputBlocks: boundedLiveEffectInteger(health.staleInputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
       staleOutputBlocks: boundedLiveEffectInteger(health.staleOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
+      dryOutputBlocks: boundedLiveEffectInteger(health.dryOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
       responseDeadlineMisses: boundedLiveEffectInteger(health.responseDeadlineMisses, 0, 0, Number.MAX_SAFE_INTEGER),
       renderTimeouts: boundedLiveEffectInteger(health.renderTimeouts, 0, 0, Number.MAX_SAFE_INTEGER)
     };
   }
 }
 
+export class LiveEffectRackChainCalibrationWindow {
+  private readonly window: LiveEffectRackCalibrationWindow;
+  private dryOutputBlocks = 0;
+
+  constructor(options: LiveEffectRackCalibrationWindowOptions) {
+    this.window = new LiveEffectRackCalibrationWindow(options);
+  }
+
+  get maxSamples(): number {
+    return this.window.maxSamples;
+  }
+
+  record(health: LiveEffectRackChainCalibrationHealthSample): LiveEffectRackCalibrationWindowSnapshot {
+    if (health.lastDryReason !== undefined) {
+      this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
+    }
+    return this.window.record({
+      lastProcessDurationMs: health.lastProcessDurationMs,
+      latencySamples: health.latencySamples,
+      dryOutputBlocks: this.dryOutputBlocks
+    });
+  }
+
+  reset(): void {
+    this.dryOutputBlocks = 0;
+    this.window.reset();
+  }
+
+  snapshot(): LiveEffectRackCalibrationWindowSnapshot {
+    return this.window.snapshot();
+  }
+
+  calibrate(): LiveEffectRackCalibration {
+    return this.window.calibrate();
+  }
+
+  recommendedPolicyOptions(overrides: Partial<LiveEffectRackPolicyOptions> = {}): LiveEffectRackPolicyOptions {
+    return this.window.recommendedPolicyOptions(overrides);
+  }
+}
+
 export function createLiveEffectRackCalibrationWindow(options: LiveEffectRackCalibrationWindowOptions): LiveEffectRackCalibrationWindow {
   return new LiveEffectRackCalibrationWindow(options);
+}
+
+export function createLiveEffectRackChainCalibrationWindow(
+  options: LiveEffectRackCalibrationWindowOptions
+): LiveEffectRackChainCalibrationWindow {
+  return new LiveEffectRackChainCalibrationWindow(options);
 }
 
 export function liveEffectRackPolicyOptionsFromCalibration(

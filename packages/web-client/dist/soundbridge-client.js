@@ -1728,7 +1728,7 @@ function exceedsLiveEffectPolicy(value, policyValue) {
 }
 
 function liveEffectDropPressure(options) {
-  return [options.droppedInputBlocks, options.staleInputBlocks, options.staleOutputBlocks]
+  return [options.droppedInputBlocks, options.staleInputBlocks, options.staleOutputBlocks, options.dryOutputBlocks]
     .some((value) => boundedLiveEffectCalibrationCounter(value) > 0);
 }
 
@@ -1745,9 +1745,11 @@ export class LiveEffectRackCalibrationWindow {
     this.droppedInputBlocks = 0;
     this.staleInputBlocks = 0;
     this.staleOutputBlocks = 0;
+    this.dryOutputBlocks = 0;
     this.responseDeadlineMisses = 0;
     this.renderTimeouts = 0;
     this.pressureBaseline = void 0;
+    this.pluginLatencySamples = void 0;
     this.droppedSamples = 0;
     this.options = { ...options };
     this.maxSamples = boundedLiveEffectInteger(options.maxSamples, LIVE_EFFECT_CALIBRATION_SAMPLES, 1, LIVE_EFFECT_CALIBRATION_SAMPLES);
@@ -1760,6 +1762,7 @@ export class LiveEffectRackCalibrationWindow {
     const renderDuration = boundedLiveEffectOptionalNumber(health.lastRenderDurationMs, 0, 60000);
     const responseJitter = boundedLiveEffectOptionalNumber(health.responseJitterBlocks, 0, 64);
     const deadlineLead = boundedLiveEffectOptionalNumber(health.lastResponseDeadlineLeadBlocks, -64, 64);
+    this.recordLatency(health);
     if (processDuration !== void 0) { dropped = this.append(this.processDurationsMs, processDuration) || dropped; accepted = true; }
     if (renderDuration !== void 0) { dropped = this.append(this.renderDurationsMs, renderDuration) || dropped; accepted = true; }
     if (responseJitter !== void 0) { dropped = this.append(this.responseJitterBlocks, responseJitter) || dropped; accepted = true; }
@@ -1777,9 +1780,11 @@ export class LiveEffectRackCalibrationWindow {
     this.droppedInputBlocks = 0;
     this.staleInputBlocks = 0;
     this.staleOutputBlocks = 0;
+    this.dryOutputBlocks = 0;
     this.responseDeadlineMisses = 0;
     this.renderTimeouts = 0;
     this.pressureBaseline = void 0;
+    this.pluginLatencySamples = void 0;
     this.droppedSamples = 0;
   }
 
@@ -1796,6 +1801,7 @@ export class LiveEffectRackCalibrationWindow {
   calibrate() {
     return calibrateLiveEffectRackPolicy({
       ...this.options,
+      pluginLatencySamples: this.pluginLatencySamples ?? this.options.pluginLatencySamples,
       processDurationsMs: this.processDurationsMs,
       renderDurationsMs: this.renderDurationsMs,
       responseJitterBlocks: this.responseJitterBlocks,
@@ -1803,6 +1809,7 @@ export class LiveEffectRackCalibrationWindow {
       droppedInputBlocks: this.droppedInputBlocks,
       staleInputBlocks: this.staleInputBlocks,
       staleOutputBlocks: this.staleOutputBlocks,
+      dryOutputBlocks: this.dryOutputBlocks,
       responseDeadlineMisses: this.responseDeadlineMisses,
       renderTimeouts: this.renderTimeouts
     });
@@ -1832,8 +1839,16 @@ export class LiveEffectRackCalibrationWindow {
     this.droppedInputBlocks = Math.max(this.droppedInputBlocks, liveEffectPressureCounterDelta(counters.droppedInputBlocks, this.pressureBaseline.droppedInputBlocks));
     this.staleInputBlocks = Math.max(this.staleInputBlocks, liveEffectPressureCounterDelta(counters.staleInputBlocks, this.pressureBaseline.staleInputBlocks));
     this.staleOutputBlocks = Math.max(this.staleOutputBlocks, liveEffectPressureCounterDelta(counters.staleOutputBlocks, this.pressureBaseline.staleOutputBlocks));
+    this.dryOutputBlocks = Math.max(this.dryOutputBlocks, liveEffectPressureCounterDelta(counters.dryOutputBlocks, this.pressureBaseline.dryOutputBlocks));
     this.responseDeadlineMisses = Math.max(this.responseDeadlineMisses, liveEffectPressureCounterDelta(counters.responseDeadlineMisses, this.pressureBaseline.responseDeadlineMisses));
     this.renderTimeouts = Math.max(this.renderTimeouts, liveEffectPressureCounterDelta(counters.renderTimeouts, this.pressureBaseline.renderTimeouts));
+  }
+
+  recordLatency(health) {
+    const pluginLatencySamples = boundedLiveEffectOptionalNumber(health.pluginLatencySamples ?? health.latencySamples, 0, Number.MAX_SAFE_INTEGER);
+    if (pluginLatencySamples !== void 0) {
+      this.pluginLatencySamples = Math.floor(pluginLatencySamples);
+    }
   }
 
   pressureCounters(health) {
@@ -1841,14 +1856,58 @@ export class LiveEffectRackCalibrationWindow {
       droppedInputBlocks: boundedLiveEffectInteger(health.droppedInputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
       staleInputBlocks: boundedLiveEffectInteger(health.staleInputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
       staleOutputBlocks: boundedLiveEffectInteger(health.staleOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
+      dryOutputBlocks: boundedLiveEffectInteger(health.dryOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER),
       responseDeadlineMisses: boundedLiveEffectInteger(health.responseDeadlineMisses, 0, 0, Number.MAX_SAFE_INTEGER),
       renderTimeouts: boundedLiveEffectInteger(health.renderTimeouts, 0, 0, Number.MAX_SAFE_INTEGER)
     };
   }
 }
 
+export class LiveEffectRackChainCalibrationWindow {
+  constructor(options) {
+    this.dryOutputBlocks = 0;
+    this.window = new LiveEffectRackCalibrationWindow(options);
+  }
+
+  get maxSamples() {
+    return this.window.maxSamples;
+  }
+
+  record(health) {
+    if (health.lastDryReason !== void 0) {
+      this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
+    }
+    return this.window.record({
+      lastProcessDurationMs: health.lastProcessDurationMs,
+      latencySamples: health.latencySamples,
+      dryOutputBlocks: this.dryOutputBlocks
+    });
+  }
+
+  reset() {
+    this.dryOutputBlocks = 0;
+    this.window.reset();
+  }
+
+  snapshot() {
+    return this.window.snapshot();
+  }
+
+  calibrate() {
+    return this.window.calibrate();
+  }
+
+  recommendedPolicyOptions(overrides = {}) {
+    return this.window.recommendedPolicyOptions(overrides);
+  }
+}
+
 export function createLiveEffectRackCalibrationWindow(options) {
   return new LiveEffectRackCalibrationWindow(options);
+}
+
+export function createLiveEffectRackChainCalibrationWindow(options) {
+  return new LiveEffectRackChainCalibrationWindow(options);
 }
 
 export function liveEffectRackPolicyOptionsFromCalibration(calibration, overrides = {}) {

@@ -47,6 +47,7 @@ export interface LiveEffectRackCalibrationOptions extends LiveEffectRackPolicyOp
   droppedInputBlocks?: number;
   staleInputBlocks?: number;
   staleOutputBlocks?: number;
+  dryOutputBlocks?: number;
   responseDeadlineMisses?: number;
   renderTimeouts?: number;
   safetyMarginBlocks?: number;
@@ -272,7 +273,7 @@ function exceedsPolicy(value: number, policyValue: number): boolean {
 }
 
 function liveEffectDropPressure(options: LiveEffectRackCalibrationOptions): boolean {
-  return [options.droppedInputBlocks, options.staleInputBlocks, options.staleOutputBlocks]
+  return [options.droppedInputBlocks, options.staleInputBlocks, options.staleOutputBlocks, options.dryOutputBlocks]
     .some((value) => boundedCalibrationCounter(value) > 0);
 }
 

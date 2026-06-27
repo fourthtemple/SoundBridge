@@ -1,4 +1,6 @@
 import {
+  createLiveEffectRackChain,
+  createLiveEffectRackChainCalibrationWindow,
   createLiveEffectRackCalibrationWindow,
   liveEffectRackPolicyOptionsFromCalibration,
   refreshLiveEffectRackLatencyFromCalibration
@@ -76,6 +78,7 @@ const deltaSnapshot = baselineWindow.record({
   droppedInputBlocks: 8,
   staleInputBlocks: 3,
   staleOutputBlocks: 2,
+  dryOutputBlocks: 1,
   responseDeadlineMisses: 5,
   renderTimeouts: 2
 });
@@ -163,6 +166,59 @@ const refreshed = await refreshLiveEffectRackLatencyFromCalibration({
 }, stressedSnapshot.calibration);
 assert(latencyRefreshes.length === 1 && latencyRefreshes[0] === 640, "live rack calibration helper refreshes rack latency with recommended transport latency");
 assert(refreshed.transportLatencySamples === 640, "live rack calibration helper returns the rack latency refresh result");
+
+let chainNowMs = 0;
+const chainStage = {
+  durationMs: 1,
+  latencySamples: 256,
+  async processBlock(request) {
+    chainNowMs += this.durationMs;
+    return {
+      blockId: request.blockId,
+      channels: request.channels,
+      latencySamples: this.latencySamples,
+      renderEngine: "chain-calibration-stage",
+      bypassed: false,
+      healthy: true
+    };
+  }
+};
+const chain = createLiveEffectRackChain({
+  stages: [chainStage],
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetMs: 2,
+  transitionFadeSamples: 64,
+  nowMs: () => chainNowMs
+});
+const chainWindow = createLiveEffectRackChainCalibrationWindow({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetMs: 5,
+  processTimeoutMs: 12,
+  transportLatencySamples: 128,
+  safetyMarginBlocks: 1
+});
+await chain.processBlock({ blockId: 20, channels: [[1, 1]], sampleRate: 48000 });
+const chainReady = chainWindow.record(chain.health);
+assert(chainReady.samples === 1, "live chain calibration window records chain health");
+assert(chainReady.calibration.policy.pluginLatencySamples === 256, "live chain calibration window carries aggregate chain latency");
+assert(chainReady.calibration.realtimeReady === true, "live chain calibration window accepts ready chain measurements");
+
+chainStage.durationMs = 6;
+await chain.processBlock({ blockId: 21, channels: [[1, 1]], sampleRate: 48000 });
+const chainStressed = chainWindow.record(chain.health);
+assert(chainStressed.calibration.warnings.includes("process-over-budget"), "live chain calibration window detects chain budget pressure");
+assert(chainStressed.recommendedPolicyOptions.processBudgetMs === 8.667, "live chain calibration window recommends a chain process budget");
+
+chain.setBypassed(true);
+await chain.processBlock({ blockId: 22, channels: [[1, 1]], sampleRate: 48000 });
+const chainDry = chainWindow.record(chain.health);
+assert(chainDry.calibration.warnings.includes("dry-output-pressure"), "live chain calibration window counts chain dry output after baseline");
+
+chainWindow.reset();
+const chainReset = chainWindow.snapshot();
+assert(chainReset.samples === 0 && chainWindow.maxSamples === 256, "live chain calibration window resets its inner sample window");
 
 stressedWindow.reset();
 const resetSnapshot = stressedWindow.snapshot();
