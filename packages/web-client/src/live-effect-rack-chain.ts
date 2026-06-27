@@ -1,6 +1,6 @@
 import type { LiveEffectBlockRequest, LiveEffectBlockResponse, LiveEffectRackHealth } from "./live-effect-rack";
 import { boundedLiveEffectChannels, dryChannels, outputTail, transitionOutputChannels, wetMixedChannels } from "./live-effect-rack-audio";
-import { boundedLatencySamples, boundedLiveEffectInteger, boundedLiveEffectNumber, boundedOptionalNumber, liveEffectNowMs } from "./live-effect-rack-metrics";
+import { boundedLatencySamples, boundedLiveEffectInteger, boundedLiveEffectNumber, boundedOptionalNumber, liveEffectLatencyMilliseconds, liveEffectNowMs } from "./live-effect-rack-metrics";
 import type { LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
 
 const LIVE_EFFECT_CHAIN_MAX_STAGES = 16;
@@ -14,6 +14,7 @@ export interface LiveEffectRackChainOptions {
   stages: ArrayLike<LiveEffectRackChainStage>;
   bypassed?: boolean;
   wetMix?: number;
+  sampleRate?: number;
   maxStages?: number;
   outputChannels?: number;
   maxBlockSize?: number;
@@ -56,6 +57,12 @@ export interface LiveEffectRackChainResponse extends LiveEffectBlockResponse {
 export interface LiveEffectRackChainHealth {
   bypassed: boolean;
   wetMix: number;
+  sampleRate: number;
+  latencySamples: number;
+  latencyMs: number;
+  tailSamples: number;
+  tailMs: number;
+  infiniteTail: boolean;
   healthy: boolean;
   stageCount: number;
   processBudgetMs: number;
@@ -82,6 +89,10 @@ export class LiveEffectRackChain extends EventTarget {
   private readonly nowMs: () => number;
   private bypassed: boolean;
   private wetMix: number;
+  private sampleRate: number;
+  private latencySamples = 0;
+  private tailSamples = 0;
+  private infiniteTail = false;
   private processBudgetMisses = 0;
   private recoveryDryBlocks = 0;
   private lastError?: unknown;
@@ -108,12 +119,19 @@ export class LiveEffectRackChain extends EventTarget {
     this.nowMs = typeof options.nowMs === "function" ? options.nowMs : liveEffectNowMs;
     this.bypassed = options.bypassed === true;
     this.wetMix = boundedWetMix(options.wetMix, 1);
+    this.sampleRate = boundedLiveEffectInteger(options.sampleRate, 48000, 1, 384000);
   }
 
   get health(): LiveEffectRackChainHealth {
     return {
       bypassed: this.bypassed,
       wetMix: this.wetMix,
+      sampleRate: this.sampleRate,
+      latencySamples: this.latencySamples,
+      latencyMs: liveEffectLatencyMilliseconds(this.latencySamples, this.sampleRate),
+      tailSamples: this.tailSamples,
+      tailMs: liveEffectLatencyMilliseconds(this.tailSamples, this.sampleRate),
+      infiniteTail: this.infiniteTail,
       healthy: this.unhealthyReason === undefined,
       stageCount: this.stages.length,
       processBudgetMs: this.processBudgetMs,
@@ -258,7 +276,7 @@ export class LiveEffectRackChain extends EventTarget {
     healthy = this.unhealthyReason === undefined
   ): LiveEffectRackChainResponse {
     const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
-    return this.finishOutputResponse({
+    const response = this.finishOutputResponse({
       blockId: request.blockId,
       channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
       latencySamples: 0,
@@ -278,6 +296,7 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
     }, outputChannels);
+    return this.recordChainLatency(response, request);
   }
 
   private chainOutputChannels(channels: ArrayLike<number>[]): number {
@@ -306,7 +325,7 @@ export class LiveEffectRackChain extends EventTarget {
       this.lastError = error;
       this.unhealthyReason = "process-budget-exceeded";
       this.recoveryDryBlocks = 0;
-      const finalResponse = this.finishOutputResponse({
+      const finalResponse = this.recordChainLatency(this.finishOutputResponse({
         ...response,
         channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
         latencySamples: 0,
@@ -322,11 +341,11 @@ export class LiveEffectRackChain extends EventTarget {
         chainProcessBudgetMisses: this.processBudgetMisses,
         chainProcessBudgetTripped,
         chainUnhealthyReason: this.unhealthyReason
-      }, outputChannels);
+      }, outputChannels), request);
       this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
       return finalResponse;
     }
-    const finalResponse = this.finishOutputResponse({
+    const finalResponse = this.recordChainLatency(this.finishOutputResponse({
       ...response,
       channels: wetMixedChannels(response.channels, request.channels, outputChannels, wetMix, this.maxBlockSize),
       healthy: response.healthy !== false,
@@ -337,7 +356,7 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
-    }, outputChannels);
+    }, outputChannels), request);
     this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
     return finalResponse;
   }
@@ -349,6 +368,28 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastOutputTail = outputTail(channels, outputChannels);
     this.lastOutputPath = outputPath;
     return channels === response.channels ? response : { ...response, channels };
+  }
+
+  private recordChainLatency(response: LiveEffectRackChainResponse, request: LiveEffectBlockRequest): LiveEffectRackChainResponse {
+    const sampleRate = boundedLiveEffectInteger(request.sampleRate, this.sampleRate, 1, 384000);
+    const latencySamples = boundedLatencySamples(response.latencySamples, this.latencySamples);
+    const tailSamples = boundedLatencySamples(response.tailSamples, this.tailSamples);
+    const infiniteTail = response.infiniteTail === true;
+    if (
+      sampleRate === this.sampleRate &&
+      latencySamples === this.latencySamples &&
+      tailSamples === this.tailSamples &&
+      infiniteTail === this.infiniteTail
+    ) {
+      return response;
+    }
+    this.sampleRate = sampleRate;
+    this.latencySamples = latencySamples;
+    this.tailSamples = tailSamples;
+    this.infiniteTail = infiniteTail;
+    this.dispatchEvent(new CustomEvent("latencychange", { detail: this.health }));
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+    return response;
   }
 
   private dispatchChainPressureEvents(

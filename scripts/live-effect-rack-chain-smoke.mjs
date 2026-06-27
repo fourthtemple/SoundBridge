@@ -16,12 +16,13 @@ function near(value, expected, tolerance = 0.000001) {
 let fakeNowMs = 0;
 
 class FakeStage {
-  constructor(name, gain, latencySamples = 0, tailSamples = 0, durationMs = 0) {
+  constructor(name, gain, latencySamples = 0, tailSamples = 0, durationMs = 0, infiniteTail = false) {
     this.name = name;
     this.gain = gain;
     this.latencySamples = latencySamples;
     this.tailSamples = tailSamples;
     this.durationMs = durationMs;
+    this.infiniteTail = infiniteTail;
     this.requests = [];
     this.health = { instanceId: `inst-${name}` };
   }
@@ -34,7 +35,7 @@ class FakeStage {
       channels: request.channels.map((channel) => Array.from(channel, (sample) => sample * this.gain)),
       latencySamples: this.latencySamples,
       tailSamples: this.tailSamples,
-      infiniteTail: false,
+      infiniteTail: this.infiniteTail,
       renderEngine: `stage-${this.name}`,
       bypassed: false,
       healthy: true
@@ -62,6 +63,14 @@ const response = await chain.processBlock(
 
 assert(response.channels[0][0] === 1 && response.channels[1][3] === 2, "live rack chain pipes stage output into later stages");
 assert(response.latencySamples === 17 && response.tailSamples === 10, "live rack chain accumulates bounded latency and tail");
+assert(
+  chain.health.latencySamples === 17 &&
+    chain.health.latencyMs === 0.354 &&
+    chain.health.tailSamples === 10 &&
+    chain.health.tailMs === 0.208 &&
+    chain.health.infiniteTail === false,
+  "live rack chain exposes aggregate latency and tail health"
+);
 assert(response.stageCount === 2 && response.processedStages === 2, "live rack chain reports processed stages");
 assert(response.stageResults[0].instanceId === "inst-left", "live rack chain reports stage instance ids");
 assert(left.requests[0].wetMix === 0.25 && right.requests[0].wetMix === 0.75, "live rack chain applies per-stage wet mix overrides");
@@ -120,6 +129,48 @@ assert(
     wetOverride.channels[0][1] === 20 &&
     mixStage.requests[3].wetMix === 0.33,
   "live rack chain separates whole-chain wet mix overrides from per-stage wet mix overrides"
+);
+
+const latencyStage = new FakeStage("chain-latency", 1, 24, 96);
+const latencyChain = createLiveEffectRackChain({
+  stages: [latencyStage],
+  outputChannels: 1,
+  maxBlockSize: 2,
+  sampleRate: 48000
+});
+let latencyEvents = 0;
+let latencyHealthEvents = 0;
+let lastLatencyHealth;
+latencyChain.addEventListener("latencychange", (event) => {
+  latencyEvents += 1;
+  lastLatencyHealth = event.detail;
+});
+latencyChain.addEventListener("healthchange", () => {
+  latencyHealthEvents += 1;
+});
+const latencyFirst = await latencyChain.processBlock({ blockId: 44, channels: [[1, 1]], sampleRate: 48000 });
+const latencyRepeat = await latencyChain.processBlock({ blockId: 45, channels: [[1, 1]], sampleRate: 48000 });
+latencyStage.latencySamples = 48;
+latencyStage.tailSamples = 120;
+latencyStage.infiniteTail = true;
+const latencyChanged = await latencyChain.processBlock({ blockId: 46, channels: [[1, 1]], sampleRate: 96000 });
+assert(
+  latencyFirst.latencySamples === 24 &&
+    latencyRepeat.latencySamples === 24 &&
+    latencyChanged.latencySamples === 48 &&
+    latencyEvents === 2 &&
+    latencyHealthEvents === 2,
+  "live rack chain emits latencychange only when aggregate latency health changes"
+);
+assert(
+  latencyChain.health.sampleRate === 96000 &&
+    latencyChain.health.latencySamples === 48 &&
+    latencyChain.health.latencyMs === 0.5 &&
+    latencyChain.health.tailSamples === 120 &&
+    latencyChain.health.tailMs === 1.25 &&
+    latencyChain.health.infiniteTail === true &&
+    lastLatencyHealth.infiniteTail === true,
+  "live rack chain tracks sample-rate-aware aggregate latency and infinite tail"
 );
 
 fakeNowMs = 0;
