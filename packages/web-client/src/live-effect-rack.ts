@@ -321,7 +321,6 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.bypassed = bypassed;
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
-
   setWetMix(wetMix: number): void {
     const bounded = boundedWetMix(wetMix, this.wetMix);
     if (bounded === this.wetMix) {
@@ -735,7 +734,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
 
   private finishResponse(response: LiveEffectBlockResponse, dryInput?: ArrayLike<number>[], wetMixOverride?: number): LiveEffectBlockResponse {
     const outputPath = response.bypassed ? "dry" : "wet";
-    this.lastDryReason = response.bypassed ? liveEffectDryReason(response.renderEngine, this.unhealthyReason) : undefined;
+    const dryReason = response.bypassed ? liveEffectDryReason(response.renderEngine, this.unhealthyReason) : undefined;
+    if (this.lastDryReason !== dryReason) { this.lastDryReason = dryReason; this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health })); }
     const mixed = response.bypassed ? response.channels : wetMixedChannels(response.channels, dryInput, this.outputChannels, boundedWetMix(wetMixOverride, this.wetMix));
     const channels = transitionOutputChannels(mixed, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = outputTail(channels, this.outputChannels);

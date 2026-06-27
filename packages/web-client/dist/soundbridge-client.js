@@ -1869,7 +1869,11 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
 
   finishResponse(response, dryInput, wetMixOverride) {
     const outputPath = response.bypassed ? "dry" : "wet";
-    this.lastDryReason = response.bypassed ? liveEffectDryReason(response.renderEngine, this.unhealthyReason) : void 0;
+    const dryReason = response.bypassed ? liveEffectDryReason(response.renderEngine, this.unhealthyReason) : void 0;
+    if (this.lastDryReason !== dryReason) {
+      this.lastDryReason = dryReason;
+      this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+    }
     const mixed = response.bypassed ? response.channels : wetMixedLiveEffectChannels(response.channels, dryInput, this.outputChannels, boundedLiveEffectWetMix(wetMixOverride, this.wetMix));
     const channels = transitionLiveEffectOutputChannels(mixed, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = liveEffectOutputTail(channels, this.outputChannels);

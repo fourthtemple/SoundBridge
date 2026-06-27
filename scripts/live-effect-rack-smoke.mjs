@@ -494,20 +494,19 @@ const backpressureRack = await SoundBridgeLiveEffectRack.create({
   maxBlockSize: 128,
   maxInFlightBlocks: 1
 });
-let backpressureEvents = 0;
-backpressureRack.addEventListener("input-backpressure", () => {
-  backpressureEvents += 1;
-});
+const backpressureEvents = { input: 0, health: 0 };
+backpressureRack.addEventListener("input-backpressure", () => { backpressureEvents.input += 1; });
+backpressureRack.addEventListener("healthchange", () => { backpressureEvents.health += 1; });
 client.processingDelayMs = 20;
 const slowBlock = backpressureRack.processBlock({ blockId: 12, channels: inputChannels });
 const backpressured = await backpressureRack.processBlock({ blockId: 13, channels: inputChannels });
 assert(backpressured.bypassed === true && backpressured.healthy === true, "live rack returns dry when its in-flight limit is full");
 assert(backpressured.renderEngine === "dry-backpressure", "in-flight pressure reports a dry backpressure render engine");
 assert(backpressureRack.health.droppedInputBlocks === 1 && backpressureRack.health.inFlightBlocks === 1 && backpressureRack.health.lastDryReason === "backpressure", "live rack tracks in-flight pressure");
-assert(backpressureEvents === 1, "in-flight pressure emits a host-visible event");
+assert(backpressureEvents.input === 1 && backpressureEvents.health === 1, "in-flight pressure emits host-visible events");
 client.processingDelayMs = 0;
 const slowProcessed = await slowBlock;
-assert(slowProcessed.bypassed === false && backpressureRack.health.inFlightBlocks === 0 && backpressureRack.health.lastDryReason === undefined, "first slow block completes after backpressure drop");
+assert(slowProcessed.bypassed === false && backpressureRack.health.inFlightBlocks === 0 && backpressureRack.health.lastDryReason === undefined && backpressureEvents.health === 2, "first slow block completes after backpressure drop");
 await backpressureRack.destroy();
 
 const staleRack = await SoundBridgeLiveEffectRack.create({
