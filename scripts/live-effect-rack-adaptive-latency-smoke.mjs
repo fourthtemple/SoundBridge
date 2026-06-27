@@ -30,6 +30,9 @@ const controller = createLiveEffectRackAdaptiveLatencyController({
   minSamples: 2,
   cooldownBlocks: 2,
   maxLatencyIncreaseBlocks: 2,
+  latencyRecoveryBlocks: 2,
+  maxLatencyDecreaseBlocks: 1,
+  minTransportLatencyBlocks: 2,
   safetyMarginBlocks: 1
 });
 
@@ -52,8 +55,10 @@ const firstRaise = await controller.record({
   lastResponseDeadlineLeadBlocks: -1
 });
 assert(firstRaise.applied === true, "adaptive rack latency applies upward recommendations under jitter pressure");
+assert(firstRaise.appliedDirection === "increase", "adaptive rack latency reports upward changes");
 assert(firstRaise.targetTransportLatencySamples === 512, "adaptive rack latency caps one increase to the configured step");
 assert(firstRaise.cooldownBlocksRemaining === 2, "adaptive rack latency starts a bounded cooldown after applying");
+assert(firstRaise.stableBlocks === 0, "adaptive rack latency clears stable recovery blocks after pressure");
 assert(rack.refreshes.length === 1 && rack.refreshes[0] === 512, "adaptive rack latency refreshes the rack with the capped target");
 assert(firstRaise.refreshResult.transportLatencySamples === 512, "adaptive rack latency returns the refresh result");
 
@@ -65,6 +70,7 @@ const cooldown = await controller.record({
   lastResponseDeadlineLeadBlocks: -1
 });
 assert(cooldown.applied === false, "adaptive rack latency observes cooldown between increases");
+assert(cooldown.appliedDirection === "none", "adaptive rack latency reports no-op cooldown samples");
 assert(cooldown.cooldownBlocksRemaining === 1, "adaptive rack latency counts cooldown in recorded blocks");
 assert(rack.refreshes.length === 1, "adaptive rack latency does not refresh while cooling down");
 
@@ -76,6 +82,7 @@ const secondRaise = await controller.record({
   lastResponseDeadlineLeadBlocks: -1
 });
 assert(secondRaise.applied === true, "adaptive rack latency can apply again after cooldown");
+assert(secondRaise.appliedDirection === "increase", "adaptive rack latency reports repeated upward changes");
 assert(secondRaise.targetTransportLatencySamples === 768, "adaptive rack latency advances by one bounded step after cooldown");
 assert(rack.refreshes.length === 2 && rack.refreshes[1] === 768, "adaptive rack latency refreshes with the next bounded target");
 
@@ -88,5 +95,64 @@ const afterReset = await controller.record({
   lastResponseDeadlineLeadBlocks: -1
 });
 assert(afterReset.applied === false, "adaptive rack latency reset clears sample and cooldown state");
+
+controller.reset();
+const stableOne = await controller.record({
+  ...rack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1
+});
+assert(stableOne.applied === false, "adaptive rack latency waits for a stable recovery window");
+assert(stableOne.recoveryBlocksRemaining === 2, "adaptive rack latency reports recovery wait before enough samples");
+
+const stableTwo = await controller.record({
+  ...rack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1
+});
+assert(stableTwo.applied === false, "adaptive rack latency waits for enough stable recovery blocks");
+assert(stableTwo.stableBlocks === 1, "adaptive rack latency counts stable blocks after the minimum window");
+assert(stableTwo.recoveryBlocksRemaining === 1, "adaptive rack latency reports remaining stable recovery blocks");
+
+const firstRecovery = await controller.record({
+  ...rack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1
+});
+assert(firstRecovery.applied === true, "adaptive rack latency recovers downward after stable health");
+assert(firstRecovery.appliedDirection === "decrease", "adaptive rack latency reports downward recovery changes");
+assert(firstRecovery.targetTransportLatencySamples === 640, "adaptive rack latency recovers in bounded one-block steps");
+assert(rack.refreshes.length === 3 && rack.refreshes[2] === 640, "adaptive rack latency refreshes with the bounded recovery target");
+
+controller.reset();
+rack.health = { ...rack.health, transportLatencySamples: 256 };
+await controller.record({
+  ...rack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1
+});
+await controller.record({
+  ...rack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1
+});
+const floorRecovery = await controller.record({
+  ...rack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1
+});
+assert(floorRecovery.applied === false, "adaptive rack latency does not recover below the configured latency floor");
 
 console.log("Live effect rack adaptive latency smoke checks passed.");
