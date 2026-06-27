@@ -78,8 +78,9 @@ assert(timed.chainProcessBudgetMs === 12 && timed.chainProcessBudgetExceeded ===
 assert(timed.stageResults[0].durationMs === 4 && timed.stageResults[1].durationMs === 5, "live rack chain reports per-stage duration");
 
 fakeNowMs = 0;
+const pressureStage = new FakeStage("pressure", 4, 0, 0, 3);
 const pressureChain = createLiveEffectRackChain({
-  stages: [new FakeStage("pressure", 1, 0, 0, 3)],
+  stages: [pressureStage],
   outputChannels: 1,
   maxBlockSize: 2,
   processBudgetMs: 2,
@@ -90,8 +91,24 @@ const firstPressure = await pressureChain.processBlock({ blockId: 6, channels: [
 const secondPressure = await pressureChain.processBlock({ blockId: 7, channels: [[1, 1]], sampleRate: 48000 });
 assert(firstPressure.chainProcessBudgetExceeded === true && firstPressure.chainProcessBudgetMisses === 1, "live rack chain counts first chain budget miss");
 assert(firstPressure.healthy === true && firstPressure.chainProcessBudgetTripped === false, "live rack chain observes initial budget pressure before tripping");
+assert(firstPressure.channels[0][0] === 4, "live rack chain keeps the first over-budget block wet before tripping");
 assert(secondPressure.chainProcessBudgetMisses === 2 && secondPressure.chainProcessBudgetTripped === true, "live rack chain trips after bounded repeated misses");
-assert(secondPressure.healthy === false && secondPressure.error instanceof Error, "live rack chain marks repeated chain budget pressure unhealthy");
+assert(
+  secondPressure.bypassed === true &&
+    secondPressure.healthy === false &&
+    secondPressure.error instanceof Error &&
+    secondPressure.renderEngine === "chain-process-budget-exceeded" &&
+    secondPressure.chainUnhealthyReason === "process-budget-exceeded" &&
+    secondPressure.channels[0][0] === 1,
+  "live rack chain fails dry on repeated chain budget pressure"
+);
+const thirdPressure = await pressureChain.processBlock({ blockId: 8, channels: [[2, 2]], sampleRate: 48000 });
+assert(thirdPressure.bypassed === true && thirdPressure.channels[0][0] === 2, "tripped live rack chains stay dry");
+assert(pressureStage.requests.length === 2, "tripped live rack chains stop calling slow stages");
+assert(pressureChain.retry() === true, "live rack chain retry clears recoverable chain budget pressure");
+const retriedPressure = await pressureChain.processBlock({ blockId: 9, channels: [[1, 1]], sampleRate: 48000 });
+assert(retriedPressure.healthy === true && retriedPressure.channels[0][0] === 4, "retried live rack chains resume wet processing");
+assert(pressureChain.retry() === false, "live rack chain retry only succeeds for active recoverable pressure");
 
 const scheduler = createLiveEffectRackBlockScheduler({
   sampleRate: 48000,
@@ -112,7 +129,7 @@ const throwingStage = {
   }
 };
 const failingChain = createLiveEffectRackChain({ stages: [left, throwingStage, right], outputChannels: 2, maxBlockSize: 4 });
-const failed = await failingChain.processBlock({ blockId: 9, channels: [[1, 1], [2, 2]], sampleRate: 48000 });
+const failed = await failingChain.processBlock({ blockId: 10, channels: [[1, 1], [2, 2]], sampleRate: 48000 });
 assert(failed.healthy === false && failed.failedStageIndex === 1, "live rack chain reports the failing stage");
 assert(failed.processedStages === 2 && failed.stageResults[1].healthy === false, "live rack chain records the failed stage result");
 assert(failed.channels[0][0] === 2 && failed.channels[1][0] === 4, "live rack chain fails dry to last known audio");

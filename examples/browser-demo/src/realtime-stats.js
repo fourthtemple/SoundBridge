@@ -21,10 +21,12 @@ export function createRealtimeStats({ onTransportLatencySamples } = {}) {
     inputBufferAllocations: document.querySelector("#inputBufferAllocations"),
     inputBufferReuses: document.querySelector("#inputBufferReuses"),
     latencyRecoveryBlocks: document.querySelector("#latencyRecoveryBlocks"),
+    renderedBlocks: document.querySelector("#renderedBlocks"),
     renderDurationMs: document.querySelector("#renderDurationMs"),
     renderBudgetMs: document.querySelector("#renderBudgetMs"),
     renderBudgetStatus: document.querySelector("#renderBudgetStatus")
   };
+  let renderedBlocks = 0;
 
   return {
     update(stats = {}) {
@@ -47,6 +49,8 @@ export function createRealtimeStats({ onTransportLatencySamples } = {}) {
       onTransportLatencySamples?.(Number(stats.transportLatencySamples ?? 0) || 0);
     },
     updateRenderDiagnostics(diagnostics = {}) {
+      renderedBlocks += 1;
+      setText(elements.renderedBlocks, renderedBlocks);
       setText(elements.renderDurationMs, formatMilliseconds(diagnostics.renderDurationMs));
       setText(elements.renderBudgetMs, formatMilliseconds(diagnostics.renderBudgetMs));
       if (elements.renderBudgetStatus) {

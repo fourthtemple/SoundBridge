@@ -92,6 +92,10 @@ async function processedBlocks(page) {
   return Number(await page.locator("#processedBlocks").textContent());
 }
 
+async function renderedBlocks(page) {
+  return Number(await page.locator("#renderedBlocks").textContent());
+}
+
 async function reconnectDemo(page) {
   await page.goto(DEMO_URL, { waitUntil: "networkidle" });
   await page.locator("#pairingToken").fill(PAIRING_TOKEN);
@@ -118,8 +122,8 @@ async function readPluginOptions(page) {
 async function playKeyUntilProcessed(page, label) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await page.waitForTimeout(100);
-    const before = await processedBlocks(page);
-    if (before > 0) return;
+    const beforeProcessed = await processedBlocks(page);
+    const beforeRendered = await renderedBlocks(page);
     const key = page.locator('.piano-key[data-note="60"]');
     if (attempt === 0) {
       await page.evaluate(() => document.activeElement instanceof HTMLElement && document.activeElement.blur());
@@ -136,11 +140,12 @@ async function playKeyUntilProcessed(page, label) {
     }
     try {
       await page.waitForFunction(
-        (previous) => {
-          const current = Number(document.querySelector("#processedBlocks")?.textContent ?? 0);
-          return current > 0 && current !== previous;
+        ({ previousProcessed, previousRendered }) => {
+          const currentProcessed = Number(document.querySelector("#processedBlocks")?.textContent ?? 0);
+          const currentRendered = Number(document.querySelector("#renderedBlocks")?.textContent ?? 0);
+          return (currentProcessed > 0 && currentProcessed !== previousProcessed) || currentRendered > previousRendered;
         },
-        before,
+        { previousProcessed: beforeProcessed, previousRendered: beforeRendered },
         { timeout: 5000 }
       );
       return;
@@ -148,8 +153,11 @@ async function playKeyUntilProcessed(page, label) {
       if (attempt === 1) {
         const detail = await page.evaluate(() => ({
           processedBlocks: document.querySelector("#processedBlocks")?.textContent ?? "",
+          renderedBlocks: document.querySelector("#renderedBlocks")?.textContent ?? "",
           engineStatus: document.querySelector("#engineStatus")?.textContent ?? "",
           renderEngine: document.querySelector("#renderEngine")?.textContent ?? "",
+          renderDurationMs: document.querySelector("#renderDurationMs")?.textContent ?? "",
+          renderBudgetMs: document.querySelector("#renderBudgetMs")?.textContent ?? "",
           log: document.querySelector("#log")?.value ?? "",
           selectedPlugin: document.querySelector("#pluginSelect")?.selectedOptions[0]?.textContent ?? ""
         }));
@@ -167,6 +175,7 @@ async function assertRealtimeStats(page) {
     "#responseJitterSamples",
     "#sharedDroppedBlocks",
     "#latencyRecoveryBlocks",
+    "#renderedBlocks",
     "#renderDurationMs",
     "#renderBudgetMs"
   ]) {

@@ -45,6 +45,7 @@ export interface LiveEffectRackChainResponse extends LiveEffectBlockResponse {
   chainProcessBudgetExceeded: boolean;
   chainProcessBudgetMisses: number;
   chainProcessBudgetTripped: boolean;
+  chainUnhealthyReason?: "process-budget-exceeded";
 }
 
 export class LiveEffectRackChain {
@@ -55,6 +56,8 @@ export class LiveEffectRackChain {
   private readonly outputChannels?: number;
   private readonly nowMs: () => number;
   private processBudgetMisses = 0;
+  private lastError?: unknown;
+  private unhealthyReason?: LiveEffectRackChainResponse["chainUnhealthyReason"];
 
   constructor(options: LiveEffectRackChainOptions) {
     const maxStages = boundedLiveEffectInteger(options.maxStages, LIVE_EFFECT_CHAIN_MAX_STAGES, 0, LIVE_EFFECT_CHAIN_MAX_STAGES);
@@ -76,8 +79,11 @@ export class LiveEffectRackChain {
   ): Promise<LiveEffectRackChainResponse> {
     const processStartedAt = this.nowMs();
     const outputChannels = this.chainOutputChannels(request.channels);
+    if (this.unhealthyReason === "process-budget-exceeded") {
+      return this.chainDryResponse(request, "chain-process-budget-exceeded", outputChannels, this.lastError, false);
+    }
     if (this.stages.length === 0) {
-      return this.finishChainResponse(this.chainDryResponse(request, "chain-empty", outputChannels), processStartedAt);
+      return this.chainDryResponse(request, "chain-empty", outputChannels);
     }
     let channels = boundedLiveEffectChannels(request.channels, outputChannels, this.maxBlockSize);
     let latencySamples = 0;
@@ -115,7 +121,7 @@ export class LiveEffectRackChain {
           processedStages: stageResults.length,
           failedStageIndex: index,
           stageResults
-        }, processStartedAt);
+        }, processStartedAt, request, outputChannels);
       }
     }
     return this.finishChainResponse({
@@ -130,7 +136,7 @@ export class LiveEffectRackChain {
       stageCount: this.stages.length,
       processedStages: stageResults.length,
       stageResults
-    }, processStartedAt);
+    }, processStartedAt, request, outputChannels);
   }
 
   processScheduledBlock(
@@ -138,19 +144,33 @@ export class LiveEffectRackChain {
     options: LiveEffectRackChainProcessOptions = {}
   ): Promise<LiveEffectRackChainResponse> {
     if (scheduled.stale) {
-      return Promise.resolve(this.finishChainResponse(
-        this.chainDryResponse(scheduled.request, "chain-stale-input", this.chainOutputChannels(scheduled.request.channels)),
-        this.nowMs()
+      return Promise.resolve(this.chainDryResponse(
+        scheduled.request,
+        "chain-stale-input",
+        this.chainOutputChannels(scheduled.request.channels)
       ));
     }
     return this.processBlock(scheduled.request, options);
   }
 
+  retry(): boolean {
+    if (this.unhealthyReason !== "process-budget-exceeded") {
+      return false;
+    }
+    this.lastError = undefined;
+    this.unhealthyReason = undefined;
+    this.processBudgetMisses = 0;
+    return true;
+  }
+
   private chainDryResponse(
     request: LiveEffectBlockRequest,
     renderEngine: string,
-    outputChannels: number
+    outputChannels: number,
+    error?: unknown,
+    healthy = this.unhealthyReason === undefined
   ): LiveEffectRackChainResponse {
+    const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
     return {
       blockId: request.blockId,
       channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
@@ -159,13 +179,17 @@ export class LiveEffectRackChain {
       infiniteTail: false,
       renderEngine,
       bypassed: true,
-      healthy: true,
+      healthy,
+      error,
       stageCount: this.stages.length,
       processedStages: 0,
       stageResults: [],
-      chainProcessBudgetExceeded: false,
+      chainProcessDurationMs: 0,
+      chainProcessBudgetMs: this.processBudgetMs > 0 ? this.processBudgetMs : undefined,
+      chainProcessBudgetExceeded: chainProcessBudgetTripped,
       chainProcessBudgetMisses: this.processBudgetMisses,
-      chainProcessBudgetTripped: false
+      chainProcessBudgetTripped,
+      chainUnhealthyReason: this.unhealthyReason
     };
   }
 
@@ -173,21 +197,50 @@ export class LiveEffectRackChain {
     return this.outputChannels ?? boundedLiveEffectInteger(channels.length, 2, 1, 32);
   }
 
-  private finishChainResponse(response: LiveEffectRackChainResponse, processStartedAt: number): LiveEffectRackChainResponse {
+  private finishChainResponse(
+    response: LiveEffectRackChainResponse,
+    processStartedAt: number,
+    request: LiveEffectBlockRequest,
+    outputChannels: number
+  ): LiveEffectRackChainResponse {
     const durationMs = boundedOptionalNumber(this.nowMs() - processStartedAt, 0, 60000);
     const chainProcessBudgetExceeded = this.processBudgetMs > 0 && (durationMs ?? 0) > this.processBudgetMs;
     this.processBudgetMisses = chainProcessBudgetExceeded ? Math.min(1024, this.processBudgetMisses + 1) : 0;
-    const chainProcessBudgetTripped = this.maxConsecutiveProcessBudgetMisses > 0 &&
+    const chainProcessBudgetTripped = response.healthy !== false &&
+      this.maxConsecutiveProcessBudgetMisses > 0 &&
       this.processBudgetMisses >= this.maxConsecutiveProcessBudgetMisses;
+    const error = chainProcessBudgetTripped ? response.error ?? new Error("chain_process_budget_exceeded") : response.error;
+    if (chainProcessBudgetTripped) {
+      this.lastError = error;
+      this.unhealthyReason = "process-budget-exceeded";
+      return {
+        ...response,
+        channels: dryChannels(request.channels, outputChannels, this.maxBlockSize),
+        latencySamples: 0,
+        tailSamples: 0,
+        infiniteTail: false,
+        renderEngine: "chain-process-budget-exceeded",
+        bypassed: true,
+        healthy: false,
+        error,
+        chainProcessDurationMs: durationMs,
+        chainProcessBudgetMs: this.processBudgetMs > 0 ? this.processBudgetMs : undefined,
+        chainProcessBudgetExceeded,
+        chainProcessBudgetMisses: this.processBudgetMisses,
+        chainProcessBudgetTripped,
+        chainUnhealthyReason: this.unhealthyReason
+      };
+    }
     return {
       ...response,
-      healthy: response.healthy !== false && !chainProcessBudgetTripped,
-      error: chainProcessBudgetTripped ? response.error ?? new Error("chain_process_budget_exceeded") : response.error,
+      healthy: response.healthy !== false,
+      error,
       chainProcessDurationMs: durationMs,
       chainProcessBudgetMs: this.processBudgetMs > 0 ? this.processBudgetMs : undefined,
       chainProcessBudgetExceeded,
       chainProcessBudgetMisses: this.processBudgetMisses,
-      chainProcessBudgetTripped
+      chainProcessBudgetTripped,
+      chainUnhealthyReason: this.unhealthyReason
     };
   }
 }
