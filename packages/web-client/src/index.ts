@@ -1,6 +1,7 @@
 export * from "./client";
 export * from "./bridge-node";
 export * from "./live-audio-node-adaptive-latency";
+export * from "./live-audio-node-recovery";
 export * from "./live-effect-rack";
 export * from "./live-effect-rack-adaptive-latency";
 export * from "./live-effect-rack-chain";

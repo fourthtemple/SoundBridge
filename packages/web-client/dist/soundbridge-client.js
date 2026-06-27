@@ -1781,6 +1781,103 @@ export function createLivePerformanceAudioNodeAdaptiveLatencyController(options)
   return new LivePerformanceAudioNodeAdaptiveLatencyController(options);
 }
 
+const LIVE_AUDIO_NODE_RECOVERY_BLOCKS = 16;
+const LIVE_AUDIO_NODE_RECOVERY_ATTEMPTS = 1;
+
+export class LivePerformanceAudioNodeRecoveryController {
+  constructor(options) {
+    this.node = options.node;
+    this.recoveryBlocks = boundedAudioNodeInteger(options.recoveryBlocks, LIVE_AUDIO_NODE_RECOVERY_BLOCKS, 0, 4096);
+    this.maxRetryAttempts = boundedAudioNodeInteger(options.maxRetryAttempts, LIVE_AUDIO_NODE_RECOVERY_ATTEMPTS, 0, 1024);
+    this.recoverTransportPressure = options.recoverTransportPressure !== false;
+    this.recoverRenderBudget = options.recoverRenderBudget !== false;
+    this.recoverAudioErrors = options.recoverAudioErrors === true;
+    this.retryAttempts = 0;
+    this.dryBlocks = 0;
+    this.lastFallbackOutputBlocks = void 0;
+    this.activeReason = void 0;
+  }
+
+  record(health = this.node.health) {
+    const reason = this.recoveryReason(health);
+    if (reason === void 0) {
+      this.resetWindow(health);
+      return this.snapshot(false, false, false, void 0, health);
+    }
+    if (reason !== this.activeReason) {
+      this.activeReason = reason;
+      this.dryBlocks = 0;
+      this.lastFallbackOutputBlocks = boundedAudioNodeInteger(health.fallbackOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
+    } else {
+      this.recordDryBlocks(health);
+    }
+    const exhausted = this.retryAttempts >= this.maxRetryAttempts;
+    if (!exhausted && this.dryBlocks >= this.recoveryBlocks) {
+      const applied = this.node.retry();
+      if (applied) {
+        this.retryAttempts = Math.min(1024, this.retryAttempts + 1);
+        const snapshot = this.snapshot(true, true, this.retryAttempts >= this.maxRetryAttempts, reason, this.node.health);
+        this.resetWindow(this.node.health);
+        return snapshot;
+      }
+    }
+    return this.snapshot(false, true, exhausted, reason, health);
+  }
+
+  reset() {
+    this.retryAttempts = 0;
+    this.dryBlocks = 0;
+    this.lastFallbackOutputBlocks = void 0;
+    this.activeReason = void 0;
+  }
+
+  recoveryReason(health) {
+    if (!health.bypassed) return void 0;
+    if (this.recoverTransportPressure && health.transportPressureAutoBypassed) return "transport-pressure";
+    if (this.recoverRenderBudget && health.renderBudgetAutoBypassed) return "render-budget";
+    if (this.recoverAudioErrors && health.audioErrorAutoBypassed) return "audio-error";
+    return void 0;
+  }
+
+  recordDryBlocks(health) {
+    const fallbackBlocks = boundedAudioNodeInteger(health.fallbackOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
+    if (this.lastFallbackOutputBlocks === void 0) {
+      this.lastFallbackOutputBlocks = fallbackBlocks;
+      return;
+    }
+    this.dryBlocks = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      this.dryBlocks + Math.max(0, fallbackBlocks - this.lastFallbackOutputBlocks)
+    );
+    this.lastFallbackOutputBlocks = fallbackBlocks;
+  }
+
+  resetWindow(health) {
+    this.dryBlocks = 0;
+    this.lastFallbackOutputBlocks = boundedAudioNodeInteger(health.fallbackOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
+    this.activeReason = void 0;
+  }
+
+  snapshot(applied, active, exhausted, reason, health) {
+    return {
+      applied,
+      active,
+      exhausted,
+      reason,
+      dryBlocks: this.dryBlocks,
+      recoveryBlocks: this.recoveryBlocks,
+      recoveryBlocksRemaining: Math.max(0, this.recoveryBlocks - this.dryBlocks),
+      retryAttempts: this.retryAttempts,
+      maxRetryAttempts: this.maxRetryAttempts,
+      health
+    };
+  }
+}
+
+export function createLivePerformanceAudioNodeRecoveryController(options) {
+  return new LivePerformanceAudioNodeRecoveryController(options);
+}
+
 function audioNodeDeadlineLeadBlocks(responseDeadlineLeadSamples, maxBlockFrames) {
   const leadSamples = boundedAudioNodeOptionalNumber(responseDeadlineLeadSamples, -1048576, 1048576);
   if (leadSamples === undefined) return undefined;

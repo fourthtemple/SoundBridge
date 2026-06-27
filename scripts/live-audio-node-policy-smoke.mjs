@@ -6,6 +6,7 @@ import {
   createLivePerformanceAudioNodeCalibrationWindow,
   createLivePerformanceAudioNodeOptions,
   createLivePerformanceAudioNodePolicy,
+  createLivePerformanceAudioNodeRecoveryController,
   livePerformanceAudioNodeOptionsFromCalibration,
   refreshLivePerformanceAudioNodeLatencyFromCalibration,
   shouldAutoBypassAudioNodeTransportPressure
@@ -400,6 +401,103 @@ assert(adaptiveNode.refreshes.at(-1) === 256, "live AudioNode adaptive latency c
 adaptiveController.reset();
 const resetStable = await adaptiveController.record();
 assert(resetStable.stableBlocks === 0, "live AudioNode adaptive latency reset clears stable recovery state");
+
+const recoveryNode = {
+  health: {
+    bypassed: true,
+    transportPressureAutoBypassed: true,
+    renderBudgetAutoBypassed: false,
+    audioErrorAutoBypassed: false,
+    fallbackOutputBlocks: 10
+  },
+  retries: 0,
+  retry() {
+    this.retries += 1;
+    this.health = {
+      ...this.health,
+      bypassed: false,
+      transportPressureAutoBypassed: false,
+      fallbackOutputBlocks: this.health.fallbackOutputBlocks
+    };
+    return true;
+  }
+};
+const recoveryController = createLivePerformanceAudioNodeRecoveryController({
+  node: recoveryNode,
+  recoveryBlocks: 4,
+  maxRetryAttempts: 1
+});
+const recoveryStart = recoveryController.record();
+assert(
+  recoveryStart.active === true && recoveryStart.reason === "transport-pressure" && recoveryStart.applied === false,
+  "live AudioNode recovery starts a transport-pressure dry window"
+);
+recoveryNode.health = { ...recoveryNode.health, fallbackOutputBlocks: 12 };
+const recoveryWaiting = recoveryController.record();
+assert(
+  recoveryWaiting.dryBlocks === 2 && recoveryWaiting.recoveryBlocksRemaining === 2 && recoveryNode.retries === 0,
+  "live AudioNode recovery waits for the configured dry cooldown"
+);
+recoveryNode.health = { ...recoveryNode.health, fallbackOutputBlocks: 14 };
+const recoveryApplied = recoveryController.record();
+assert(
+  recoveryApplied.applied === true && recoveryNode.retries === 1 && recoveryApplied.retryAttempts === 1,
+  "live AudioNode recovery retries after the dry cooldown"
+);
+recoveryNode.health = {
+  ...recoveryNode.health,
+  bypassed: true,
+  transportPressureAutoBypassed: true,
+  fallbackOutputBlocks: 20
+};
+recoveryController.record();
+recoveryNode.health = { ...recoveryNode.health, fallbackOutputBlocks: 30 };
+const recoveryExhausted = recoveryController.record();
+assert(
+  recoveryExhausted.exhausted === true && recoveryExhausted.applied === false && recoveryNode.retries === 1,
+  "live AudioNode recovery respects the retry cap"
+);
+recoveryController.reset();
+recoveryNode.health = { ...recoveryNode.health, fallbackOutputBlocks: 40 };
+recoveryController.record();
+recoveryNode.health = { ...recoveryNode.health, fallbackOutputBlocks: 44 };
+const recoveryAfterReset = recoveryController.record();
+assert(
+  recoveryAfterReset.applied === true && recoveryNode.retries === 2,
+  "live AudioNode recovery reset re-arms bounded retries"
+);
+
+const audioErrorRecoveryNode = {
+  health: {
+    bypassed: true,
+    transportPressureAutoBypassed: false,
+    renderBudgetAutoBypassed: false,
+    audioErrorAutoBypassed: true,
+    fallbackOutputBlocks: 0
+  },
+  retries: 0,
+  retry() {
+    this.retries += 1;
+    return true;
+  }
+};
+const audioErrorRecoveryDefault = createLivePerformanceAudioNodeRecoveryController({
+  node: audioErrorRecoveryNode,
+  recoveryBlocks: 0
+});
+assert(
+  audioErrorRecoveryDefault.record().active === false && audioErrorRecoveryNode.retries === 0,
+  "live AudioNode recovery keeps audio-error retries disabled by default"
+);
+const audioErrorRecoveryEnabled = createLivePerformanceAudioNodeRecoveryController({
+  node: audioErrorRecoveryNode,
+  recoveryBlocks: 0,
+  recoverAudioErrors: true
+});
+assert(
+  audioErrorRecoveryEnabled.record().applied === true && audioErrorRecoveryNode.retries === 1,
+  "live AudioNode recovery allows explicit audio-error retry opt-in"
+);
 
 stressedWindow.reset();
 const resetSnapshot = stressedWindow.snapshot();

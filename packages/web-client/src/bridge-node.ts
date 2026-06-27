@@ -16,6 +16,8 @@ export { LivePerformanceAudioNodeCalibrationWindow, boundedAudioNodeTransportPre
 export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
 export { LivePerformanceAudioNodeAdaptiveLatencyController, createLivePerformanceAudioNodeAdaptiveLatencyController } from "./live-audio-node-adaptive-latency";
 export type { LivePerformanceAudioNodeAdaptiveLatencyDirection, LivePerformanceAudioNodeAdaptiveLatencyOptions, LivePerformanceAudioNodeAdaptiveLatencySnapshot, LivePerformanceAudioNodeAdaptiveLatencyTarget } from "./live-audio-node-adaptive-latency";
+export { LivePerformanceAudioNodeRecoveryController, createLivePerformanceAudioNodeRecoveryController } from "./live-audio-node-recovery";
+export type { LivePerformanceAudioNodeRecoveryOptions, LivePerformanceAudioNodeRecoveryReason, LivePerformanceAudioNodeRecoverySnapshot, LivePerformanceAudioNodeRecoveryTarget } from "./live-audio-node-recovery";
 
 export class SoundBridgeAudioNode extends EventTarget {
   readonly node: AudioWorkletNode;
