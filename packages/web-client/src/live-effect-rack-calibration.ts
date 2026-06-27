@@ -71,6 +71,7 @@ export interface LiveEffectRackFrameBatchCalibrationHealthSample
     | "responseDeadlineMisses"
   > {
   dryTargets?: unknown;
+  bypassedTargets?: unknown;
   skippedTargets?: unknown;
   failedTargets?: unknown;
   processBudgetTripped?: unknown;
@@ -306,11 +307,13 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
   }
 
   private hasDryPressure(health: LiveEffectRackFrameBatchCalibrationHealthSample): boolean {
+    const dryTargets = boundedLiveEffectInteger(health.dryTargets, 0, 0, Number.MAX_SAFE_INTEGER);
+    const bypassedTargets = boundedLiveEffectInteger(health.bypassedTargets, 0, 0, Number.MAX_SAFE_INTEGER);
     return (
       health.processBudgetTripped === true ||
       health.processTimedOut === true ||
       health.processTimeoutTripped === true ||
-      boundedLiveEffectInteger(health.dryTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0 ||
+      dryTargets > bypassedTargets ||
       boundedLiveEffectInteger(health.skippedTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0 ||
       boundedLiveEffectInteger(health.failedTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0
     );

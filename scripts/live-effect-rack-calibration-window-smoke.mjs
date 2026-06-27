@@ -306,6 +306,35 @@ assert(
   "live frame batch calibration treats timeout-only health as dry pressure"
 );
 
+const batchBypassWindow = createLiveEffectRackFrameBatchCalibrationWindow({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetMs: 4,
+  processTimeoutMs: 12,
+  safetyMarginBlocks: 0
+});
+batchBypassWindow.record({ totalDurationMs: 1, maxDurationMs: 0.5, latencySamples: 0, dryTargets: 0, bypassedTargets: 0 });
+const bypassOnlyBatch = batchBypassWindow.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 0,
+  dryTargets: 1,
+  bypassedTargets: 1,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+assert(!bypassOnlyBatch.calibration.warnings.includes("dry-output-pressure"), "live frame batch calibration ignores intentionally bypassed dry targets");
+const nonBypassedDryBatch = batchBypassWindow.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 0,
+  dryTargets: 2,
+  bypassedTargets: 1,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+assert(nonBypassedDryBatch.calibration.warnings.includes("dry-output-pressure"), "live frame batch calibration still flags non-bypassed dry targets");
+
 chainWindow.reset();
 const chainReset = chainWindow.snapshot();
 assert(chainReset.samples === 0 && chainWindow.maxSamples === 256, "live chain calibration window resets its inner sample window");
