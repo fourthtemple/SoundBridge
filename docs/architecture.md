@@ -106,7 +106,7 @@ The MVP prioritizes correctness over ultra-low latency. WebSocket plus JSON audi
 
 The production path should add:
 
-- binary audio frames
+- binary audio frames for the main-bus `processAudioBlock` path, with bus-indexed binary frames still to add for sidechains and multi-output effects
 - a dedicated browser worker for transport
 - `SharedArrayBuffer` ring buffers where available
 - adaptive buffering and latency compensation

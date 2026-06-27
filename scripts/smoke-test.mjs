@@ -1,5 +1,5 @@
 import { runNativeLv2WorkerSmoke } from "./native-lv2-worker-smoke.mjs";
-import { connectWebSocket, createRequestClient } from "./smoke-protocol-client.mjs";
+import { connectWebSocket, createBinaryAudioRequestClient, createRequestClient } from "./smoke-protocol-client.mjs";
 import { assertAudioUnitHostProfiles } from "./smoke-test-au-profiles.mjs";
 import { runExampleInstrumentSmoke } from "./smoke-test-example-instruments.mjs";
 import { runLv2HostingSmoke } from "./smoke-test-lv2-hosting.mjs";
@@ -21,6 +21,7 @@ const ORIGIN = "http://127.0.0.1:5173";
 const NATIVE_RENDERER = process.env.SOUNDBRIDGE_NATIVE_RENDERER ?? "native/bridge-daemon/build-current/soundbridge-daemon";
 
 const request = createRequestClient();
+const requestBinaryAudio = createBinaryAudioRequestClient();
 const socket = await connectWebSocket(HOST, PORT, ORIGIN);
 
 const unpairedHello = await request(socket, "hello", {}, false);
@@ -441,6 +442,28 @@ assert(
     !mockPreset.parameters.some((parameter) => parameter.id === "output-level"),
   "mock setPreset applies writable entries with bounded display values from a listed preset snapshot"
 );
+
+const binaryBlock = await requestBinaryAudio(
+  socket,
+  "processAudioBlock",
+  {
+    instanceId: created.instanceId,
+    blockId: 63,
+    sampleRate: 48000,
+    channels: [
+      Float32Array.from([0.5, 0.25, -0.25, -0.5]),
+      Float32Array.from([0.1, -0.1, 0.2, -0.2])
+    ],
+    transport: { playing: true, samplePosition: 8064 }
+  },
+  true,
+  pair.sessionToken
+);
+assert(binaryBlock.blockId === 63, "binary processAudioBlock preserves block id");
+assert(blockHasSignal(binaryBlock.channels), "binary processAudioBlock returns processed Float32 audio");
+assert(binaryBlock.channels.length === created.layout.outputChannels, "binary processAudioBlock returns negotiated output channels");
+assert(binaryBlock.transport?.samplePosition === 8064, "binary processAudioBlock preserves bounded host transport");
+assert(!("outputBuses" in binaryBlock), "binary processAudioBlock keeps bus audio out of JSON response metadata");
 
 const automated = await request(
   socket,

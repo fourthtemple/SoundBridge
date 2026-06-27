@@ -8,6 +8,7 @@ export interface SoundBridgeAudioNodeOptions {
   maxInFlightBlocks?: number;
   maxQueuedOutputBlocks?: number;
   outputLatencyBlocks?: number;
+  audioTransport?: "binary" | "json";
   workletUrl?: string;
 }
 
@@ -20,6 +21,7 @@ export class SoundBridgeAudioNode extends EventTarget {
   private inFlightBlocks = 0;
   private destroyed = false;
   private readonly maxInFlightBlocks: number;
+  private readonly audioTransport: "binary" | "json";
 
   private constructor(context: AudioContext, client: SoundBridgeClient, options: Required<SoundBridgeAudioNodeOptions>) {
     super();
@@ -27,6 +29,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.instanceId = options.instanceId;
     this.sampleRate = context.sampleRate;
     this.maxInFlightBlocks = options.maxInFlightBlocks;
+    this.audioTransport = options.audioTransport;
     this.node = new AudioWorkletNode(context, "soundbridge-audio-processor", {
       numberOfInputs: 1,
       numberOfOutputs: 1,
@@ -57,6 +60,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       maxInFlightBlocks: boundedInteger(options.maxInFlightBlocks, 8, 1, 64),
       maxQueuedOutputBlocks: boundedInteger(options.maxQueuedOutputBlocks, 16, 1, 64),
       outputLatencyBlocks: 1,
+      audioTransport: options.audioTransport === "json" ? "json" : "binary",
       workletUrl: options.workletUrl ?? "/packages/web-client/dist/soundbridge-worklet.js"
     };
     normalized.outputLatencyBlocks = boundedInteger(
@@ -115,25 +119,30 @@ export class SoundBridgeAudioNode extends EventTarget {
     }
 
     this.inFlightBlocks += 1;
-    const channels = typed.channels.map((channel) => Array.from(channel));
-    const requestedFrames = Math.floor(Number(typed.frames ?? channels[0]?.length ?? 128));
+    const binaryChannels = typed.channels as ArrayLike<number>[];
+    const requestedFrames = Math.floor(Number(typed.frames ?? binaryChannels[0]?.length ?? 128));
     const frames = Number.isFinite(requestedFrames) ? Math.max(1, requestedFrames) : 128;
     const requestedSamplePosition = Math.floor(typed.blockId * frames);
     const samplePosition = Number.isFinite(requestedSamplePosition)
       ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, requestedSamplePosition))
       : 0;
-    this.client
-      .processAudioBlock({
-        instanceId: this.instanceId,
-        blockId: typed.blockId,
-        sampleRate: this.sampleRate,
-        channels,
-        transport: {
-          playing: true,
-          samplePosition
-        },
-        timestamp: performance.now()
-      })
+    const request = {
+      instanceId: this.instanceId,
+      blockId: typed.blockId,
+      sampleRate: this.sampleRate,
+      channels: binaryChannels,
+      transport: {
+        playing: true,
+        samplePosition
+      },
+      timestamp: performance.now()
+    };
+    const processed =
+      this.audioTransport === "binary"
+        ? this.client.processAudioBlockBinary(request)
+        : this.client.processAudioBlock({ ...request, channels: binaryChannels.map((channel) => Array.from(channel)) });
+
+    processed
       .then((response: AudioBlockResponse) => {
         if (this.destroyed) {
           return;

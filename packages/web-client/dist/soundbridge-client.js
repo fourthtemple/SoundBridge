@@ -26,6 +26,7 @@ export class SoundBridgeClient extends EventTarget {
 
     return new Promise((resolve, reject) => {
       const socket = new WebSocket(this.url);
+      socket.binaryType = "arraybuffer";
       this.socket = socket;
 
       socket.addEventListener("open", () => resolve(), { once: true });
@@ -120,6 +121,11 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("processAudioBlock", request, true, 2000);
   }
 
+  processAudioBlockBinary(request) {
+    const { channels, ...payload } = request;
+    return this.request("processAudioBlock", payload, true, 2000, channels);
+  }
+
   sendMidiEvents(instanceId, events) {
     return this.request("sendMidiEvents", { instanceId, events });
   }
@@ -176,7 +182,7 @@ export class SoundBridgeClient extends EventTarget {
     return this.request("heartbeat", { now: Date.now() });
   }
 
-  request(command, payload, includeSession = true, timeoutMs = this.requestTimeoutMs) {
+  request(command, payload, includeSession = true, timeoutMs = this.requestTimeoutMs, binaryAudioChannels) {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new Error("SoundBridge socket is not connected."));
@@ -200,18 +206,16 @@ export class SoundBridgeClient extends EventTarget {
         reject(new Error(`SoundBridge request timed out: ${command}`));
       }, timeoutMs);
       this.pending.set(id, { resolve, reject, timeout });
-      socket.send(JSON.stringify(envelope));
+      socket.send(
+        binaryAudioChannels ? encodeBinaryAudioEnvelope(envelope, binaryAudioChannels) : JSON.stringify(envelope)
+      );
     });
   }
 
   handleMessage(data) {
-    if (typeof data !== "string") {
-      return;
-    }
-
     let envelope;
     try {
-      envelope = JSON.parse(data);
+      envelope = typeof data === "string" ? JSON.parse(data) : decodeBinaryAudioEnvelope(data);
     } catch {
       return;
     }
@@ -243,6 +247,122 @@ export class SoundBridgeClient extends EventTarget {
   }
 }
 
+const BINARY_AUDIO_MAGIC = 0x53424131;
+const BINARY_AUDIO_HEADER_BYTES = 8;
+const FLOAT_BYTES = 4;
+
+function encodeBinaryAudioEnvelope(envelope, channels) {
+  const normalized = normalizeBinaryChannels(channels);
+  const payload = envelope.payload && typeof envelope.payload === "object" ? envelope.payload : {};
+  const header = {
+    ...envelope,
+    payload: {
+      ...payload,
+      channels: void 0,
+      outputBuses: void 0
+    },
+    binaryAudio: {
+      channels: normalized.length,
+      frames: normalized[0]?.length ?? 0
+    }
+  };
+  delete header.payload.channels;
+  delete header.payload.outputBuses;
+  const headerBytes = new TextEncoder().encode(JSON.stringify(header));
+  const sampleBytes = normalized.length * (normalized[0]?.length ?? 0) * FLOAT_BYTES;
+  const buffer = new ArrayBuffer(BINARY_AUDIO_HEADER_BYTES + headerBytes.length + sampleBytes);
+  const view = new DataView(buffer);
+  view.setUint32(0, BINARY_AUDIO_MAGIC, false);
+  view.setUint32(4, headerBytes.length, false);
+  new Uint8Array(buffer, BINARY_AUDIO_HEADER_BYTES, headerBytes.length).set(headerBytes);
+  writeBinaryChannels(view, BINARY_AUDIO_HEADER_BYTES + headerBytes.length, normalized);
+  return buffer;
+}
+
+function decodeBinaryAudioEnvelope(data) {
+  const bytes = binaryBytes(data);
+  if (!bytes || bytes.byteLength < BINARY_AUDIO_HEADER_BYTES) {
+    throw new Error("invalid_binary_audio_frame");
+  }
+
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (view.getUint32(0, false) !== BINARY_AUDIO_MAGIC) {
+    throw new Error("invalid_binary_audio_magic");
+  }
+  const headerLength = view.getUint32(4, false);
+  const headerEnd = BINARY_AUDIO_HEADER_BYTES + headerLength;
+  if (headerLength < 2 || headerEnd > bytes.byteLength) {
+    throw new Error("invalid_binary_audio_header");
+  }
+
+  const headerBytes = bytes.subarray(BINARY_AUDIO_HEADER_BYTES, headerEnd);
+  const envelope = JSON.parse(new TextDecoder().decode(headerBytes));
+  const channelCount = boundedBinaryInteger(envelope.binaryAudio?.channels, 0, 32);
+  const frames = boundedBinaryInteger(envelope.binaryAudio?.frames, 1, 8192);
+  if (bytes.byteLength !== headerEnd + channelCount * frames * FLOAT_BYTES) {
+    throw new Error("invalid_binary_audio_payload");
+  }
+
+  if (envelope.ok && envelope.payload && typeof envelope.payload === "object") {
+    envelope.payload.channels = readBinaryChannels(view, headerEnd, channelCount, frames);
+  }
+  delete envelope.binaryAudio;
+  return envelope;
+}
+
+function normalizeBinaryChannels(channels) {
+  const limited = channels.slice(0, 32);
+  const frames = Math.min(8192, Math.max(0, ...limited.map((channel) => Math.max(0, Math.floor(Number(channel.length ?? 0)) || 0))));
+  return limited.map((channel) => {
+    const normalized = new Float32Array(frames);
+    for (let index = 0; index < frames; index += 1) {
+      const value = Number(channel[index] ?? 0);
+      normalized[index] = Number.isFinite(value) ? value : 0;
+    }
+    return normalized;
+  });
+}
+
+function writeBinaryChannels(view, offset, channels) {
+  for (const channel of channels) {
+    for (const sample of channel) {
+      view.setFloat32(offset, sample, true);
+      offset += FLOAT_BYTES;
+    }
+  }
+}
+
+function readBinaryChannels(view, offset, channelCount, frames) {
+  const channels = [];
+  for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+    const channel = new Float32Array(frames);
+    for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
+      channel[frameIndex] = view.getFloat32(offset, true);
+      offset += FLOAT_BYTES;
+    }
+    channels.push(channel);
+  }
+  return channels;
+}
+
+function binaryBytes(data) {
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  return undefined;
+}
+
+function boundedBinaryInteger(value, min, max) {
+  const integer = Math.floor(Number(value));
+  if (!Number.isFinite(integer) || integer < min || integer > max) {
+    throw new Error("binary_audio_integer_out_of_range");
+  }
+  return integer;
+}
+
 export class SoundBridgeAudioNode extends EventTarget {
   constructor(context, client, options) {
     super();
@@ -250,6 +370,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.instanceId = options.instanceId;
     this.sampleRate = context.sampleRate;
     this.maxInFlightBlocks = options.maxInFlightBlocks;
+    this.audioTransport = options.audioTransport;
     this.inFlightBlocks = 0;
     this.destroyed = false;
     this.node = new AudioWorkletNode(context, "soundbridge-audio-processor", {
@@ -278,6 +399,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       maxInFlightBlocks: boundedAudioNodeInteger(options.maxInFlightBlocks, 8, 1, 64),
       maxQueuedOutputBlocks: boundedAudioNodeInteger(options.maxQueuedOutputBlocks, 16, 1, 64),
       outputLatencyBlocks: 1,
+      audioTransport: options.audioTransport === "json" ? "json" : "binary",
       workletUrl: options.workletUrl ?? "/packages/web-client/dist/soundbridge-worklet.js"
     };
     normalized.outputLatencyBlocks = boundedAudioNodeInteger(
@@ -324,25 +446,30 @@ export class SoundBridgeAudioNode extends EventTarget {
     }
 
     this.inFlightBlocks += 1;
-    const channels = message.channels.map((channel) => Array.from(channel));
-    const requestedFrames = Math.floor(Number(message.frames ?? channels[0]?.length ?? 128));
+    const binaryChannels = message.channels;
+    const requestedFrames = Math.floor(Number(message.frames ?? binaryChannels[0]?.length ?? 128));
     const frames = Number.isFinite(requestedFrames) ? Math.max(1, requestedFrames) : 128;
     const requestedSamplePosition = Math.floor(message.blockId * frames);
     const samplePosition = Number.isFinite(requestedSamplePosition)
       ? Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, requestedSamplePosition))
       : 0;
-    this.client
-      .processAudioBlock({
-        instanceId: this.instanceId,
-        blockId: message.blockId,
-        sampleRate: this.sampleRate,
-        channels,
-        transport: {
-          playing: true,
-          samplePosition
-        },
-        timestamp: performance.now()
-      })
+    const request = {
+      instanceId: this.instanceId,
+      blockId: message.blockId,
+      sampleRate: this.sampleRate,
+      channels: binaryChannels,
+      transport: {
+        playing: true,
+        samplePosition
+      },
+      timestamp: performance.now()
+    };
+    const processed =
+      this.audioTransport === "binary"
+        ? this.client.processAudioBlockBinary(request)
+        : this.client.processAudioBlock({ ...request, channels: binaryChannels.map((channel) => Array.from(channel)) });
+
+    processed
       .then((response) => {
         if (this.destroyed) {
           return;

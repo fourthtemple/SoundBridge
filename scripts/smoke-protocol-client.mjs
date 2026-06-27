@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import net from "node:net";
+import { decodeBinaryAudioEnvelope, encodeBinaryAudioEnvelope } from "./binary-audio-frames.mjs";
 
 export function createRequestClient({ timeoutMs = 3000 } = {}) {
   let requestSeq = 0;
@@ -36,6 +37,47 @@ export function createRequestClient({ timeoutMs = 3000 } = {}) {
       const timeout = setTimeout(() => {
         cleanup();
         reject(new Error(`Timed out waiting for ${command}`));
+      }, timeoutMs);
+      socket.on("soundbridge-message", onMessage);
+    });
+  };
+}
+
+export function createBinaryAudioRequestClient({ timeoutMs = 3000 } = {}) {
+  let requestSeq = 0;
+
+  return function requestBinaryAudio(socket, command, payload, includeSession, sessionToken) {
+    const id = `binary-${++requestSeq}`;
+    const envelope = {
+      type: "request",
+      id,
+      command,
+      payload
+    };
+    if (includeSession) {
+      envelope.sessionToken = sessionToken;
+    }
+    socket.write(encodeWebSocketFrame(encodeBinaryAudioEnvelope(envelope), 0x2));
+
+    return new Promise((resolve, reject) => {
+      const onMessage = (message) => {
+        if (message.id !== id) {
+          return;
+        }
+        cleanup();
+        if (message.ok) {
+          resolve(message.payload);
+        } else {
+          reject(new Error(`${message.error?.code}: ${message.error?.message}`));
+        }
+      };
+      const cleanup = () => {
+        socket.off("soundbridge-message", onMessage);
+        clearTimeout(timeout);
+      };
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`Timed out waiting for binary ${command}`));
       }, timeoutMs);
       socket.on("soundbridge-message", onMessage);
     });
@@ -95,6 +137,8 @@ export function connectWebSocket(host, port, origin) {
         buffer = buffer.subarray(parsed.frameLength);
         if (parsed.opcode === 0x1) {
           socket.emit("soundbridge-message", JSON.parse(parsed.payload.toString("utf8")));
+        } else if (parsed.opcode === 0x2) {
+          socket.emit("soundbridge-message", decodeBinaryAudioEnvelope(parsed.payload));
         }
       }
     });
@@ -103,7 +147,7 @@ export function connectWebSocket(host, port, origin) {
   });
 }
 
-function encodeWebSocketFrame(payload) {
+function encodeWebSocketFrame(payload, opcode = 0x1) {
   const mask = crypto.randomBytes(4);
   const length = payload.length;
   let header;
@@ -122,7 +166,7 @@ function encodeWebSocketFrame(payload) {
     header.writeUInt32BE(length >>> 0, 6);
   }
 
-  header[0] = 0x81;
+  header[0] = 0x80 | opcode;
   const masked = Buffer.from(payload);
   for (let index = 0; index < masked.length; index += 1) {
     masked[index] ^= mask[index % 4];

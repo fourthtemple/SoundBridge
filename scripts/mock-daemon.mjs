@@ -15,7 +15,7 @@ import { createDaemonPairing } from "./daemon-pairing.mjs";
 import { applyNativeParameterSnapshot, parameterSnapshotResponse } from "./daemon-parameter-snapshots.mjs";
 import { createDaemonParameterCommands } from "./daemon-parameter-commands.mjs";
 import { createPluginCatalogSupport, loadNativeHostStatus, resolveNativeRenderer } from "./daemon-plugin-catalog.mjs";
-import { requestEnvelopeError, requestEnvelopeResponseId } from "./daemon-request-envelope.mjs";
+import { createDaemonRequestHandler } from "./daemon-request-handler.mjs";
 import { createDaemonRuntimePayloads } from "./daemon-runtime-payloads.mjs";
 import { createDaemonVst3ProgramData } from "./daemon-vst3-program-data.mjs";
 import { createDaemonConfig } from "./daemon-config.mjs";
@@ -25,7 +25,6 @@ import {
   createDaemonValidators,
   isLoopbackHostHeader,
   protocolError,
-  sendError,
   tokenEquals
 } from "./daemon-security-helpers.mjs";
 import { createDaemonWebSocketServer } from "./daemon-websocket-server.mjs";
@@ -456,6 +455,7 @@ const dispatchCommand = createDaemonCommandDispatcher({
   protocolError,
   useFileGrant
 });
+const handleRequest = createDaemonRequestHandler({ dispatchCommand });
 
 const server = createDaemonWebSocketServer({
   host: HOST,
@@ -481,41 +481,6 @@ server.listen(PORT, HOST, () => {
     );
   }
 });
-
-async function handleRequest(rawMessage, context, send) {
-  let envelope;
-  try {
-    envelope = JSON.parse(rawMessage);
-  } catch {
-    sendError(send, "unknown", "bad_json", "Request was not valid JSON.");
-    return;
-  }
-
-  const envelopeError = requestEnvelopeError(envelope);
-  if (envelopeError) {
-    const { code, details, message } = envelopeError;
-    sendError(send, requestEnvelopeResponseId(envelope), code, message, details);
-    return;
-  }
-
-  try {
-    const payload = await dispatchCommand(envelope, context);
-    send({
-      type: "response",
-      id: envelope.id,
-      ok: true,
-      payload
-    });
-  } catch (error) {
-    sendError(
-      send,
-      envelope.id,
-      error.code ?? "internal_error",
-      error.message ?? "SoundBridge mock daemon error.",
-      error.details
-    );
-  }
-}
 
 function destroyInstance(instanceId, session) {
   const instance = getInstance(instanceId, session);

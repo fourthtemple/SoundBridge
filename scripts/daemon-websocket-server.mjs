@@ -95,6 +95,10 @@ function attachWebSocket({
   });
 
   const send = (message) => {
+    if (Buffer.isBuffer(message)) {
+      socket.write(encodeWebSocketFrame(message, 0x2));
+      return;
+    }
     socket.write(encodeWebSocketFrame(Buffer.from(JSON.stringify(message), "utf8"), 0x1));
   };
 
@@ -127,11 +131,11 @@ function attachWebSocket({
         continue;
       }
 
-      if (parsed.opcode !== 0x1) {
+      if (parsed.opcode !== 0x1 && parsed.opcode !== 0x2) {
         continue;
       }
 
-      void handleRequest(parsed.payload.toString("utf8"), context, send);
+      void handleRequest(parsed.opcode === 0x2 ? parsed.payload : parsed.payload.toString("utf8"), context, send);
     }
   });
 
