@@ -1,4 +1,8 @@
-import { createLiveEffectRackCalibrationWindow } from "../packages/web-client/dist/soundbridge-client.js";
+import {
+  createLiveEffectRackCalibrationWindow,
+  liveEffectRackPolicyOptionsFromCalibration,
+  refreshLiveEffectRackLatencyFromCalibration
+} from "../packages/web-client/dist/soundbridge-client.js";
 
 function assert(condition, message) {
   if (!condition) {
@@ -32,6 +36,9 @@ assert(readySnapshot.calibration.observedProcessP95Ms === 0.7, "live rack calibr
 assert(readySnapshot.calibration.observedRenderP95Ms === 0.5, "live rack calibration window records render duration");
 assert(readySnapshot.calibration.observedResponseJitterP95Blocks === 0.25, "live rack calibration window records response jitter");
 assert(readySnapshot.calibration.observedDeadlineLeadMinBlocks === 1.25, "live rack calibration window records deadline lead");
+assert(readySnapshot.recommendedPolicyOptions.processBudgetMs === 8, "live rack calibration snapshot includes existing budget policy");
+assert(readySnapshot.recommendedPolicyOptions.processTimeoutMs === 12, "live rack calibration snapshot includes existing timeout policy");
+assert(readySnapshot.recommendedPolicyOptions.transportLatencySamples === 256, "live rack calibration snapshot includes recommended latency policy");
 
 const unchangedSnapshot = readyWindow.record({ lastProcessDurationMs: Number.NaN });
 assert(unchangedSnapshot.samples === 1, "live rack calibration window ignores non-finite health samples");
@@ -72,6 +79,36 @@ assert(stressedSnapshot.calibration.warnings.includes("process-over-budget"), "l
 assert(stressedSnapshot.calibration.warnings.includes("render-over-block-budget"), "live rack calibration window warns on render budget pressure");
 assert(stressedSnapshot.calibration.warnings.includes("deadline-miss"), "live rack calibration window warns on missed response deadlines");
 assert(stressedSnapshot.calibration.warnings.includes("increase-transport-latency"), "live rack calibration window recommends latency for jitter pressure");
+assert(stressedSnapshot.recommendedPolicyOptions.processBudgetMs === 9.667, "live rack calibration snapshot recommends a process budget with safety margin");
+assert(stressedSnapshot.recommendedPolicyOptions.processTimeoutMs === 12.334, "live rack calibration snapshot recommends a timeout with safety margin");
+assert(stressedSnapshot.recommendedPolicyOptions.transportLatencySamples === 640, "live rack calibration snapshot recommends latency samples");
+
+const overriddenOptions = stressedWindow.recommendedPolicyOptions({
+  sampleRate: 96000,
+  maxBlockSize: 512,
+  maxInFlightBlocks: 4,
+  processBudgetMs: 1,
+  transportLatencySamples: 0
+});
+assert(overriddenOptions.sampleRate === 48000, "live rack calibration recommendations keep the measured sample rate");
+assert(overriddenOptions.maxBlockSize === 128, "live rack calibration recommendations keep the measured block size");
+assert(overriddenOptions.maxInFlightBlocks === 4, "live rack calibration recommendations preserve host policy overrides");
+assert(overriddenOptions.processBudgetMs === stressedSnapshot.recommendedPolicyOptions.processBudgetMs, "live rack calibration recommendations keep measured process budget advice");
+assert(overriddenOptions.transportLatencySamples === stressedSnapshot.recommendedPolicyOptions.transportLatencySamples, "live rack calibration recommendations keep measured latency advice");
+
+const copiedOptions = liveEffectRackPolicyOptionsFromCalibration(stressedSnapshot.calibration, { transitionFadeSamples: 64 });
+assert(copiedOptions.transitionFadeSamples === 64, "live rack calibration helper preserves non-measured host overrides");
+assert(copiedOptions.processTimeoutMs === stressedSnapshot.recommendedPolicyOptions.processTimeoutMs, "live rack calibration helper copies timeout advice");
+
+const latencyRefreshes = [];
+const refreshed = await refreshLiveEffectRackLatencyFromCalibration({
+  async refreshLatency(transportLatencySamples) {
+    latencyRefreshes.push(transportLatencySamples);
+    return { transportLatencySamples };
+  }
+}, stressedSnapshot.calibration);
+assert(latencyRefreshes.length === 1 && latencyRefreshes[0] === 640, "live rack calibration helper refreshes rack latency with recommended transport latency");
+assert(refreshed.transportLatencySamples === 640, "live rack calibration helper returns the rack latency refresh result");
 
 stressedWindow.reset();
 const resetSnapshot = stressedWindow.snapshot();

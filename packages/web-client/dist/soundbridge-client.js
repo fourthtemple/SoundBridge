@@ -1612,10 +1612,12 @@ export class LiveEffectRackCalibrationWindow {
   }
 
   snapshot() {
+    const calibration = this.calibrate();
     return {
       samples: this.samples,
       droppedSamples: this.droppedSamples,
-      calibration: this.calibrate()
+      calibration,
+      recommendedPolicyOptions: liveEffectRackPolicyOptionsFromCalibration(calibration)
     };
   }
 
@@ -1627,6 +1629,10 @@ export class LiveEffectRackCalibrationWindow {
       responseJitterBlocks: this.responseJitterBlocks,
       deadlineLeadBlocks: this.deadlineLeadBlocks
     });
+  }
+
+  recommendedPolicyOptions(overrides = {}) {
+    return liveEffectRackPolicyOptionsFromCalibration(this.calibrate(), overrides);
   }
 
   get samples() {
@@ -1643,6 +1649,41 @@ export class LiveEffectRackCalibrationWindow {
 
 export function createLiveEffectRackCalibrationWindow(options) {
   return new LiveEffectRackCalibrationWindow(options);
+}
+
+export function liveEffectRackPolicyOptionsFromCalibration(calibration, overrides = {}) {
+  const policy = calibration.policy;
+  const recommended = {
+    sampleRate: policy.sampleRate,
+    maxBlockSize: policy.maxBlockSize,
+    maxInputAgeMs: policy.maxInputAgeMs,
+    maxInFlightBlocks: policy.maxInFlightBlocks,
+    transitionFadeSamples: policy.transitionFadeSamples,
+    maxConsecutiveProcessBudgetMisses: policy.maxConsecutiveProcessBudgetMisses,
+    maxConsecutiveRenderBudgetMisses: policy.maxConsecutiveRenderBudgetMisses,
+    processBudgetRecoveryBlocks: policy.processBudgetRecoveryBlocks,
+    renderBudgetRecoveryBlocks: policy.renderBudgetRecoveryBlocks,
+    processTimeoutRecoveryBlocks: policy.processTimeoutRecoveryBlocks,
+    maxProcessTimeoutRecoveries: policy.maxProcessTimeoutRecoveries,
+    processBudgetMs: calibration.recommendedProcessBudgetMs,
+    processTimeoutMs: calibration.recommendedProcessTimeoutMs,
+    pluginLatencySamples: policy.pluginLatencySamples,
+    transportLatencySamples: calibration.recommendedTransportLatencySamples
+  };
+  return {
+    ...recommended,
+    ...overrides,
+    sampleRate: recommended.sampleRate,
+    maxBlockSize: recommended.maxBlockSize,
+    processBudgetMs: recommended.processBudgetMs,
+    processTimeoutMs: recommended.processTimeoutMs,
+    pluginLatencySamples: recommended.pluginLatencySamples,
+    transportLatencySamples: recommended.transportLatencySamples
+  };
+}
+
+export function refreshLiveEffectRackLatencyFromCalibration(rack, calibration) {
+  return rack.refreshLatency(calibration.recommendedTransportLatencySamples);
 }
 
 export function liveTransportForBlock(options) {

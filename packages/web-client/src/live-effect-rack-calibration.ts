@@ -24,6 +24,11 @@ export interface LiveEffectRackCalibrationWindowSnapshot {
   samples: number;
   droppedSamples: number;
   calibration: LiveEffectRackCalibration;
+  recommendedPolicyOptions: LiveEffectRackPolicyOptions;
+}
+
+export interface LiveEffectRackLatencyRefresher<T = unknown> {
+  refreshLatency(transportLatencySamples?: number): Promise<T>;
 }
 
 export class LiveEffectRackCalibrationWindow {
@@ -64,10 +69,12 @@ export class LiveEffectRackCalibrationWindow {
   }
 
   snapshot(): LiveEffectRackCalibrationWindowSnapshot {
+    const calibration = this.calibrate();
     return {
       samples: this.samples,
       droppedSamples: this.droppedSamples,
-      calibration: this.calibrate()
+      calibration,
+      recommendedPolicyOptions: liveEffectRackPolicyOptionsFromCalibration(calibration)
     };
   }
 
@@ -80,6 +87,10 @@ export class LiveEffectRackCalibrationWindow {
       deadlineLeadBlocks: this.deadlineLeadBlocks
     };
     return calibrateLiveEffectRackPolicy(options);
+  }
+
+  recommendedPolicyOptions(overrides: Partial<LiveEffectRackPolicyOptions> = {}): LiveEffectRackPolicyOptions {
+    return liveEffectRackPolicyOptionsFromCalibration(this.calibrate(), overrides);
   }
 
   private get samples(): number {
@@ -96,4 +107,45 @@ export class LiveEffectRackCalibrationWindow {
 
 export function createLiveEffectRackCalibrationWindow(options: LiveEffectRackCalibrationWindowOptions): LiveEffectRackCalibrationWindow {
   return new LiveEffectRackCalibrationWindow(options);
+}
+
+export function liveEffectRackPolicyOptionsFromCalibration(
+  calibration: LiveEffectRackCalibration,
+  overrides: Partial<LiveEffectRackPolicyOptions> = {}
+): LiveEffectRackPolicyOptions {
+  const policy = calibration.policy;
+  const recommended: LiveEffectRackPolicyOptions = {
+    sampleRate: policy.sampleRate,
+    maxBlockSize: policy.maxBlockSize,
+    maxInputAgeMs: policy.maxInputAgeMs,
+    maxInFlightBlocks: policy.maxInFlightBlocks,
+    transitionFadeSamples: policy.transitionFadeSamples,
+    maxConsecutiveProcessBudgetMisses: policy.maxConsecutiveProcessBudgetMisses,
+    maxConsecutiveRenderBudgetMisses: policy.maxConsecutiveRenderBudgetMisses,
+    processBudgetRecoveryBlocks: policy.processBudgetRecoveryBlocks,
+    renderBudgetRecoveryBlocks: policy.renderBudgetRecoveryBlocks,
+    processTimeoutRecoveryBlocks: policy.processTimeoutRecoveryBlocks,
+    maxProcessTimeoutRecoveries: policy.maxProcessTimeoutRecoveries,
+    processBudgetMs: calibration.recommendedProcessBudgetMs,
+    processTimeoutMs: calibration.recommendedProcessTimeoutMs,
+    pluginLatencySamples: policy.pluginLatencySamples,
+    transportLatencySamples: calibration.recommendedTransportLatencySamples
+  };
+  return {
+    ...recommended,
+    ...overrides,
+    sampleRate: recommended.sampleRate,
+    maxBlockSize: recommended.maxBlockSize,
+    processBudgetMs: recommended.processBudgetMs,
+    processTimeoutMs: recommended.processTimeoutMs,
+    pluginLatencySamples: recommended.pluginLatencySamples,
+    transportLatencySamples: recommended.transportLatencySamples
+  };
+}
+
+export function refreshLiveEffectRackLatencyFromCalibration<T>(
+  rack: LiveEffectRackLatencyRefresher<T>,
+  calibration: LiveEffectRackCalibration
+): Promise<T> {
+  return rack.refreshLatency(calibration.recommendedTransportLatencySamples);
 }
