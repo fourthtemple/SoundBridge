@@ -19,6 +19,9 @@ class FakeLiveClient {
     this.processed = [];
     this.binaryProcessed = [];
     this.failProcessing = false;
+    this.renderDurationMs = 0.5;
+    this.renderBudgetMs = 2.667;
+    this.renderBudgetExceeded = false;
   }
 
   async createInstance(request) {
@@ -55,6 +58,9 @@ class FakeLiveClient {
       latencySamples: 12,
       tailSamples: 0,
       infiniteTail: false,
+      renderDurationMs: this.renderDurationMs,
+      renderBudgetMs: this.renderBudgetMs,
+      renderBudgetExceeded: this.renderBudgetExceeded,
       renderEngine: "fake-live-effect"
     };
   }
@@ -90,6 +96,7 @@ const rack = await SoundBridgeLiveEffectRack.create({
 
 assert(rack.instanceId === "inst-live-1", "live effect rack creates a plugin instance");
 assert(rack.health.healthy === true && rack.health.latencySamples === 12, "live effect rack starts healthy");
+assert(rack.health.renderBudgetMisses === 0 && rack.health.renderBudgetExceeded === false, "live effect rack starts without budget pressure");
 
 const inputChannels = [
   [1, 0.5, -0.5, 0],
@@ -102,6 +109,7 @@ const wet = await rack.processBlock({
 });
 assert(wet.bypassed === false && wet.healthy === true, "healthy live rack returns processed audio");
 assert(wet.channels[0][0] === 0.5 && wet.channels[1][3] === -0.375, "processed audio comes from the plugin");
+assert(rack.health.lastRenderBudgetMs === 2.667, "live rack records render budget telemetry");
 assert(client.binaryProcessed.length === 1, "healthy live rack uses binary processAudioBlock by default");
 assert(client.processed.length === 1, "binary live rack still reaches the fake processor");
 
@@ -136,6 +144,31 @@ await rack.processBlock({
   inputBuses: [{ index: 1, channels: [Float32Array.from([0.1, 0.2, 0.3, 0.4])] }]
 });
 assert(client.binaryProcessed.at(-1)?.inputBuses?.[0]?.index === 1, "binary live rack forwards indexed input buses");
+
+const pressureRack = await SoundBridgeLiveEffectRack.create({
+  client,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  maxConsecutiveRenderBudgetMisses: 2
+});
+let budgetEvents = 0;
+pressureRack.addEventListener("render-budget-exceeded", () => {
+  budgetEvents += 1;
+});
+client.renderDurationMs = 5;
+client.renderBudgetMs = 2;
+client.renderBudgetExceeded = true;
+const pressured = await pressureRack.processBlock({ blockId: 7, channels: inputChannels });
+assert(pressured.bypassed === false && pressureRack.health.renderBudgetMisses === 1, "first render budget miss stays wet");
+const overloaded = await pressureRack.processBlock({ blockId: 8, channels: inputChannels });
+assert(overloaded.bypassed === true && overloaded.healthy === false, "repeated render budget misses fail closed to dry audio");
+assert(overloaded.channels[0][0] === 1, "render budget fallback preserves dry input");
+assert(budgetEvents === 2, "render budget misses emit host-visible events");
+await pressureRack.destroy();
+client.renderDurationMs = 0.5;
+client.renderBudgetMs = 2.667;
+client.renderBudgetExceeded = false;
 
 const jsonRack = await SoundBridgeLiveEffectRack.create({
   client,

@@ -817,6 +817,10 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.bypassed = false;
     this.healthy = true;
     this.lastError = void 0;
+    this.renderBudgetMisses = 0;
+    this.lastRenderDurationMs = void 0;
+    this.lastRenderBudgetMs = void 0;
+    this.lastRenderBudgetExceeded = false;
     this.client = options.client;
     this.plugin = options.plugin;
     this.sampleRate = options.sampleRate;
@@ -824,6 +828,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.inputChannels = boundedLiveEffectChannelCount(options.inputChannels ?? options.plugin.inputs ?? 2);
     this.outputChannels = boundedLiveEffectChannelCount(options.outputChannels ?? options.plugin.outputs ?? this.inputChannels);
     this.audioTransport = options.audioTransport === "json" ? "json" : "binary";
+    this.maxConsecutiveRenderBudgetMisses = boundedLiveEffectInteger(options.maxConsecutiveRenderBudgetMisses, 3, 0, 1024);
   }
 
   static async create(options) {
@@ -842,7 +847,11 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       healthy: this.healthy,
       instanceId: this.instanceId,
       lastError: this.lastError,
-      latencySamples: this.created?.latencySamples ?? 0
+      latencySamples: this.created?.latencySamples ?? 0,
+      renderBudgetMisses: this.renderBudgetMisses,
+      lastRenderDurationMs: this.lastRenderDurationMs,
+      lastRenderBudgetMs: this.lastRenderBudgetMs,
+      renderBudgetExceeded: this.lastRenderBudgetExceeded
     };
   }
 
@@ -897,12 +906,14 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
               channels: cloneLiveEffectChannels(request.channels),
               inputBuses: cloneLiveEffectBusBlocks(request.inputBuses)
             });
+      if (this.recordRenderBudget(response)) {
+        const error = new Error("render_budget_exceeded");
+        this.failClosed(error);
+        return this.dryResponse(request, error);
+      }
       return { ...response, bypassed: false, healthy: true };
     } catch (error) {
-      this.healthy = false;
-      this.lastError = error;
-      this.dispatchEvent(new CustomEvent("effect-error", { detail: { error, health: this.health } }));
-      this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+      this.failClosed(error);
       return this.dryResponse(request, error);
     }
   }
@@ -918,6 +929,10 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     });
     this.healthy = true;
     this.lastError = void 0;
+    this.renderBudgetMisses = 0;
+    this.lastRenderDurationMs = void 0;
+    this.lastRenderBudgetMs = void 0;
+    this.lastRenderBudgetExceeded = false;
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 
@@ -942,11 +957,39 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       error
     };
   }
+
+  recordRenderBudget(response) {
+    this.lastRenderDurationMs = boundedLiveEffectOptionalNumber(response.renderDurationMs, 0, 60000);
+    this.lastRenderBudgetMs = boundedLiveEffectOptionalNumber(response.renderBudgetMs, 0, 60000);
+    this.lastRenderBudgetExceeded = response.renderBudgetExceeded === true;
+    this.renderBudgetMisses = this.lastRenderBudgetExceeded ? Math.min(1024, this.renderBudgetMisses + 1) : 0;
+    if (this.lastRenderBudgetExceeded) {
+      this.dispatchEvent(new CustomEvent("render-budget-exceeded", { detail: { response, health: this.health } }));
+    }
+    return this.maxConsecutiveRenderBudgetMisses > 0 && this.renderBudgetMisses >= this.maxConsecutiveRenderBudgetMisses;
+  }
+
+  failClosed(error) {
+    this.healthy = false;
+    this.lastError = error;
+    this.dispatchEvent(new CustomEvent("effect-error", { detail: { error, health: this.health } }));
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+  }
 }
 
 function boundedLiveEffectChannelCount(value) {
   const channels = Math.floor(Number(value));
   return Number.isFinite(channels) ? Math.max(1, Math.min(32, channels)) : 2;
+}
+
+function boundedLiveEffectInteger(value, fallback, min, max) {
+  const integer = Math.floor(Number(value ?? fallback));
+  return Number.isFinite(integer) ? Math.max(min, Math.min(max, integer)) : fallback;
+}
+
+function boundedLiveEffectOptionalNumber(value, min, max) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : void 0;
 }
 
 function cloneLiveEffectChannels(channels) {
