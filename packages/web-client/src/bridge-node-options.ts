@@ -47,6 +47,12 @@ export interface SoundBridgeAudioNodeFallbackOutputEventDetail {
   health: SoundBridgeAudioNodeHealth;
 }
 
+export interface SoundBridgeAudioNodeProcessTimeoutEventDetail {
+  error: unknown;
+  autoBypassed: boolean;
+  health: SoundBridgeAudioNodeHealth;
+}
+
 export interface SoundBridgeAudioNodeHealth {
   healthy: boolean;
   instanceId: string;

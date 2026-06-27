@@ -959,6 +959,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (this.destroyed) {
       return;
     }
+    if (!bypassed && this.unhealthyReason === "process-timeout") return;
     if (!bypassed) this.clearAutoBypassState();
     if (this.bypassed === bypassed) return;
     this.bypassed = bypassed;
@@ -1331,14 +1332,22 @@ export class SoundBridgeAudioNode extends EventTarget {
   }
 
   recordAudioError(error) {
+    const processTimedOut = isRenderDeadlineProtocolError(error);
     this.audioErrors = Math.min(1024, this.audioErrors + 1);
     this.consecutiveAudioErrors = Math.min(1024, this.consecutiveAudioErrors + 1);
     this.lastAudioError = error;
-    this.unhealthyReason = isRenderDeadlineProtocolError(error) ? "process-timeout" : "audio-error";
+    this.unhealthyReason = processTimedOut ? "process-timeout" : "audio-error";
+    let autoBypassed = false;
     if (this.maxConsecutiveAudioErrors > 0 && this.consecutiveAudioErrors >= this.maxConsecutiveAudioErrors && !this.bypassed && !this.audioErrorAutoBypassed) {
       this.audioErrorAutoBypassed = true;
+      autoBypassed = true;
       this.setBypassed(true);
       this.dispatchEvent(new CustomEvent("audio-error-auto-bypassed", { detail: { error, health: this.health } }));
+    }
+    if (processTimedOut) {
+      const detail = { error, autoBypassed, health: this.health };
+      this.dispatchEvent(new CustomEvent("process-timeout", { detail }));
+      if (autoBypassed) this.dispatchEvent(new CustomEvent("process-timeout-auto-bypassed", { detail }));
     }
   }
 
@@ -1352,6 +1361,7 @@ export class SoundBridgeAudioNode extends EventTarget {
 
   clearAutoBypassState() {
     if (!(this.renderBudgetAutoBypassed || this.audioErrorAutoBypassed || this.transportPressureAutoBypassed)) return false;
+    if (this.unhealthyReason === "process-timeout") return false;
     this.renderBudgetAutoBypassed = this.audioErrorAutoBypassed = this.transportPressureAutoBypassed = false;
     this.renderBudgetExceeded = false;
     this.renderBudgetMisses = 0;

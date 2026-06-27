@@ -576,7 +576,7 @@ assert(retryEvents === 3 && retryDetail?.health?.audioErrorAutoBypassed === fals
 FakeAudioWorkletNode.last.port.onmessage({ data: { type: "audio-error", blockId: 93, error: { code: "render_quarantined", message: "native render quarantined" } } });
 assert(audioErrorEvents === 2 && audioErrorDetail?.code === "render_quarantined" && liveNode.health.unhealthyReason === "process-timeout", "SoundBridgeAudioNode classifies serialized render deadline errors");
 assert(liveNode.health.audioErrorAutoBypassed === true && audioErrorAutoBypassEvents === 2 && audioErrorAutoBypassDetail?.health?.unhealthyReason === "process-timeout", "render deadline errors fail dry with process-timeout health");
-assert(liveNode.retry() === true && retryEvents === 4 && liveNode.health.unhealthyReason === undefined, "manual AudioNode retry clears render-deadline auto-bypass health");
+assert(liveNode.retry() === false && retryEvents === 3 && liveNode.health.unhealthyReason === "process-timeout", "manual AudioNode retry does not clear render-deadline quarantine");
 
 const fallbackCalls = [];
 const fallbackClient = {

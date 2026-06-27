@@ -8,13 +8,13 @@ import {
   createLivePerformanceAudioNodeOptions,
   shouldAutoBypassAudioNodeTransportPressure
 } from "./bridge-node-options";
-import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
+import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeProcessTimeoutEventDetail, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
 import { SoundBridgeClient } from "./client";
 import { isRenderDeadlineProtocolError } from "./live-effect-rack-metrics";
 import { liveTransportForBlock } from "./live-transport";
 
 export { LivePerformanceAudioNodeCalibrationWindow, boundedAudioNodeTransportPressureReasons, calibrateLivePerformanceAudioNodePolicy, createLivePerformanceAudioNodeCalibrationWindow, createLivePerformanceAudioNodeOptions, createLivePerformanceAudioNodePolicy, livePerformanceAudioNodeOptionsFromCalibration, refreshLivePerformanceAudioNodeLatencyFromCalibration, shouldAutoBypassAudioNodeTransportPressure } from "./bridge-node-options";
-export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
+export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeProcessTimeoutEventDetail, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
 export { LivePerformanceAudioNodeAdaptiveLatencyController, createLivePerformanceAudioNodeAdaptiveLatencyController } from "./live-audio-node-adaptive-latency";
 export type { LivePerformanceAudioNodeAdaptiveLatencyDirection, LivePerformanceAudioNodeAdaptiveLatencyOptions, LivePerformanceAudioNodeAdaptiveLatencySnapshot, LivePerformanceAudioNodeAdaptiveLatencyTarget } from "./live-audio-node-adaptive-latency";
 export { LivePerformanceAudioNodeRecoveryController, createLivePerformanceAudioNodeRecoveryController } from "./live-audio-node-recovery";
@@ -210,6 +210,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (this.destroyed) {
       return;
     }
+    if (!bypassed && this.unhealthyReason === "process-timeout") return;
     if (!bypassed) this.clearAutoBypassState();
     if (this.bypassed === bypassed) return;
     this.bypassed = bypassed;
@@ -682,14 +683,22 @@ export class SoundBridgeAudioNode extends EventTarget {
   }
 
   private recordAudioError(error: unknown): void {
+    const processTimedOut = isRenderDeadlineProtocolError(error);
     this.audioErrors = Math.min(1024, this.audioErrors + 1);
     this.consecutiveAudioErrors = Math.min(1024, this.consecutiveAudioErrors + 1);
     this.lastAudioError = error;
-    this.unhealthyReason = isRenderDeadlineProtocolError(error) ? "process-timeout" : "audio-error";
+    this.unhealthyReason = processTimedOut ? "process-timeout" : "audio-error";
+    let autoBypassed = false;
     if (this.maxConsecutiveAudioErrors > 0 && this.consecutiveAudioErrors >= this.maxConsecutiveAudioErrors && !this.bypassed && !this.audioErrorAutoBypassed) {
       this.audioErrorAutoBypassed = true;
+      autoBypassed = true;
       this.setBypassed(true);
       this.dispatchEvent(new CustomEvent("audio-error-auto-bypassed", { detail: { error, health: this.health } }));
+    }
+    if (processTimedOut) {
+      const detail: SoundBridgeAudioNodeProcessTimeoutEventDetail = { error, autoBypassed, health: this.health };
+      this.dispatchEvent(new CustomEvent("process-timeout", { detail }));
+      if (autoBypassed) this.dispatchEvent(new CustomEvent("process-timeout-auto-bypassed", { detail }));
     }
   }
 
@@ -703,6 +712,7 @@ export class SoundBridgeAudioNode extends EventTarget {
 
   private clearAutoBypassState(): boolean {
     if (!(this.renderBudgetAutoBypassed || this.audioErrorAutoBypassed || this.transportPressureAutoBypassed)) return false;
+    if (this.unhealthyReason === "process-timeout") return false;
     this.renderBudgetAutoBypassed = this.audioErrorAutoBypassed = this.transportPressureAutoBypassed = false;
     this.renderBudgetExceeded = false;
     this.renderBudgetMisses = 0;

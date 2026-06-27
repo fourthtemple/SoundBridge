@@ -16,6 +16,12 @@ export function bindBridgeMonitorEvents({ bridge, realtimeStats, elements, logEr
   bridge.addEventListener("transport-pressure", (event) => {
     realtimeStats.updateTransportPressure(event.detail);
   });
+  bridge.addEventListener("process-timeout", (event) => {
+    updateHealth(event.detail?.health);
+  });
+  bridge.addEventListener("process-timeout-auto-bypassed", (event) => {
+    updateHealth(event.detail?.health);
+  });
   bridge.addEventListener("audio-error", (event) => {
     logError(event.detail);
   });
@@ -27,14 +33,15 @@ export function bindBridgeMonitorEvents({ bridge, realtimeStats, elements, logEr
 
 export function createEngineRetryController({ button, getBridge, controlsEnabled, setEngineStatus, log }) {
   function update(health = getBridge()?.health) {
-    const recoverable = Boolean(health?.transportPressureAutoBypassed || health?.renderBudgetAutoBypassed || health?.audioErrorAutoBypassed);
+    const recoverable = health?.unhealthyReason !== "process-timeout" && Boolean(health?.transportPressureAutoBypassed || health?.renderBudgetAutoBypassed || health?.audioErrorAutoBypassed);
     button.disabled = !controlsEnabled() || !getBridge() || !recoverable;
   }
 
   function updateHealth(health = getBridge()?.health) {
     update(health);
     if (!getBridge() || !health) return;
-    setEngineStatus(health.unhealthyReason ? "Engine bypassed" : "Engine running", health.unhealthyReason ? "warn" : "ready");
+    const timeout = health.unhealthyReason === "process-timeout";
+    setEngineStatus(timeout ? "Engine needs recreate" : health.unhealthyReason ? "Engine bypassed" : "Engine running", health.unhealthyReason ? "warn" : "ready");
   }
 
   button.addEventListener("click", () => {
