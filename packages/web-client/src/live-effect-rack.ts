@@ -6,6 +6,7 @@ import type {
   PluginMetadata
 } from "../../protocol/src/messages";
 import { SoundBridgeClient } from "./client";
+import type { BinaryAudioBlockRequest } from "./client";
 
 export interface LiveEffectRackOptions {
   client: SoundBridgeClient;
@@ -14,18 +15,20 @@ export interface LiveEffectRackOptions {
   maxBlockSize: number;
   inputChannels?: number;
   outputChannels?: number;
+  audioTransport?: "binary" | "json";
 }
 
 export interface LiveEffectBlockRequest {
   blockId: number;
-  channels: number[][];
+  channels: ArrayLike<number>[];
   sampleRate?: number;
   inputBuses?: AudioBlockRequest["inputBuses"];
   transport?: HostTransportState;
   timestamp?: number;
 }
 
-export interface LiveEffectBlockResponse extends AudioBlockResponse {
+export interface LiveEffectBlockResponse extends Omit<AudioBlockResponse, "channels"> {
+  channels: ArrayLike<number>[];
   bypassed: boolean;
   healthy: boolean;
   error?: unknown;
@@ -46,6 +49,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
   readonly maxBlockSize: number;
   readonly inputChannels: number;
   readonly outputChannels: number;
+  readonly audioTransport: "binary" | "json";
 
   private created?: CreateInstanceResponse;
   private bypassed = false;
@@ -60,6 +64,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.maxBlockSize = options.maxBlockSize;
     this.inputChannels = boundedChannelCount(options.inputChannels ?? options.plugin.inputs ?? 2);
     this.outputChannels = boundedChannelCount(options.outputChannels ?? options.plugin.outputs ?? this.inputChannels);
+    this.audioTransport = options.audioTransport === "json" ? "json" : "binary";
   }
 
   static async create(options: LiveEffectRackOptions): Promise<SoundBridgeLiveEffectRack> {
@@ -116,15 +121,22 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     }
 
     try {
-      const response = await this.client.processAudioBlock({
+      const processRequest: BinaryAudioBlockRequest = {
         instanceId: this.instanceId,
         blockId: request.blockId,
         sampleRate: request.sampleRate ?? this.sampleRate,
-        channels: cloneChannels(request.channels),
-        inputBuses: request.inputBuses,
+        channels: request.channels,
         transport: request.transport,
         timestamp: request.timestamp
-      });
+      };
+      const response =
+        this.audioTransport === "binary" && !request.inputBuses
+          ? await this.client.processAudioBlockBinary(processRequest)
+          : await this.client.processAudioBlock({
+              ...processRequest,
+              channels: cloneChannels(request.channels),
+              inputBuses: request.inputBuses
+            });
       return { ...response, bypassed: false, healthy: true };
     } catch (error) {
       this.healthy = false;
@@ -177,11 +189,11 @@ function boundedChannelCount(value: number): number {
   return Number.isFinite(channels) ? Math.max(1, Math.min(32, channels)) : 2;
 }
 
-function cloneChannels(channels: number[][]): number[][] {
+function cloneChannels(channels: ArrayLike<number>[]): number[][] {
   return channels.map((channel) => Array.from(channel));
 }
 
-function dryChannels(channels: number[][], outputChannels: number): number[][] {
+function dryChannels(channels: ArrayLike<number>[], outputChannels: number): number[][] {
   const frames = channels[0]?.length ?? 0;
   return Array.from({ length: outputChannels }, (_, index) => {
     const source = channels.length > 0 ? channels[index % channels.length] : undefined;

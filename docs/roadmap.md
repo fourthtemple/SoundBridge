@@ -14,6 +14,7 @@ SoundBridge already has the core security and host shape in place:
 - installed compatible LV2 audio/control hosting through the native LV2 C ABI worker
 - bounded plugin scanning metadata for VST3, AU, and LV2 without exposing launch paths to browsers
 - bounded parameters, automation events, automation curves, timeline lanes, MIDI events, transport context, latency, tail, state, bus layouts, and file-grant operations
+- binary WebSocket audio frames for the main-bus `processAudioBlock` path used by the web client and live effect rack
 - generic parameter editor sessions
 - opt-in file grant broker foundation with path-free browser responses
 - native worker IPC limits for command size, pending commands, stdout/stderr lines, diagnostics, startup, timeout, and termination
@@ -68,9 +69,9 @@ Generic parameter editors work today. Native plugin UI is intentionally still a 
 
 ## Browser And Transport Work
 
-The current JSON/WebSocket audio path is good for correctness and demos. It is not the final low-latency transport.
+The current WebSocket audio path is good for correctness and demos. It is not the final low-latency transport.
 
-- Add binary audio frames for `processAudioBlock`.
+- Add bus-indexed binary audio frames for sidechains, multi-input plugins, and multi-output effects.
 - Move browser transport work off the main thread.
 - Add `SharedArrayBuffer` ring buffers where cross-origin isolation is available.
 - Add adaptive buffering, underrun reporting, and latency compensation suitable for Web DAWs.

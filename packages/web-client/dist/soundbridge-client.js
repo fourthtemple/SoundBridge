@@ -521,6 +521,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.maxBlockSize = options.maxBlockSize;
     this.inputChannels = boundedLiveEffectChannelCount(options.inputChannels ?? options.plugin.inputs ?? 2);
     this.outputChannels = boundedLiveEffectChannelCount(options.outputChannels ?? options.plugin.outputs ?? this.inputChannels);
+    this.audioTransport = options.audioTransport === "json" ? "json" : "binary";
   }
 
   static async create(options) {
@@ -577,15 +578,22 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     }
 
     try {
-      const response = await this.client.processAudioBlock({
+      const processRequest = {
         instanceId: this.instanceId,
         blockId: request.blockId,
         sampleRate: request.sampleRate ?? this.sampleRate,
-        channels: cloneLiveEffectChannels(request.channels),
-        inputBuses: request.inputBuses,
+        channels: request.channels,
         transport: request.transport,
         timestamp: request.timestamp
-      });
+      };
+      const response =
+        this.audioTransport === "binary" && !request.inputBuses
+          ? await this.client.processAudioBlockBinary(processRequest)
+          : await this.client.processAudioBlock({
+              ...processRequest,
+              channels: cloneLiveEffectChannels(request.channels),
+              inputBuses: request.inputBuses
+            });
       return { ...response, bypassed: false, healthy: true };
     } catch (error) {
       this.healthy = false;
