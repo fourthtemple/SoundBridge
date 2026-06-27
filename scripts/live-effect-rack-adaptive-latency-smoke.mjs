@@ -1,6 +1,7 @@
 import {
   createLiveEffectRackAdaptiveLatencyController,
   createLiveEffectRackBlockScheduler,
+  createLiveEffectRackSchedulerAdaptiveLatencyController,
   createLiveEffectRackChainSchedulerAdaptiveLatencyController
 } from "../packages/web-client/dist/soundbridge-client.js";
 
@@ -158,6 +159,100 @@ const floorRecovery = await controller.record({
   lastResponseDeadlineLeadBlocks: 1
 });
 assert(floorRecovery.applied === false, "adaptive rack latency does not recover below the configured latency floor");
+
+const rackScheduler = createLiveEffectRackBlockScheduler({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 256
+});
+const rackSchedulerController = createLiveEffectRackSchedulerAdaptiveLatencyController({
+  scheduler: rackScheduler,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 256,
+  processBudgetMs: 8,
+  processTimeoutMs: 12,
+  minSamples: 2,
+  cooldownBlocks: 1,
+  maxLatencyIncreaseBlocks: 2,
+  latencyRecoveryBlocks: 2,
+  maxLatencyDecreaseBlocks: 1,
+  minTransportLatencyBlocks: 2,
+  safetyMarginBlocks: 1
+});
+
+const schedulerReady = rackSchedulerController.record({
+  pluginLatencySamples: 64,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 0
+});
+assert(schedulerReady.applied === false, "adaptive rack scheduler latency waits for enough rack samples");
+assert(schedulerReady.currentTransportLatencySamples === 256, "adaptive rack scheduler latency reads scheduler latency");
+assert(schedulerReady.targetTransportLatencySamples === 256, "adaptive rack scheduler latency keeps stable latency unchanged");
+
+const schedulerRaise = rackSchedulerController.record({
+  pluginLatencySamples: 64,
+  lastProcessDurationMs: 0.6,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 4,
+  lastResponseDeadlineLeadBlocks: -1,
+  responseDeadlineMisses: 1
+});
+assert(schedulerRaise.applied === true, "adaptive rack scheduler latency applies pressure recommendations");
+assert(schedulerRaise.appliedDirection === "increase", "adaptive rack scheduler latency reports upward changes");
+assert(schedulerRaise.targetTransportLatencySamples === 512, "adaptive rack scheduler latency caps one increase to the configured step");
+assert(rackScheduler.snapshot().transportLatencySamples === 512, "adaptive rack scheduler latency updates the scheduler");
+assert(
+  rackScheduler.snapshot().deadlinePressure.reasons.includes("increase-transport-latency"),
+  "adaptive rack scheduler latency keeps scheduler pressure observable after an increase"
+);
+
+const schedulerCooldown = rackSchedulerController.record({
+  pluginLatencySamples: 64,
+  lastProcessDurationMs: 0.6,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 4,
+  lastResponseDeadlineLeadBlocks: -1,
+  responseDeadlineMisses: 1
+});
+assert(schedulerCooldown.applied === false, "adaptive rack scheduler latency observes cooldown between increases");
+
+rackSchedulerController.reset();
+rackSchedulerController.record({
+  pluginLatencySamples: 64,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 1
+});
+const schedulerStable = rackSchedulerController.record({
+  pluginLatencySamples: 64,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 1
+});
+assert(
+  schedulerStable.applied === false && schedulerStable.stableBlocks === 1,
+  "adaptive rack scheduler latency counts stable recovery blocks"
+);
+const schedulerRecovery = rackSchedulerController.record({
+  pluginLatencySamples: 64,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0.25,
+  lastResponseDeadlineLeadBlocks: 1,
+  responseDeadlineMisses: 1
+});
+assert(schedulerRecovery.applied === true, "adaptive rack scheduler latency recovers downward after stable rack health");
+assert(schedulerRecovery.appliedDirection === "decrease", "adaptive rack scheduler latency reports downward scheduler changes");
+assert(schedulerRecovery.targetTransportLatencySamples === 384, "adaptive rack scheduler latency recovers in bounded one-block steps");
+assert(rackScheduler.snapshot().transportLatencySamples === 384, "adaptive rack scheduler latency applies the recovery target");
 
 const chainScheduler = createLiveEffectRackBlockScheduler({
   sampleRate: 48000,

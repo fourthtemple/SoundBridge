@@ -2085,6 +2085,133 @@ export class LiveEffectRackAdaptiveLatencyController {
   }
 }
 
+export class LiveEffectRackSchedulerAdaptiveLatencyController {
+  constructor(options) {
+    const {
+      scheduler,
+      minSamples,
+      cooldownBlocks,
+      maxLatencyIncreaseBlocks,
+      latencyRecoveryBlocks,
+      maxLatencyDecreaseBlocks,
+      minTransportLatencySamples,
+      minTransportLatencyBlocks,
+      ...windowOptions
+    } = options;
+    this.cooldownBlocksRemaining = 0;
+    this.stableBlocks = 0;
+    this.scheduler = scheduler;
+    this.window = new LiveEffectRackCalibrationWindow(windowOptions);
+    this.minSamples = boundedLiveEffectInteger(minSamples, LIVE_EFFECT_ADAPTIVE_LATENCY_MIN_SAMPLES, 1, 256);
+    this.cooldownBlocks = boundedLiveEffectInteger(cooldownBlocks, LIVE_EFFECT_ADAPTIVE_LATENCY_COOLDOWN_BLOCKS, 0, 4096);
+    this.maxLatencyIncreaseBlocks = boundedLiveEffectInteger(maxLatencyIncreaseBlocks, LIVE_EFFECT_ADAPTIVE_LATENCY_MAX_STEP_BLOCKS, 1, 128);
+    this.latencyRecoveryBlocks = boundedLiveEffectInteger(latencyRecoveryBlocks, LIVE_EFFECT_ADAPTIVE_LATENCY_RECOVERY_BLOCKS, 0, 4096);
+    this.maxLatencyDecreaseBlocks = boundedLiveEffectInteger(maxLatencyDecreaseBlocks, LIVE_EFFECT_ADAPTIVE_LATENCY_MAX_RECOVERY_STEP_BLOCKS, 1, 128);
+    const maxBlockSize = boundedLiveEffectInteger(windowOptions.maxBlockSize, 128, 1, 8192);
+    const minimumFromBlocks = minTransportLatencyBlocks === void 0
+      ? void 0
+      : boundedLiveEffectInteger(minTransportLatencyBlocks, 0, 0, 128) * maxBlockSize;
+    this.minTransportLatencySamples = boundedLiveEffectLatencySamples(
+      minTransportLatencySamples ?? minimumFromBlocks ?? windowOptions.transportLatencySamples,
+      0
+    );
+  }
+
+  record(health) {
+    if (this.cooldownBlocksRemaining > 0) {
+      this.cooldownBlocksRemaining -= 1;
+    }
+    const snapshot = this.window.record(health);
+    const currentTransportLatencySamples = boundedLiveEffectLatencySamples(
+      this.scheduler.snapshot().transportLatencySamples,
+      snapshot.calibration.policy.transportLatencySamples
+    );
+    const maxBlockSize = snapshot.calibration.policy.maxBlockSize;
+    let targetTransportLatencySamples = Math.min(
+      snapshot.calibration.recommendedTransportLatencySamples,
+      currentTransportLatencySamples + this.maxLatencyIncreaseBlocks * maxBlockSize
+    );
+    let applied = false;
+    let appliedDirection = "none";
+    if (this.shouldApply(snapshot, targetTransportLatencySamples, currentTransportLatencySamples)) {
+      this.scheduler.updateLatency(targetTransportLatencySamples);
+      this.scheduler.updateDeadlinePressureFromHealth(health, snapshot.calibration);
+      applied = true;
+      appliedDirection = "increase";
+      this.cooldownBlocksRemaining = this.cooldownBlocks;
+      this.stableBlocks = 0;
+      this.window.reset();
+    } else {
+      this.scheduler.updateDeadlinePressureFromHealth(health, snapshot.calibration);
+      this.recordStableBlock(snapshot);
+      targetTransportLatencySamples = this.recoveryTarget(currentTransportLatencySamples, maxBlockSize);
+      if (this.shouldRecover(snapshot, targetTransportLatencySamples, currentTransportLatencySamples)) {
+        this.scheduler.updateLatency(targetTransportLatencySamples);
+        this.scheduler.updateDeadlinePressureFromHealth(health, snapshot.calibration);
+        applied = true;
+        appliedDirection = "decrease";
+        this.cooldownBlocksRemaining = this.cooldownBlocks;
+        this.stableBlocks = 0;
+        this.window.reset();
+      }
+    }
+    return {
+      ...snapshot,
+      applied,
+      appliedDirection,
+      currentTransportLatencySamples,
+      targetTransportLatencySamples,
+      cooldownBlocksRemaining: this.cooldownBlocksRemaining,
+      stableBlocks: this.stableBlocks,
+      recoveryBlocksRemaining: Math.max(0, this.latencyRecoveryBlocks - this.stableBlocks)
+    };
+  }
+
+  reset() {
+    this.window.reset();
+    this.cooldownBlocksRemaining = 0;
+    this.stableBlocks = 0;
+  }
+
+  shouldApply(snapshot, targetTransportLatencySamples, currentTransportLatencySamples) {
+    return (
+      snapshot.samples >= this.minSamples &&
+      this.cooldownBlocksRemaining === 0 &&
+      targetTransportLatencySamples > currentTransportLatencySamples &&
+      snapshot.calibration.warnings.includes("increase-transport-latency")
+    );
+  }
+
+  shouldRecover(snapshot, targetTransportLatencySamples, currentTransportLatencySamples) {
+    return (
+      this.latencyRecoveryBlocks > 0 &&
+      snapshot.samples >= this.minSamples &&
+      this.cooldownBlocksRemaining === 0 &&
+      this.stableBlocks >= this.latencyRecoveryBlocks &&
+      targetTransportLatencySamples < currentTransportLatencySamples &&
+      snapshot.calibration.warnings.length === 0
+    );
+  }
+
+  recordStableBlock(snapshot) {
+    if (snapshot.samples >= this.minSamples && snapshot.calibration.warnings.length === 0) {
+      this.stableBlocks = Math.min(4096, this.stableBlocks + 1);
+      return;
+    }
+    if (snapshot.calibration.warnings.length > 0) {
+      this.stableBlocks = 0;
+    }
+  }
+
+  recoveryTarget(currentTransportLatencySamples, maxBlockSize) {
+    const maxDecreaseStepSamples = this.maxLatencyDecreaseBlocks * maxBlockSize;
+    return Math.max(
+      this.minTransportLatencySamples,
+      currentTransportLatencySamples - maxDecreaseStepSamples
+    );
+  }
+}
+
 export class LiveEffectRackChainSchedulerAdaptiveLatencyController {
   constructor(options) {
     const {
@@ -2220,6 +2347,10 @@ export class LiveEffectRackChainSchedulerAdaptiveLatencyController {
 
 export function createLiveEffectRackAdaptiveLatencyController(options) {
   return new LiveEffectRackAdaptiveLatencyController(options);
+}
+
+export function createLiveEffectRackSchedulerAdaptiveLatencyController(options) {
+  return new LiveEffectRackSchedulerAdaptiveLatencyController(options);
 }
 
 export function createLiveEffectRackChainSchedulerAdaptiveLatencyController(options) {
