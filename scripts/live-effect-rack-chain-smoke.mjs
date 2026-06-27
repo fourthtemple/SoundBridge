@@ -95,6 +95,7 @@ assert(
     near(liveChainOptions.processTimeoutMs, (128 / 48000) * 1000 * 3) &&
     liveChainOptions.maxConsecutiveProcessBudgetMisses === 3 &&
     liveChainOptions.processBudgetRecoveryBlocks === 16 &&
+    liveChainOptions.processTimeoutRecoveryBlocks === 16 &&
     liveChainOptions.transitionFadeSamples === 128,
   "live rack chain preset converts block policies into bounded chain options"
 );
@@ -114,6 +115,7 @@ assert(
     liveDefaultTrip.renderEngine === "chain-process-budget-exceeded" &&
     liveDefaultChain.health.processBudgetTripped === true &&
     liveDefaultChain.health.processBudgetRecoveryBlocks === 16 &&
+    liveDefaultChain.health.processTimeoutRecoveryBlocks === 16 &&
     liveDefaultChain.health.transitionFadeSamples === 64,
   "live rack chain preset creates fail-dry live chain defaults"
 );
@@ -567,6 +569,32 @@ assert(
   "timed-out live rack chains stay dry until retry"
 );
 assert(hangingTimeoutChain.retry() === true && hangingTimeoutChain.health.processTimeoutTripped === false, "live rack chain retry clears timeout trips");
+
+fakeNowMs = 0;
+const timeoutRecoveryStage = new FakeStage("timeout-recovery", 4, 0, 0, 3);
+const timeoutRecoveryChain = createLiveEffectRackChain({
+  stages: [timeoutRecoveryStage],
+  outputChannels: 1,
+  maxBlockSize: 2,
+  processTimeoutMs: 2,
+  processTimeoutRecoveryBlocks: 2,
+  nowMs: () => fakeNowMs
+});
+let timeoutRecoveredEvents = 0;
+timeoutRecoveryChain.addEventListener("chain-process-timeout-recovered", (event) => {
+  timeoutRecoveredEvents += 1;
+  assert(event.detail.health.healthy === true, "live rack chain timeout recovery events include healthy state");
+});
+const timeoutRecoveryTrip = await timeoutRecoveryChain.processBlock({ blockId: 84, channels: [[1, 1]], sampleRate: 48000 });
+timeoutRecoveryStage.durationMs = 0;
+const timeoutRecoveryDryOne = await timeoutRecoveryChain.processBlock({ blockId: 85, channels: [[2, 2]], sampleRate: 48000 });
+const timeoutRecoveryHealthAfterOne = timeoutRecoveryChain.health;
+const timeoutRecoveryDryTwo = await timeoutRecoveryChain.processBlock({ blockId: 86, channels: [[2, 2]], sampleRate: 48000 });
+assert(timeoutRecoveryTrip.bypassed === true && timeoutRecoveryTrip.renderEngine === "chain-process-timeout", "live rack chain timeout recovery starts from a dry timeout trip");
+assert(timeoutRecoveryDryOne.bypassed === true && timeoutRecoveryHealthAfterOne.timeoutRecoveryDryBlocks === 1, "live rack chain timeout recovery keeps cooldown blocks dry");
+assert(timeoutRecoveryDryTwo.bypassed === true && timeoutRecoveredEvents === 1 && timeoutRecoveryChain.health.healthy === true, "live rack chain timeout recovery clears after bounded dry cooldown");
+const timeoutRecoveredWet = await timeoutRecoveryChain.processBlock({ blockId: 87, channels: [[1, 1]], sampleRate: 48000 });
+assert(timeoutRecoveredWet.bypassed === false && timeoutRecoveryStage.requests.length === 2, "live rack chain resumes wet processing after timeout recovery");
 
 fakeNowMs = 0;
 const recoveryStage = new FakeStage("recovery", 3, 0, 0, 3);
