@@ -314,6 +314,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       Atomics.add(shared.inputControl, SoundBridgeAudioProcessor.sharedDropped, 1);
       this.droppedInputBlocks += 1;
       this.sharedInputDroppedBlocks += 1;
+      this.recordLateOutput();
     }
     const writeIndex = inputFull
       ? Atomics.load(shared.inputControl, SoundBridgeAudioProcessor.sharedReadIndex) % shared.slots

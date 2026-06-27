@@ -221,7 +221,6 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       return;
     }
     if (this.destroyed) return;
-
     if (typed.type === "connect-transport" && typed.port) {
       this.transportPort = typed.port;
       this.transportPort.onmessage = (event) => this.handleMessage(event.data);
@@ -355,6 +354,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       Atomics.add(shared.inputControl, SoundBridgeAudioProcessor.sharedDropped, 1);
       this.droppedInputBlocks += 1;
       this.sharedInputDroppedBlocks += 1;
+      this.recordLateOutput();
     }
     const writeIndex = inputFull
       ? Atomics.load(shared.inputControl, SoundBridgeAudioProcessor.sharedReadIndex) % shared.slots
