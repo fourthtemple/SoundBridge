@@ -21,6 +21,8 @@ class FakeLiveClient {
     this.destroyed = [];
     this.processed = [];
     this.binaryProcessed = [];
+    this.processTimeouts = [];
+    this.binaryProcessTimeouts = [];
     this.failProcessing = false;
     this.processingDelayMs = 0;
     this.renderDurationMs = 0.5;
@@ -51,8 +53,9 @@ class FakeLiveClient {
     };
   }
 
-  async processAudioBlock(request) {
+  async processAudioBlock(request, timeoutMs) {
     this.processed.push(request);
+    this.processTimeouts.push(timeoutMs);
     if (this.processingDelayMs > 0) {
       await delay(this.processingDelayMs);
     }
@@ -72,9 +75,10 @@ class FakeLiveClient {
     };
   }
 
-  async processAudioBlockBinary(request) {
+  async processAudioBlockBinary(request, timeoutMs) {
     this.binaryProcessed.push(request);
-    return this.processAudioBlock(request);
+    this.binaryProcessTimeouts.push(timeoutMs);
+    return this.processAudioBlock(request, timeoutMs);
   }
 
   async getLatency(_instanceId, transportLatencySamples = 0) {
@@ -304,6 +308,7 @@ client.processingDelayMs = 20;
 const timedOut = await timeoutRack.processBlock({ blockId: 16, channels: inputChannels });
 assert(timedOut.bypassed === true && timedOut.healthy === false, "live rack fails dry when processBlock exceeds its timeout");
 assert(timeoutRack.health.unhealthyReason === "process-timeout", "live rack records process timeout as its health reason");
+assert(client.binaryProcessTimeouts.at(-1) === 1, "live rack passes process timeout to binary audio requests");
 const afterTimeout = await timeoutRack.processBlock({ blockId: 17, channels: inputChannels });
 assert(afterTimeout.bypassed === true && timeoutRack.health.healthy === false, "process timeout does not auto-recover");
 client.processingDelayMs = 0;
@@ -321,6 +326,10 @@ assert(livePerformanceRack.maxInputAgeMs === livePerformanceOptions.maxInputAgeM
 assert(livePerformanceRack.renderBudgetRecoveryBlocks === 16, "createLivePerformance applies recovery defaults");
 const livePerformanceWet = await livePerformanceRack.processBlock({ blockId: 18, channels: inputChannels, timestamp: liveEffectTestNowMs() });
 assert(livePerformanceWet.bypassed === false && livePerformanceWet.healthy === true, "live performance rack processes fresh audio");
+assert(
+  client.binaryProcessTimeouts.at(-1) === livePerformanceOptions.processTimeoutMs,
+  "live performance rack passes block-derived timeouts to binary audio requests"
+);
 await livePerformanceRack.destroy();
 
 const jsonRack = await SoundBridgeLiveEffectRack.create({
@@ -328,7 +337,8 @@ const jsonRack = await SoundBridgeLiveEffectRack.create({
   plugin,
   sampleRate: 48000,
   maxBlockSize: 128,
-  audioTransport: "json"
+  audioTransport: "json",
+  processTimeoutMs: 7
 });
 const beforeJsonProcessed = client.processed.length;
 const beforeJsonBinaryProcessed = client.binaryProcessed.length;
@@ -340,6 +350,7 @@ await jsonRack.processBlock({
 assert(client.processed.length === beforeJsonProcessed + 1, "json live rack calls processAudioBlock");
 assert(client.binaryProcessed.length === beforeJsonBinaryProcessed, "json live rack avoids processAudioBlockBinary");
 assert(Array.isArray(client.processed.at(-1)?.inputBuses?.[0]?.channels?.[0]), "json live rack clones input bus channels to arrays");
+assert(client.processTimeouts.at(-1) === 7, "json live rack passes process timeout to audio requests");
 await jsonRack.destroy();
 
 await rack.destroy();

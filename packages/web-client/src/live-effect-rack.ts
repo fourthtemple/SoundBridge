@@ -243,14 +243,18 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
         transport: request.transport,
         timestamp: request.timestamp
       };
+      const requestTimeoutMs = this.processTimeoutMs > 0 ? this.processTimeoutMs : undefined;
       const processed =
         this.audioTransport === "binary"
-          ? this.client.processAudioBlockBinary(processRequest)
-          : this.client.processAudioBlock({
-              ...processRequest,
-              channels: cloneChannels(request.channels),
-              inputBuses: cloneBusBlocks(request.inputBuses)
-            });
+          ? this.client.processAudioBlockBinary(processRequest, requestTimeoutMs)
+          : this.client.processAudioBlock(
+              {
+                ...processRequest,
+                channels: cloneChannels(request.channels),
+                inputBuses: cloneBusBlocks(request.inputBuses)
+              },
+              requestTimeoutMs
+            );
       this.inFlightBlocks += 1;
       const inFlightEpoch = this.inFlightEpoch;
       processed.then(() => this.releaseInFlightBlock(inFlightEpoch), () => this.releaseInFlightBlock(inFlightEpoch));
