@@ -83,8 +83,8 @@ Then create a plugin instance and put it in your Web Audio graph:
     throw new Error("No hostable VST3, AU, or LV2 effect found.");
   }
 
-  const inputChannels = plugin.inputs || 2;
-  const outputChannels = plugin.outputs || 2;
+  const inputChannels = plugin.inputs ?? 2;
+  const outputChannels = plugin.outputs ?? 2;
   const created = await client.createInstance({
     pluginId: plugin.pluginId,
     format: plugin.format,

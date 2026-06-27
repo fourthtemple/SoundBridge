@@ -226,6 +226,8 @@ const fakeContext = {
     }
   }
 };
+await SoundBridgeAudioNode.createLivePerformance(fakeContext, client, { instanceId: "inst-source-node", inputChannels: 0, outputChannels: 2, workletUrl: "/soundbridge-worklet.js" });
+assert(FakeAudioWorkletNode.last.options.numberOfInputs === 0 && FakeAudioWorkletNode.last.options.channelCount === 1 && FakeAudioWorkletNode.last.options.processorOptions.inputChannels === 0, "zero-input live AudioNodes are source-style worklets");
 const liveNode = await SoundBridgeAudioNode.createLivePerformance(fakeContext, client, {
   instanceId: "inst-live-node",
   inputChannels: 2,
@@ -247,10 +249,7 @@ assert(liveAudioPortMessage.maxInFlightBlocks === 4, "createLivePerformance forw
 assert(liveAudioPortMessage.audioRequestTimeoutMs === 250, "createLivePerformance forwards live audio timeouts to the worker");
 assert(liveAudioPortMessage.audioTransport === "binary", "createLivePerformance registers binary worker audio");
 assert(liveAudioPortMessage.sharedAudio?.slots === 8, "createLivePerformance registers the live shared ring depth");
-assert(
-  FakeAudioWorkletNode.last.port.messages.some((message) => message.type === "connect-transport"),
-  "createLivePerformance connects the worklet to the worker transport"
-);
+assert(FakeAudioWorkletNode.last.port.messages.some((message) => message.type === "connect-transport"), "createLivePerformance connects the worklet to the worker transport");
 let healthChangeEvents = 0;
 let healthChangeDetail;
 liveNode.addEventListener("healthchange", (event) => {

@@ -78,9 +78,9 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.maxConsecutiveTransportPressureEvents = options.maxConsecutiveTransportPressureEvents;
     this.bypassed = options.bypassed;
     this.node = new AudioWorkletNode(context, "soundbridge-audio-processor", {
-      numberOfInputs: 1,
+      numberOfInputs: options.inputChannels > 0 ? 1 : 0,
       numberOfOutputs: 1,
-      channelCount: options.inputChannels,
+      channelCount: Math.max(1, options.inputChannels),
       channelCountMode: "explicit",
       outputChannelCount: [options.outputChannels],
       processorOptions: {
@@ -127,7 +127,7 @@ export class SoundBridgeAudioNode extends EventTarget {
   ): Promise<SoundBridgeAudioNode> {
     const normalized: Required<SoundBridgeAudioNodeOptions> = {
       instanceId: options.instanceId,
-      inputChannels: Math.max(1, Math.min(32, Math.floor(options.inputChannels ?? 2))),
+      inputChannels: Math.max(0, Math.min(32, Math.floor(options.inputChannels ?? 2))),
       outputChannels: Math.max(1, Math.min(32, Math.floor(options.outputChannels ?? 2))),
       maxInFlightBlocks: boundedInteger(options.maxInFlightBlocks, 8, 1, 64),
       maxQueuedOutputBlocks: boundedInteger(options.maxQueuedOutputBlocks, 16, 1, 64),

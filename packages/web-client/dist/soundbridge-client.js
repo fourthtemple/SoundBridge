@@ -727,9 +727,9 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.lastAudioError = undefined;
     this.unhealthyReason = undefined;
     this.node = new AudioWorkletNode(context, "soundbridge-audio-processor", {
-      numberOfInputs: 1,
+      numberOfInputs: options.inputChannels > 0 ? 1 : 0,
       numberOfOutputs: 1,
-      channelCount: options.inputChannels,
+      channelCount: Math.max(1, options.inputChannels),
       channelCountMode: "explicit",
       outputChannelCount: [options.outputChannels],
       processorOptions: {
@@ -772,7 +772,7 @@ export class SoundBridgeAudioNode extends EventTarget {
   static async create(context, client, options) {
     const normalized = {
       instanceId: options.instanceId,
-      inputChannels: Math.max(1, Math.min(32, Math.floor(options.inputChannels ?? 2))),
+      inputChannels: Math.max(0, Math.min(32, Math.floor(options.inputChannels ?? 2))),
       outputChannels: Math.max(1, Math.min(32, Math.floor(options.outputChannels ?? 2))),
       maxInFlightBlocks: boundedAudioNodeInteger(options.maxInFlightBlocks, 8, 1, 64),
       maxQueuedOutputBlocks: boundedAudioNodeInteger(options.maxQueuedOutputBlocks, 16, 1, 64),
