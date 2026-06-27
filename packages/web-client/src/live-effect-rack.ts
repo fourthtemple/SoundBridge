@@ -24,6 +24,12 @@ export interface LiveEffectRackOptions {
   renderBudgetRecoveryBlocks?: number;
 }
 
+export interface LivePerformanceRackOptions extends LiveEffectRackOptions {
+  maxInputAgeBlocks?: number;
+  processTimeoutBlocks?: number;
+  transitionFadeBlocks?: number;
+}
+
 export interface LiveEffectBlockRequest {
   blockId: number;
   channels: ArrayLike<number>[];
@@ -60,6 +66,36 @@ export interface LiveEffectRackHealth {
   droppedInputBlocks: number;
   staleInputBlocks: number;
   transitionFadeSamples: number;
+}
+
+const LIVE_PERFORMANCE_INPUT_AGE_BLOCKS = 4;
+const LIVE_PERFORMANCE_PROCESS_TIMEOUT_BLOCKS = 4;
+const LIVE_PERFORMANCE_TRANSITION_FADE_BLOCKS = 0.5;
+const LIVE_PERFORMANCE_RECOVERY_BLOCKS = 16;
+
+export function createLivePerformanceRackOptions(options: LivePerformanceRackOptions): LiveEffectRackOptions {
+  const {
+    maxInputAgeBlocks,
+    processTimeoutBlocks,
+    transitionFadeBlocks,
+    ...rackOptions
+  } = options;
+  const blockMs = liveEffectBlockDurationMs(options.sampleRate, options.maxBlockSize);
+  const blockFrames = liveEffectBlockFrames(options.maxBlockSize);
+  const inputAgeBlocks = boundedLiveEffectNumber(maxInputAgeBlocks, LIVE_PERFORMANCE_INPUT_AGE_BLOCKS, 0, 128);
+  const timeoutBlocks = boundedLiveEffectNumber(processTimeoutBlocks, LIVE_PERFORMANCE_PROCESS_TIMEOUT_BLOCKS, 0, 128);
+  const fadeBlocks = boundedLiveEffectNumber(transitionFadeBlocks, LIVE_PERFORMANCE_TRANSITION_FADE_BLOCKS, 0, 8);
+
+  return {
+    ...rackOptions,
+    audioTransport: options.audioTransport ?? "binary",
+    maxInputAgeMs: boundedLiveEffectNumber(options.maxInputAgeMs, blockMs * inputAgeBlocks, 0, 60000),
+    maxInFlightBlocks: boundedLiveEffectInteger(options.maxInFlightBlocks, 1, 1, 32),
+    processTimeoutMs: boundedLiveEffectNumber(options.processTimeoutMs, blockMs * timeoutBlocks, 0, 60000),
+    transitionFadeSamples: boundedLiveEffectInteger(options.transitionFadeSamples, Math.ceil(blockFrames * fadeBlocks), 0, 4096),
+    maxConsecutiveRenderBudgetMisses: boundedLiveEffectInteger(options.maxConsecutiveRenderBudgetMisses, 2, 0, 1024),
+    renderBudgetRecoveryBlocks: boundedLiveEffectInteger(options.renderBudgetRecoveryBlocks, LIVE_PERFORMANCE_RECOVERY_BLOCKS, 0, 4096)
+  };
 }
 
 export class SoundBridgeLiveEffectRack extends EventTarget {
@@ -115,6 +151,10 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     const rack = new SoundBridgeLiveEffectRack(options);
     await rack.createInstance();
     return rack;
+  }
+
+  static createLivePerformance(options: LivePerformanceRackOptions): Promise<SoundBridgeLiveEffectRack> {
+    return SoundBridgeLiveEffectRack.create(createLivePerformanceRackOptions(options));
   }
 
   get instanceId(): string | undefined {
@@ -349,6 +389,17 @@ function boundedLiveEffectInteger(value: unknown, fallback: number, min: number,
 function boundedLiveEffectNumber(value: unknown, fallback: number, min: number, max: number): number {
   const number = Number(value ?? fallback);
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+}
+
+function liveEffectBlockDurationMs(sampleRate: number, maxBlockSize: number): number {
+  const rate = Number(sampleRate);
+  const frames = Number(maxBlockSize);
+  return Number.isFinite(rate) && rate > 0 && Number.isFinite(frames) && frames > 0 ? (frames / rate) * 1000 : 0;
+}
+
+function liveEffectBlockFrames(maxBlockSize: number): number {
+  const frames = Math.floor(Number(maxBlockSize));
+  return Number.isFinite(frames) && frames > 0 ? Math.min(frames, 8192) : 0;
 }
 
 function boundedOptionalNumber(value: unknown, min: number, max: number): number | undefined {

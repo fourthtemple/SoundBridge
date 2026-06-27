@@ -1,4 +1,7 @@
-import { SoundBridgeLiveEffectRack } from "../packages/web-client/dist/soundbridge-client.js";
+import {
+  SoundBridgeLiveEffectRack,
+  createLivePerformanceRackOptions
+} from "../packages/web-client/dist/soundbridge-client.js";
 
 const plugin = {
   pluginId: "mock.live-effect",
@@ -89,6 +92,40 @@ class FakeLiveClient {
 }
 
 const client = new FakeLiveClient();
+const livePerformanceOptions = createLivePerformanceRackOptions({
+  client,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128
+});
+assert(livePerformanceOptions.audioTransport === "binary", "live performance preset uses binary audio by default");
+assert(livePerformanceOptions.maxInFlightBlocks === 1, "live performance preset bounds in-flight processing");
+assert(livePerformanceOptions.maxConsecutiveRenderBudgetMisses === 2, "live performance preset fails dry after repeated budget misses");
+assert(livePerformanceOptions.renderBudgetRecoveryBlocks === 16, "live performance preset allows bounded render-pressure recovery");
+assert(livePerformanceOptions.transitionFadeSamples === 64, "live performance preset fades wet/dry transitions");
+assert(near(livePerformanceOptions.maxInputAgeMs, (128 / 48000) * 1000 * 4), "live performance preset bounds stale input age by block time");
+assert(near(livePerformanceOptions.processTimeoutMs, (128 / 48000) * 1000 * 4), "live performance preset bounds processing time by block time");
+const overriddenLivePerformance = createLivePerformanceRackOptions({
+  client,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  audioTransport: "json",
+  maxInputAgeBlocks: 2,
+  processTimeoutBlocks: 3,
+  transitionFadeBlocks: 1,
+  maxInFlightBlocks: 3,
+  maxConsecutiveRenderBudgetMisses: 5,
+  renderBudgetRecoveryBlocks: 6
+});
+assert(overriddenLivePerformance.audioTransport === "json", "live performance preset preserves explicit transport overrides");
+assert(overriddenLivePerformance.maxInFlightBlocks === 3, "live performance preset preserves explicit in-flight overrides");
+assert(overriddenLivePerformance.maxConsecutiveRenderBudgetMisses === 5, "live performance preset preserves explicit budget miss overrides");
+assert(overriddenLivePerformance.renderBudgetRecoveryBlocks === 6, "live performance preset preserves explicit recovery overrides");
+assert(overriddenLivePerformance.transitionFadeSamples === 128, "live performance preset derives fade overrides from block size");
+assert(near(overriddenLivePerformance.maxInputAgeMs, (128 / 48000) * 1000 * 2), "live performance preset derives freshness overrides from block time");
+assert(near(overriddenLivePerformance.processTimeoutMs, (128 / 48000) * 1000 * 3), "live performance preset derives timeout overrides from block time");
+
 const rack = await SoundBridgeLiveEffectRack.create({
   client,
   plugin,
@@ -271,6 +308,20 @@ const afterTimeout = await timeoutRack.processBlock({ blockId: 17, channels: inp
 assert(afterTimeout.bypassed === true && timeoutRack.health.healthy === false, "process timeout does not auto-recover");
 client.processingDelayMs = 0;
 await timeoutRack.destroy();
+
+const livePerformanceRack = await SoundBridgeLiveEffectRack.createLivePerformance({
+  client,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128
+});
+assert(livePerformanceRack.audioTransport === "binary", "createLivePerformance creates a binary live rack");
+assert(livePerformanceRack.processTimeoutMs === livePerformanceOptions.processTimeoutMs, "createLivePerformance applies process timeout defaults");
+assert(livePerformanceRack.maxInputAgeMs === livePerformanceOptions.maxInputAgeMs, "createLivePerformance applies input freshness defaults");
+assert(livePerformanceRack.renderBudgetRecoveryBlocks === 16, "createLivePerformance applies recovery defaults");
+const livePerformanceWet = await livePerformanceRack.processBlock({ blockId: 18, channels: inputChannels, timestamp: liveEffectTestNowMs() });
+assert(livePerformanceWet.bypassed === false && livePerformanceWet.healthy === true, "live performance rack processes fresh audio");
+await livePerformanceRack.destroy();
 
 const jsonRack = await SoundBridgeLiveEffectRack.create({
   client,

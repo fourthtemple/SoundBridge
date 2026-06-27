@@ -119,6 +119,21 @@ Then create a plugin instance and put it in your Web Audio graph:
 
 That is the core integration: scan, create an instance, connect `SoundBridgeAudioNode`.
 
+If your host owns the audio blocks directly, such as a browser DJ deck or live effects rack, use the live-performance rack defaults:
+
+```js
+import { SoundBridgeLiveEffectRack } from "/soundbridge/soundbridge-client.js";
+
+const rack = await SoundBridgeLiveEffectRack.createLivePerformance({
+  client,
+  plugin,
+  sampleRate: audioContext.sampleRate,
+  maxBlockSize: 128
+});
+```
+
+That preset uses binary audio, one in-flight block, block-time input freshness and processing deadlines, wet/dry transition fades, and bounded recovery after render pressure.
+
 ## Try The Demo
 
 With `npm run bridge` running in one terminal:
