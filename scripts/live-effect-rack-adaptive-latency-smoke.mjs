@@ -160,6 +160,41 @@ const floorRecovery = await controller.record({
 });
 assert(floorRecovery.applied === false, "adaptive rack latency does not recover below the configured latency floor");
 
+const dryPressureRack = new FakeRack();
+dryPressureRack.health = { ...dryPressureRack.health, transportLatencySamples: 0 };
+const dryPressureController = createLiveEffectRackAdaptiveLatencyController({
+  rack: dryPressureRack,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0,
+  processBudgetMs: 8,
+  processTimeoutMs: 12,
+  minSamples: 2,
+  cooldownBlocks: 0,
+  maxLatencyIncreaseBlocks: 1,
+  safetyMarginBlocks: 0
+});
+await dryPressureController.record({
+  ...dryPressureRack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0,
+  lastResponseDeadlineLeadBlocks: 1,
+  dryOutputBlocks: 0
+});
+const dryPressureRaise = await dryPressureController.record({
+  ...dryPressureRack.health,
+  lastProcessDurationMs: 0.5,
+  lastRenderDurationMs: 0.4,
+  responseJitterBlocks: 0,
+  lastResponseDeadlineLeadBlocks: 1,
+  dryOutputBlocks: 1
+});
+assert(dryPressureRaise.applied === true, "adaptive rack latency reacts to dry-output pressure before deadline samples");
+assert(dryPressureRaise.appliedDirection === "increase", "adaptive rack latency treats dry-output pressure as upward pressure");
+assert(dryPressureRaise.targetTransportLatencySamples === 128, "adaptive rack latency adds one dry-pressure safety block");
+assert(dryPressureRack.refreshes.length === 1 && dryPressureRack.refreshes[0] === 128, "adaptive rack latency refreshes the rack after dry-output pressure");
+
 const rackScheduler = createLiveEffectRackBlockScheduler({
   sampleRate: 48000,
   maxBlockSize: 128,

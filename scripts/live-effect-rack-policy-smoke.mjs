@@ -87,6 +87,23 @@ assert(readyCalibration.realtimeReady === true, "live effect calibration accepts
 assert(readyCalibration.warnings.length === 0, "live effect calibration stays quiet for in-budget measurements");
 assert(readyCalibration.recommendedTransportLatencySamples === 256, "live effect calibration preserves enough existing transport latency");
 
+const dryPressureCalibration = calibrateLiveEffectRackPolicy({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0,
+  processDurationsMs: [0.6, 0.7],
+  renderDurationsMs: [0.4, 0.5],
+  responseJitterBlocks: [0],
+  deadlineLeadBlocks: [1],
+  dryOutputBlocks: 1,
+  safetyMarginBlocks: 0
+});
+assert(dryPressureCalibration.realtimeReady === false, "live effect calibration flags dry-output pressure");
+assert(dryPressureCalibration.recommendedTransportLatencyBlocks === 1, "live effect calibration adds latency headroom for dry-output pressure");
+assert(dryPressureCalibration.recommendedTransportLatencySamples === 128, "live effect calibration converts dry pressure latency to samples");
+assert(dryPressureCalibration.warnings.includes("dry-output-pressure"), "live effect calibration reports dry-output pressure");
+assert(dryPressureCalibration.warnings.includes("increase-transport-latency"), "live effect calibration makes dry-output pressure actionable");
+
 const stressedCalibration = calibrateLiveEffectRackPolicy({
   sampleRate: 48000,
   maxBlockSize: 128,

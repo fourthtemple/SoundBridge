@@ -1684,11 +1684,12 @@ export function calibrateLiveEffectRackPolicy(options) {
   const hasResponseDeadlineMisses = boundedLiveEffectCalibrationCounter(options.responseDeadlineMisses) > 0;
   const hasRenderTimeouts = boundedLiveEffectCalibrationCounter(options.renderTimeouts) > 0;
   const currentLatencyBlocks = liveEffectPolicyBlockUnits(policy.transportLatencySamples, policy.maxBlockSize);
+  const dryPressureLatencyBlocks = hasDryOutputPressure ? 1 : 0;
   const jitterLatencyBlocks = Math.ceil(
     (observedResponseJitterP95Blocks ?? 0) +
       Math.max(0, -(observedDeadlineLeadMinBlocks ?? 0)) +
       safetyBlocks
-  );
+  ) + dryPressureLatencyBlocks;
   const recommendedTransportLatencyBlocks = boundedLiveEffectInteger(
     Math.max(currentLatencyBlocks, jitterLatencyBlocks),
     currentLatencyBlocks,
