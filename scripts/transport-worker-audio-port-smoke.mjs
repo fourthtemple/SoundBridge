@@ -331,6 +331,7 @@ assert(
   "transport worker times out direct audio requests"
 );
 const timedOutDirectId = encodedBinaryEnvelopes.at(-1)?.id;
+const postedBeforeLateDirect = postedMessages.length;
 socket.emit("message", {
   data: JSON.stringify({
     type: "response",
@@ -340,6 +341,7 @@ socket.emit("message", {
   })
 });
 assert(!timeoutPort.messages.some((message) => message.type === "processed" && message.blockId === 40), "transport worker ignores late direct audio responses after timeout");
+assert(postedMessages.length === postedBeforeLateDirect, "transport worker suppresses late direct audio responses after timeout");
 
 const sharedTimeoutAudio = createSharedAudio(2, 1, 2);
 writeSharedInput(sharedTimeoutAudio, 50, [Float32Array.from([0.5, 0.5])]);
@@ -361,12 +363,23 @@ self.onmessage({
 });
 assert(socket.sent.length === sentBeforeSharedTimeout + 1, "transport worker sends one shared block before timeout backpressure");
 assert(encodedBinaryEnvelopes.at(-1)?.payload.renderTimeoutMs === 30, "transport worker forwards custom shared render deadlines");
+const timedOutSharedId = encodedBinaryEnvelopes.at(-1)?.id;
 runTimerWithDelay(30);
 assert(
   sharedTimeoutPort.messages.some((message) => message.type === "audio-error" && message.blockId === 50 && /timed out/.test(message.error)),
   "transport worker times out shared audio requests"
 );
 assert(socket.sent.length === sentBeforeSharedTimeout + 2, "shared timeout releases capacity and drains the next queued block");
+const postedBeforeLateShared = postedMessages.length;
+socket.emit("message", {
+  data: JSON.stringify({
+    type: "response",
+    id: timedOutSharedId,
+    ok: true,
+    payload: { blockId: 50, channels: [Float32Array.from([0.5, 0.5])], latencySamples: 0 }
+  })
+});
+assert(postedMessages.length === postedBeforeLateShared, "transport worker suppresses late shared audio responses after timeout");
 
 clearTimersWithDelay(1);
 const timerFallbackAudio = createSharedAudio(2, 1, 2);

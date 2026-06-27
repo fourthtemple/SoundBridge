@@ -182,6 +182,7 @@ function sendAudioProcess(port: MessagePort, config: AudioPortConfig, message: {
       blockId,
       timeout: startAudioRequestTimeout(config.audioRequestTimeoutMs, () => {
         pendingAudioPorts.delete(envelope.id);
+        staleRequestIds.add(envelope.id);
         port.postMessage({ type: "audio-error", blockId, error: audioTimeoutMessage(config.audioRequestTimeoutMs) });
       })
     });
@@ -381,6 +382,7 @@ function sendSharedAudioProcess(
           return;
         }
         pendingSharedAudio.delete(envelope.id);
+        staleRequestIds.add(envelope.id);
         shared.inFlightBlocks = Math.max(0, shared.inFlightBlocks - 1);
         shared.port.postMessage({ type: "audio-error", blockId: block.blockId, error: audioTimeoutMessage(config.audioRequestTimeoutMs) });
         pumpSharedAudio(config, shared);
