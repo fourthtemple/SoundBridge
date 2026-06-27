@@ -117,6 +117,8 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         adaptiveOutputLatency: this.adaptiveOutputLatency,
         targetResponseDeadlineLeadBlocks: this.targetResponseDeadlineLeadBlocks,
         latencyPressureThresholdBlocks: this.latencyPressureThresholdBlocks,
+        latencyMissThresholdBlocks: this.latencyMissThresholdBlocks,
+        latencyRecoveryBlocks: this.latencyRecoveryBlocks,
         transportLatencySamples: this.transportLatencySamples(),
         latencyIncreases: this.latencyIncreases,
         latencyDecreases: this.latencyDecreases,

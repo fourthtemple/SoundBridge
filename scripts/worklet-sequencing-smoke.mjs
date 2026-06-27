@@ -228,6 +228,28 @@ assert(adaptiveProcessor.outputLatencyBlocks === 2, "direct worklet transport ra
 assert(adaptiveProcessor.latencyIncreases === 1, "direct worklet transport counts adaptive latency raises");
 assert(adaptiveProcessor.transportLatencySamples() === 2, "direct worklet transport reports adaptive transport latency samples");
 
+const recoveryProcessor = new processorCtor({
+  processorOptions: {
+    outputChannels: 1,
+    maxQueuedOutputBlocks: 4,
+    outputLatencyBlocks: 2,
+    minOutputLatencyBlocks: 1,
+    latencyRecoveryBlocks: 32,
+    targetResponseDeadlineLeadBlocks: 0
+  }
+});
+const recoveryMainPort = lastPort;
+const recoveryTransportPort = new TestPort();
+recoveryMainPort.onmessage({ data: { type: "connect-transport", port: recoveryTransportPort } });
+for (let blockIndex = 0; blockIndex < 34; blockIndex += 1) {
+  if (blockIndex >= 2) {
+    recoveryTransportPort.onmessage({ data: { type: "processed", blockId: blockIndex - 2, channels: [Float32Array.from([blockIndex])] } });
+  }
+  recoveryProcessor.process([[Float32Array.from([blockIndex])]], [[new Float32Array(1)]]);
+}
+assert(recoveryProcessor.outputLatencyBlocks === 1, "worklet honors configured adaptive latency recovery window");
+assert(recoveryProcessor.latencyDecreases === 1, "worklet counts adaptive latency recovery decreases");
+
 const pressureProcessor = new processorCtor({
   processorOptions: {
     outputChannels: 1,
@@ -272,6 +294,8 @@ assert(typeof statsMessage?.latencyIncreases === "number", "worklet stats report
 assert(typeof statsMessage?.latencyDecreases === "number", "worklet stats report adaptive latency decreases");
 assert(typeof statsMessage?.targetResponseDeadlineLeadBlocks === "number", "worklet stats report target response deadline lead");
 assert(typeof statsMessage?.latencyPressureThresholdBlocks === "number", "worklet stats report latency pressure threshold");
+assert(typeof statsMessage?.latencyMissThresholdBlocks === "number", "worklet stats report latency miss threshold");
+assert(typeof statsMessage?.latencyRecoveryBlocks === "number", "worklet stats report latency recovery window");
 assert(typeof statsMessage?.consecutiveLowDeadlineLeadBlocks === "number", "worklet stats report low deadline pressure");
 assert(typeof statsMessage?.latencySafetyBlocks === "number", "worklet stats report pending safety latency blocks");
 assert(typeof statsMessage?.latencySafetyInsertions === "number", "worklet stats report safety latency insertions");

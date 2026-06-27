@@ -634,6 +634,8 @@ export class SoundBridgeAudioNode extends EventTarget {
         minOutputLatencyBlocks: options.minOutputLatencyBlocks,
         maxOutputLatencyBlocks: options.maxOutputLatencyBlocks,
         adaptiveOutputLatency: options.adaptiveOutputLatency,
+        latencyMissThresholdBlocks: options.latencyMissThresholdBlocks,
+        latencyRecoveryBlocks: options.latencyRecoveryBlocks,
         targetResponseDeadlineLeadBlocks: options.targetResponseDeadlineLeadBlocks,
         latencyPressureThresholdBlocks: options.latencyPressureThresholdBlocks
       }
@@ -668,6 +670,8 @@ export class SoundBridgeAudioNode extends EventTarget {
       minOutputLatencyBlocks: 1,
       maxOutputLatencyBlocks: 4,
       adaptiveOutputLatency: options.adaptiveOutputLatency !== false,
+      latencyMissThresholdBlocks: boundedAudioNodeInteger(options.latencyMissThresholdBlocks, 2, 1, 32),
+      latencyRecoveryBlocks: boundedAudioNodeInteger(options.latencyRecoveryBlocks, 512, 32, 8192),
       targetResponseDeadlineLeadBlocks: boundedAudioNodeInteger(options.targetResponseDeadlineLeadBlocks, 1, 0, 16),
       latencyPressureThresholdBlocks: boundedAudioNodeInteger(options.latencyPressureThresholdBlocks, 4, 1, 64),
       audioTransport: options.audioTransport === "json" ? "json" : "binary",

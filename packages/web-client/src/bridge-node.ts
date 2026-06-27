@@ -11,6 +11,8 @@ export interface SoundBridgeAudioNodeOptions {
   minOutputLatencyBlocks?: number;
   maxOutputLatencyBlocks?: number;
   adaptiveOutputLatency?: boolean;
+  latencyMissThresholdBlocks?: number;
+  latencyRecoveryBlocks?: number;
   targetResponseDeadlineLeadBlocks?: number;
   latencyPressureThresholdBlocks?: number;
   audioTransport?: "binary" | "json";
@@ -54,6 +56,8 @@ export class SoundBridgeAudioNode extends EventTarget {
         minOutputLatencyBlocks: options.minOutputLatencyBlocks,
         maxOutputLatencyBlocks: options.maxOutputLatencyBlocks,
         adaptiveOutputLatency: options.adaptiveOutputLatency,
+        latencyMissThresholdBlocks: options.latencyMissThresholdBlocks,
+        latencyRecoveryBlocks: options.latencyRecoveryBlocks,
         targetResponseDeadlineLeadBlocks: options.targetResponseDeadlineLeadBlocks,
         latencyPressureThresholdBlocks: options.latencyPressureThresholdBlocks
       }
@@ -92,6 +96,8 @@ export class SoundBridgeAudioNode extends EventTarget {
       minOutputLatencyBlocks: 1,
       maxOutputLatencyBlocks: 4,
       adaptiveOutputLatency: options.adaptiveOutputLatency !== false,
+      latencyMissThresholdBlocks: boundedInteger(options.latencyMissThresholdBlocks, 2, 1, 32),
+      latencyRecoveryBlocks: boundedInteger(options.latencyRecoveryBlocks, 512, 32, 8192),
       targetResponseDeadlineLeadBlocks: boundedInteger(options.targetResponseDeadlineLeadBlocks, 1, 0, 16),
       latencyPressureThresholdBlocks: boundedInteger(options.latencyPressureThresholdBlocks, 4, 1, 64),
       audioTransport: options.audioTransport === "json" ? "json" : "binary",
@@ -154,6 +160,8 @@ export class SoundBridgeAudioNode extends EventTarget {
       adaptiveOutputLatency?: boolean;
       targetResponseDeadlineLeadBlocks?: number;
       latencyPressureThresholdBlocks?: number;
+      latencyMissThresholdBlocks?: number;
+      latencyRecoveryBlocks?: number;
       transportLatencySamples?: number;
       latencyIncreases?: number;
       latencyDecreases?: number;
