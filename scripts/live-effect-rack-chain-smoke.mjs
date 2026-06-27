@@ -258,12 +258,12 @@ assert(
 );
 
 const stageBypass = {
-  health: { instanceId: "inst-stage-bypass", lastDryReason: "manual-bypass" },
+  health: { instanceId: "inst-stage-bypass", lastDryReason: "bypass" },
   async processBlock(request) {
     return {
       blockId: request.blockId,
       channels: request.channels,
-      renderEngine: "stage-bypass",
+      renderEngine: "dry-bypass",
       bypassed: true,
       healthy: true
     };
@@ -280,7 +280,8 @@ assert(
     stageBypassResponse.renderEngine === "live-effect-rack-chain" &&
     stageBypassChain.health.lastDryReason === "chain-stage-bypass" &&
     stageBypassChain.health.dryOutputBlocks === 1 &&
-    stageBypassChain.health.stageResults[0].lastDryReason === "manual-bypass",
+    stageBypassChain.health.bypassDryOutputBlocks === 1 &&
+    stageBypassChain.health.stageResults[0].lastDryReason === "bypass",
   "live rack chain records all-stage-bypass dry reason"
 );
 
@@ -371,6 +372,7 @@ assert(
     initiallyBypassed.bypassed === true &&
     initiallyBypassed.renderEngine === "chain-bypass" &&
     initiallyBypassedChain.health.lastDryReason === "chain-bypass" &&
+    initiallyBypassedChain.health.bypassDryOutputBlocks === 1 &&
     initiallyBypassed.channels[0][0] === 0.2 &&
     initiallyBypassedStage.requests.length === 0,
   "live rack chain can start manually bypassed without processing stages"
@@ -400,6 +402,7 @@ assert(
     bypassDry.renderEngine === "chain-bypass" &&
     bypassHealthDuringDry.bypassed === true &&
     bypassHealthDuringDry.lastDryReason === "chain-bypass" &&
+    bypassHealthDuringDry.bypassDryOutputBlocks === 1 &&
     bypassRequestsAfterDry === 1 &&
     near(bypassDry.channels[0][0], 20 / 3) &&
     near(bypassDry.channels[0][1], 10 / 3) &&

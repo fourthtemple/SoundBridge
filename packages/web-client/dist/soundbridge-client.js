@@ -2206,6 +2206,7 @@ export class LiveEffectRackCalibrationWindow {
 export class LiveEffectRackChainCalibrationWindow {
   constructor(options) {
     this.dryOutputBlocks = 0;
+    this.bypassDryOutputBlocks = 0;
     this.window = new LiveEffectRackCalibrationWindow(options);
   }
 
@@ -2216,21 +2217,25 @@ export class LiveEffectRackChainCalibrationWindow {
   record(health) {
     if (health.dryOutputBlocks !== void 0) {
       this.dryOutputBlocks = boundedLiveEffectInteger(health.dryOutputBlocks, this.dryOutputBlocks, 0, Number.MAX_SAFE_INTEGER);
+      this.bypassDryOutputBlocks = boundedLiveEffectInteger(health.bypassDryOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
     } else if (health.lastDryReason !== void 0) {
       this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
+      if (isLiveEffectChainBypassDryReason(health.lastDryReason)) this.bypassDryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.bypassDryOutputBlocks + 1);
     }
+    const pressureDryOutputBlocks = Math.max(0, this.dryOutputBlocks - Math.min(this.bypassDryOutputBlocks, this.dryOutputBlocks));
     return this.window.record({
       lastProcessDurationMs: health.lastProcessDurationMs,
       responseJitterBlocks: health.responseJitterBlocks,
       lastResponseDeadlineLeadBlocks: health.lastResponseDeadlineLeadBlocks,
       latencySamples: health.latencySamples,
-      dryOutputBlocks: this.dryOutputBlocks,
+      dryOutputBlocks: pressureDryOutputBlocks,
       responseDeadlineMisses: health.responseDeadlineMisses
     });
   }
 
   reset() {
     this.dryOutputBlocks = 0;
+    this.bypassDryOutputBlocks = 0;
     this.window.reset();
   }
 
@@ -2245,6 +2250,10 @@ export class LiveEffectRackChainCalibrationWindow {
   recommendedPolicyOptions(overrides = {}) {
     return this.window.recommendedPolicyOptions(overrides);
   }
+}
+
+function isLiveEffectChainBypassDryReason(reason) {
+  return reason === "chain-bypass" || reason === "chain-stage-bypass";
 }
 
 export class LiveEffectRackFrameBatchCalibrationWindow {
@@ -2942,6 +2951,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastStageError = void 0;
     this.lastDryReason = void 0;
     this.dryOutputBlocks = 0;
+    this.bypassDryOutputBlocks = 0;
     this.processBudgetMisses = 0;
     this.recoveryDryBlocks = 0;
     this.lastError = void 0;
@@ -2979,6 +2989,7 @@ export class LiveEffectRackChain extends EventTarget {
       lastStageError: this.lastStageError,
       lastDryReason: this.lastDryReason,
       dryOutputBlocks: this.dryOutputBlocks,
+      bypassDryOutputBlocks: this.bypassDryOutputBlocks,
       processBudgetMs: this.processBudgetMs,
       processTimeoutMs: this.processTimeoutMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
@@ -3248,6 +3259,7 @@ export class LiveEffectRackChain extends EventTarget {
     const lastDryReason = liveEffectChainDryReason(response);
     if (lastDryReason !== void 0) {
       this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
+      if (isIntentionalLiveEffectChainBypassResponse(response)) this.bypassDryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.bypassDryOutputBlocks + 1);
     }
     this.recordDryReason(lastDryReason);
     const normalized = boundedLiveEffectChannels(response.channels, outputChannels, this.maxBlockSize);
@@ -3423,6 +3435,10 @@ function liveEffectChainDryReason(response) {
     return "chain-stage-bypass";
   }
   return response.bypassed ? "chain-bypass" : void 0;
+}
+
+function isIntentionalLiveEffectChainBypassResponse(response) {
+  return response.renderEngine === "chain-bypass" || response.stageResults.length > 0 && response.stageResults.every((stage) => stage.bypassed && stage.healthy !== false && stage.error === void 0 && (stage.renderEngine === "dry-bypass" || stage.lastDryReason === "bypass"));
 }
 
 function liveEffectChainStageResult(index, stage, response, durationMs) {

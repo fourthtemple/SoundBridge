@@ -94,6 +94,7 @@ export interface LiveEffectRackChainHealth {
   lastStageError?: unknown;
   lastDryReason?: LiveEffectRackChainDryReason;
   dryOutputBlocks: number;
+  bypassDryOutputBlocks: number;
   processBudgetMs: number;
   processTimeoutMs: number;
   maxConsecutiveProcessBudgetMisses: number;
@@ -144,6 +145,7 @@ export class LiveEffectRackChain extends EventTarget {
   private lastStageError?: unknown;
   private lastDryReason?: LiveEffectRackChainDryReason;
   private dryOutputBlocks = 0;
+  private bypassDryOutputBlocks = 0;
   private processBudgetMisses = 0;
   private recoveryDryBlocks = 0;
   private lastError?: unknown;
@@ -201,6 +203,7 @@ export class LiveEffectRackChain extends EventTarget {
       lastStageError: this.lastStageError,
       lastDryReason: this.lastDryReason,
       dryOutputBlocks: this.dryOutputBlocks,
+      bypassDryOutputBlocks: this.bypassDryOutputBlocks,
       processBudgetMs: this.processBudgetMs,
       processTimeoutMs: this.processTimeoutMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
@@ -499,6 +502,7 @@ export class LiveEffectRackChain extends EventTarget {
     const lastDryReason = chainDryReason(response);
     if (lastDryReason !== undefined) {
       this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
+      if (isIntentionalChainBypassResponse(response)) this.bypassDryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.bypassDryOutputBlocks + 1);
     }
     this.recordDryReason(lastDryReason);
     const normalized = boundedLiveEffectChannels(response.channels, outputChannels, this.maxBlockSize);
@@ -706,6 +710,10 @@ function chainDryReason(response: LiveEffectRackChainResponse): LiveEffectRackCh
     return "chain-stage-bypass";
   }
   return response.bypassed ? "chain-bypass" : undefined;
+}
+
+function isIntentionalChainBypassResponse(response: LiveEffectRackChainResponse): boolean {
+  return response.renderEngine === "chain-bypass" || (response.stageResults.length > 0 && response.stageResults.every((stage) => stage.bypassed && stage.healthy !== false && stage.error === undefined && (stage.renderEngine === "dry-bypass" || stage.lastDryReason === "bypass")));
 }
 
 function stageResult(index: number, stage: LiveEffectRackChainStage, response: LiveEffectBlockResponse, durationMs: number): LiveEffectRackChainStageResult {

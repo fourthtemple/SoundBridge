@@ -56,6 +56,7 @@ export interface LiveEffectRackChainCalibrationHealthSample
     "lastProcessDurationMs" | "latencySamples" | "lastResponseDeadlineLeadBlocks" | "responseJitterBlocks" | "responseDeadlineMisses"
   > {
   dryOutputBlocks?: unknown;
+  bypassDryOutputBlocks?: unknown;
   lastDryReason?: unknown;
 }
 
@@ -217,6 +218,7 @@ export class LiveEffectRackCalibrationWindow {
 export class LiveEffectRackChainCalibrationWindow {
   private readonly window: LiveEffectRackCalibrationWindow;
   private dryOutputBlocks = 0;
+  private bypassDryOutputBlocks = 0;
 
   constructor(options: LiveEffectRackCalibrationWindowOptions) {
     this.window = new LiveEffectRackCalibrationWindow(options);
@@ -229,21 +231,25 @@ export class LiveEffectRackChainCalibrationWindow {
   record(health: LiveEffectRackChainCalibrationHealthSample): LiveEffectRackCalibrationWindowSnapshot {
     if (health.dryOutputBlocks !== undefined) {
       this.dryOutputBlocks = boundedLiveEffectInteger(health.dryOutputBlocks, this.dryOutputBlocks, 0, Number.MAX_SAFE_INTEGER);
+      this.bypassDryOutputBlocks = boundedLiveEffectInteger(health.bypassDryOutputBlocks, 0, 0, Number.MAX_SAFE_INTEGER);
     } else if (health.lastDryReason !== undefined) {
       this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
+      if (isChainBypassDryReason(health.lastDryReason)) this.bypassDryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.bypassDryOutputBlocks + 1);
     }
+    const pressureDryOutputBlocks = Math.max(0, this.dryOutputBlocks - Math.min(this.bypassDryOutputBlocks, this.dryOutputBlocks));
     return this.window.record({
       lastProcessDurationMs: health.lastProcessDurationMs,
       responseJitterBlocks: health.responseJitterBlocks,
       lastResponseDeadlineLeadBlocks: health.lastResponseDeadlineLeadBlocks,
       latencySamples: health.latencySamples,
-      dryOutputBlocks: this.dryOutputBlocks,
+      dryOutputBlocks: pressureDryOutputBlocks,
       responseDeadlineMisses: health.responseDeadlineMisses
     });
   }
 
   reset(): void {
     this.dryOutputBlocks = 0;
+    this.bypassDryOutputBlocks = 0;
     this.window.reset();
   }
 
@@ -258,6 +264,10 @@ export class LiveEffectRackChainCalibrationWindow {
   recommendedPolicyOptions(overrides: Partial<LiveEffectRackPolicyOptions> = {}): LiveEffectRackPolicyOptions {
     return this.window.recommendedPolicyOptions(overrides);
   }
+}
+
+function isChainBypassDryReason(reason: unknown): boolean {
+  return reason === "chain-bypass" || reason === "chain-stage-bypass";
 }
 
 export class LiveEffectRackFrameBatchCalibrationWindow {

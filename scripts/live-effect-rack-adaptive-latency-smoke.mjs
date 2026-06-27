@@ -363,22 +363,28 @@ chainController.record({
   lastProcessDurationMs: 0.5,
   responseJitterBlocks: 0.25,
   lastResponseDeadlineLeadBlocks: 1,
-  responseDeadlineMisses: 1
+  responseDeadlineMisses: 1,
+  dryOutputBlocks: 1,
+  bypassDryOutputBlocks: 1
 });
 const chainStable = chainController.record({
   latencySamples: 128,
   lastProcessDurationMs: 0.5,
   responseJitterBlocks: 0.25,
   lastResponseDeadlineLeadBlocks: 1,
-  responseDeadlineMisses: 1
+  responseDeadlineMisses: 1,
+  dryOutputBlocks: 2,
+  bypassDryOutputBlocks: 2
 });
-assert(chainStable.applied === false && chainStable.stableBlocks === 1, "adaptive chain scheduler latency counts stable recovery blocks");
+assert(chainStable.applied === false && chainStable.stableBlocks === 1, "adaptive chain scheduler latency counts bypass-only chain dry output as stable recovery blocks");
 const chainRecovery = chainController.record({
   latencySamples: 128,
   lastProcessDurationMs: 0.5,
   responseJitterBlocks: 0.25,
   lastResponseDeadlineLeadBlocks: 1,
-  responseDeadlineMisses: 1
+  responseDeadlineMisses: 1,
+  dryOutputBlocks: 3,
+  bypassDryOutputBlocks: 3
 });
 assert(chainRecovery.applied === true, "adaptive chain scheduler latency recovers downward after stable chain health");
 assert(chainRecovery.appliedDirection === "decrease", "adaptive chain scheduler latency reports downward scheduler changes");

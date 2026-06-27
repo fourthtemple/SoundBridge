@@ -218,9 +218,27 @@ await chain.processBlock({ blockId: 22, channels: [[1, 1]], sampleRate: 48000 })
 const chainDry = chainWindow.record(chain.health);
 assert(
   chain.health.dryOutputBlocks === 1 &&
-    chainDry.calibration.warnings.includes("dry-output-pressure"),
-  "live chain calibration window counts chain dry output after baseline"
+    chain.health.bypassDryOutputBlocks === 1 &&
+    !chainDry.calibration.warnings.includes("dry-output-pressure"),
+  "live chain calibration window ignores intentional chain bypass dry output"
 );
+const chainPressureDry = chainWindow.record({
+  lastProcessDurationMs: 1,
+  latencySamples: 256,
+  dryOutputBlocks: 2,
+  bypassDryOutputBlocks: 1
+});
+assert(chainPressureDry.calibration.warnings.includes("dry-output-pressure"), "live chain calibration window still counts non-bypass dry output");
+
+const bypassDryWindow = createLiveEffectRackChainCalibrationWindow({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetMs: 5,
+  processTimeoutMs: 12
+});
+bypassDryWindow.record({ lastProcessDurationMs: 1, latencySamples: 0, dryOutputBlocks: 1, bypassDryOutputBlocks: 1 });
+const bypassOnlyDrySample = bypassDryWindow.record({ lastProcessDurationMs: 1, latencySamples: 0, dryOutputBlocks: 2, bypassDryOutputBlocks: 2 });
+assert(!bypassOnlyDrySample.calibration.warnings.includes("dry-output-pressure"), "live chain calibration window treats cumulative bypass-only dry output as stable");
 
 const repeatDryWindow = createLiveEffectRackChainCalibrationWindow({
   sampleRate: 48000,
