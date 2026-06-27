@@ -6,12 +6,12 @@ import {
   combinedAudioNodeLatencySamples,
   createLivePerformanceAudioNodeOptions
 } from "./bridge-node-options";
-import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
+import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
 import { SoundBridgeClient } from "./client";
 import { liveTransportForBlock } from "./live-transport";
 
 export { LivePerformanceAudioNodeCalibrationWindow, calibrateLivePerformanceAudioNodePolicy, createLivePerformanceAudioNodeCalibrationWindow, createLivePerformanceAudioNodeOptions, createLivePerformanceAudioNodePolicy, livePerformanceAudioNodeOptionsFromCalibration, refreshLivePerformanceAudioNodeLatencyFromCalibration } from "./bridge-node-options";
-export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
+export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
 
 export class SoundBridgeAudioNode extends EventTarget {
   readonly node: AudioWorkletNode;
@@ -549,8 +549,16 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (typeof stats.sharedAudioEnabled === "boolean") {
       this.sharedAudioEnabled = stats.sharedAudioEnabled;
     }
+    this.reportFallbackOutput(previous, stats);
     this.reportLatencyChange(previous, stats);
     this.reportTransportPressure(previous, stats);
+  }
+
+  private reportFallbackOutput(previous: { fallbackOutputBlocks: number }, stats: unknown): void {
+    const deltaBlocks = Math.max(0, this.fallbackOutputBlocks - previous.fallbackOutputBlocks);
+    if (deltaBlocks <= 0) return;
+    const detail: SoundBridgeAudioNodeFallbackOutputEventDetail = { deltaBlocks, reason: this.lastFallbackReason, stats, health: this.health };
+    this.dispatchEvent(new CustomEvent("fallback-output", { detail }));
   }
 
   private reportLatencyChange(

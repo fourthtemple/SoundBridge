@@ -30,6 +30,13 @@ export interface LivePerformanceAudioNodeOptions extends SoundBridgeAudioNodeOpt
 
 export type SoundBridgeAudioNodeFallbackReason = "bypass" | "latency-safety" | "underrun";
 
+export interface SoundBridgeAudioNodeFallbackOutputEventDetail {
+  deltaBlocks: number;
+  reason?: SoundBridgeAudioNodeFallbackReason;
+  stats: unknown;
+  health: SoundBridgeAudioNodeHealth;
+}
+
 export interface SoundBridgeAudioNodeHealth {
   healthy: boolean;
   instanceId: string;

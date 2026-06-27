@@ -279,28 +279,18 @@ assert(liveNode.health.bypassEvents === 2, "SoundBridgeAudioNode counts wet/dry 
 assert(healthChangeEvents === 2 && healthChangeDetail?.bypassed === false, "clearing bypass emits a healthchange event");
 let statsEvents = 0;
 let statsDetail;
-liveNode.addEventListener("stats", (event) => {
-  statsEvents += 1;
-  statsDetail = event.detail;
-});
+liveNode.addEventListener("stats", (event) => { statsEvents += 1; statsDetail = event.detail; });
+let fallbackOutputEvents = 0, fallbackOutputDetail;
+liveNode.addEventListener("fallback-output", (event) => { fallbackOutputEvents += 1; fallbackOutputDetail = event.detail; });
 let transportPressureEvents = 0;
 let transportPressureDetail;
 let transportPressureAutoBypassEvents = 0;
 let transportPressureAutoBypassDetail;
-liveNode.addEventListener("transport-pressure", (event) => {
-  transportPressureEvents += 1;
-  transportPressureDetail = event.detail;
-});
-liveNode.addEventListener("transport-pressure-auto-bypassed", (event) => {
-  transportPressureAutoBypassEvents += 1;
-  transportPressureAutoBypassDetail = event.detail;
-});
+liveNode.addEventListener("transport-pressure", (event) => { transportPressureEvents += 1; transportPressureDetail = event.detail; });
+liveNode.addEventListener("transport-pressure-auto-bypassed", (event) => { transportPressureAutoBypassEvents += 1; transportPressureAutoBypassDetail = event.detail; });
 let latencyEvents = 0;
 let latencyDetail;
-liveNode.addEventListener("latencychange", (event) => {
-  latencyEvents += 1;
-  latencyDetail = event.detail;
-});
+liveNode.addEventListener("latencychange", (event) => { latencyEvents += 1; latencyDetail = event.detail; });
 const pressureStats = {
   type: "stats",
   inFlightBlocks: 3,
@@ -326,6 +316,7 @@ const pressureStats = {
 FakeAudioWorkletNode.last.port.onmessage({ data: pressureStats });
 assert(statsEvents === 1, "SoundBridgeAudioNode emits one stats event per worklet stats message");
 assert(statsDetail.transportLatencySamples === 256 && statsDetail.fallbackOutputBlocks === 7, "SoundBridgeAudioNode preserves stats event details");
+assert(fallbackOutputEvents === 1 && fallbackOutputDetail?.deltaBlocks === 7 && fallbackOutputDetail?.reason === "underrun", "SoundBridgeAudioNode emits fallback-output for new fallback blocks");
 assert(liveNode.health.inFlightBlocks === 3, "SoundBridgeAudioNode health tracks worklet in-flight blocks");
 assert(liveNode.health.queuedOutputBlocks === 2, "SoundBridgeAudioNode health tracks queued output blocks");
 assert(liveNode.health.outputLatencyBlocks === 2, "SoundBridgeAudioNode health tracks output latency blocks");
@@ -361,6 +352,7 @@ assert(
   "SoundBridgeAudioNode health tracks the latest transport-pressure reason"
 );
 FakeAudioWorkletNode.last.port.onmessage({ data: pressureStats });
+assert(fallbackOutputEvents === 1, "SoundBridgeAudioNode does not repeat fallback-output for unchanged counters");
 assert(transportPressureEvents === 1, "SoundBridgeAudioNode does not repeat transport-pressure for unchanged counters");
 assert(latencyEvents === 1, "SoundBridgeAudioNode does not repeat latencychange for unchanged latency stats");
 FakeAudioWorkletNode.last.port.onmessage({

@@ -1228,8 +1228,15 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (typeof stats.sharedAudioEnabled === "boolean") {
       this.sharedAudioEnabled = stats.sharedAudioEnabled;
     }
+    this.reportFallbackOutput(previous, stats);
     this.reportLatencyChange(previous, stats);
     this.reportTransportPressure(previous, stats);
+  }
+
+  reportFallbackOutput(previous, stats) {
+    const deltaBlocks = Math.max(0, this.fallbackOutputBlocks - previous.fallbackOutputBlocks);
+    if (deltaBlocks <= 0) return;
+    this.dispatchEvent(new CustomEvent("fallback-output", { detail: { deltaBlocks, reason: this.lastFallbackReason, stats, health: this.health } }));
   }
 
   reportLatencyChange(previous, stats) {
