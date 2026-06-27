@@ -292,6 +292,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       return response;
     }
 
+    let inFlightEpoch = this.inFlightEpoch;
+    let outputStateVersion = this.outputStateVersion;
     try {
       const processRequest: BinaryAudioBlockRequest = {
         instanceId: this.instanceId,
@@ -316,8 +318,8 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
               requestTimeoutMs
             );
       this.inFlightBlocks += 1;
-      const inFlightEpoch = this.inFlightEpoch;
-      const outputStateVersion = this.outputStateVersion;
+      inFlightEpoch = this.inFlightEpoch;
+      outputStateVersion = this.outputStateVersion;
       processed.then(() => this.releaseInFlightBlock(inFlightEpoch), () => this.releaseInFlightBlock(inFlightEpoch));
       const response = await withLiveEffectTimeout(processed, this.processTimeoutMs);
       if (this.outputStateChanged(inFlightEpoch, outputStateVersion)) {
@@ -337,6 +339,9 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       }
       return this.finishResponse({ ...response, bypassed: false, healthy: true });
     } catch (error) {
+      if (this.outputStateChanged(inFlightEpoch, outputStateVersion)) {
+        return this.dryResponse(request, undefined, this.bypassed ? "dry-bypass" : "dry-state-changed");
+      }
       this.failClosed(error, liveEffectFailureReason(error));
       return this.dryResponse(request, error);
     }

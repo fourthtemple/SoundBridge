@@ -251,8 +251,20 @@ const recovered = await rack.processBlock({ blockId: 5, channels: inputChannels 
 assert(rack.instanceId === "inst-live-2", "recreate replaces the effect instance");
 assert(recovered.bypassed === false && recovered.channels[0][1] === 0.25, "recreated rack processes audio again");
 
+client.processingDelayMs = 5;
+client.failProcessing = true;
+const staleFailureDuringRecreate = rack.processBlock({ blockId: 6, channels: inputChannels });
+await rack.recreate();
+const staleFailureDry = await staleFailureDuringRecreate;
+assert(staleFailureDry.bypassed === true && staleFailureDry.renderEngine === "dry-state-changed", "recreate drops stale rejected render output dry");
+assert(rack.health.healthy === true && errorEvents === 1, "stale rejected renders after recreate do not poison the current rack");
+client.failProcessing = false;
+client.processingDelayMs = 0;
+const afterStaleFailureRecreate = await rack.processBlock({ blockId: 7, channels: inputChannels });
+assert(afterStaleFailureRecreate.bypassed === false, "rack keeps processing after a stale rejected render from a retired instance");
+
 await rack.processBlock({
-  blockId: 6,
+  blockId: 8,
   channels: inputChannels,
   inputBuses: [{ index: 1, channels: [Float32Array.from([0.1, 0.2, 0.3, 0.4])] }]
 });
