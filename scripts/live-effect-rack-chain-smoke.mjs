@@ -23,6 +23,8 @@ class FakeStage {
     this.tailSamples = tailSamples;
     this.durationMs = durationMs;
     this.infiniteTail = infiniteTail;
+    this.healthy = true;
+    this.error = undefined;
     this.requests = [];
     this.health = { instanceId: `inst-${name}` };
   }
@@ -38,7 +40,8 @@ class FakeStage {
       infiniteTail: this.infiniteTail,
       renderEngine: `stage-${this.name}`,
       bypassed: false,
-      healthy: true
+      healthy: this.healthy,
+      error: this.error
     };
   }
 }
@@ -171,6 +174,39 @@ assert(
     latencyChain.health.infiniteTail === true &&
     lastLatencyHealth.infiniteTail === true,
   "live rack chain tracks sample-rate-aware aggregate latency and infinite tail"
+);
+
+const slotStage = new FakeStage("slot-health", 1);
+const slotChain = createLiveEffectRackChain({
+  stages: [slotStage],
+  outputChannels: 1,
+  maxBlockSize: 2
+});
+let slotHealthEvents = 0;
+slotChain.addEventListener("healthchange", () => {
+  slotHealthEvents += 1;
+});
+const healthySlot = await slotChain.processBlock({ blockId: 47, channels: [[1, 1]], sampleRate: 48000 });
+slotStage.healthy = false;
+slotStage.error = new Error("slot unhealthy");
+const unhealthySlot = await slotChain.processBlock({ blockId: 48, channels: [[1, 1]], sampleRate: 48000 });
+slotStage.healthy = true;
+slotStage.error = undefined;
+const recoveredSlot = await slotChain.processBlock({ blockId: 49, channels: [[1, 1]], sampleRate: 48000 });
+assert(
+  healthySlot.healthy === true &&
+    unhealthySlot.healthy === false &&
+    recoveredSlot.healthy === true &&
+    slotHealthEvents === 2,
+  "live rack chain emits health changes when stage aggregate health changes"
+);
+assert(
+  slotChain.health.healthy === true &&
+    slotChain.health.stageHealthy === true &&
+    slotChain.health.processedStages === 1 &&
+    slotChain.health.failedStageIndex === undefined &&
+    slotChain.health.stageResults[0].instanceId === "inst-slot-health",
+  "live rack chain exposes recovered stage aggregate health"
 );
 
 fakeNowMs = 0;
@@ -414,6 +450,13 @@ const failingChain = createLiveEffectRackChain({ stages: [left, throwingStage, r
 const failed = await failingChain.processBlock({ blockId: 14, channels: [[1, 1], [2, 2]], sampleRate: 48000 });
 assert(failed.healthy === false && failed.failedStageIndex === 1, "live rack chain reports the failing stage");
 assert(failed.processedStages === 2 && failed.stageResults[1].healthy === false, "live rack chain records the failed stage result");
+assert(
+  failingChain.health.healthy === false &&
+    failingChain.health.stageHealthy === false &&
+    failingChain.health.failedStageIndex === 1 &&
+    failingChain.health.lastStageError instanceof Error,
+  "live rack chain health exposes the last failed stage"
+);
 assert(failed.channels[0][0] === 2 && failed.channels[1][0] === 4, "live rack chain fails dry to last known audio");
 
 const empty = await createLiveEffectRackChain({ stages: [], outputChannels: 2, maxBlockSize: 4 })

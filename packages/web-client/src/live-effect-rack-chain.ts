@@ -64,7 +64,12 @@ export interface LiveEffectRackChainHealth {
   tailMs: number;
   infiniteTail: boolean;
   healthy: boolean;
+  stageHealthy: boolean;
   stageCount: number;
+  processedStages: number;
+  failedStageIndex?: number;
+  stageResults: LiveEffectRackChainStageResult[];
+  lastStageError?: unknown;
   processBudgetMs: number;
   maxConsecutiveProcessBudgetMisses: number;
   processBudgetRecoveryBlocks: number;
@@ -93,6 +98,11 @@ export class LiveEffectRackChain extends EventTarget {
   private latencySamples = 0;
   private tailSamples = 0;
   private infiniteTail = false;
+  private stageHealthy = true;
+  private lastProcessedStages = 0;
+  private lastFailedStageIndex?: number;
+  private lastStageResults: LiveEffectRackChainStageResult[] = [];
+  private lastStageError?: unknown;
   private processBudgetMisses = 0;
   private recoveryDryBlocks = 0;
   private lastError?: unknown;
@@ -132,8 +142,13 @@ export class LiveEffectRackChain extends EventTarget {
       tailSamples: this.tailSamples,
       tailMs: liveEffectLatencyMilliseconds(this.tailSamples, this.sampleRate),
       infiniteTail: this.infiniteTail,
-      healthy: this.unhealthyReason === undefined,
+      healthy: this.chainHealthy(),
+      stageHealthy: this.stageHealthy,
       stageCount: this.stages.length,
+      processedStages: this.lastProcessedStages,
+      failedStageIndex: this.lastFailedStageIndex,
+      stageResults: this.lastStageResults.slice(),
+      lastStageError: this.lastStageError,
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
       processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
@@ -273,7 +288,7 @@ export class LiveEffectRackChain extends EventTarget {
     renderEngine: string,
     outputChannels: number,
     error?: unknown,
-    healthy = this.unhealthyReason === undefined
+    healthy = this.chainHealthy()
   ): LiveEffectRackChainResponse {
     const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
     const response = this.finishOutputResponse({
@@ -342,6 +357,7 @@ export class LiveEffectRackChain extends EventTarget {
         chainProcessBudgetTripped,
         chainUnhealthyReason: this.unhealthyReason
       }, outputChannels), request);
+      this.recordStageHealth(finalResponse);
       this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
       return finalResponse;
     }
@@ -357,6 +373,7 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessBudgetTripped,
       chainUnhealthyReason: this.unhealthyReason
     }, outputChannels), request);
+    this.recordStageHealth(finalResponse);
     this.dispatchChainPressureEvents(finalResponse, previousMisses, previousUnhealthyReason);
     return finalResponse;
   }
@@ -390,6 +407,31 @@ export class LiveEffectRackChain extends EventTarget {
     this.dispatchEvent(new CustomEvent("latencychange", { detail: this.health }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     return response;
+  }
+
+  private recordStageHealth(response: LiveEffectRackChainResponse): void {
+    if (response.stageResults.length === 0 && response.failedStageIndex === undefined && this.stages.length > 0) {
+      return;
+    }
+    const stageHealthy = response.stageResults.every((stage) => stage.healthy !== false);
+    const processedStages = boundedLiveEffectInteger(response.processedStages, 0, 0, this.stages.length);
+    const failedStageIndex = boundedFailedStageIndex(response.failedStageIndex, this.stages.length);
+    const lastStageError = stageHealthy ? undefined : response.error ?? response.stageResults.find((stage) => stage.healthy === false)?.error;
+    const changed = stageHealthy !== this.stageHealthy ||
+      failedStageIndex !== this.lastFailedStageIndex ||
+      lastStageError !== this.lastStageError;
+    this.stageHealthy = stageHealthy;
+    this.lastProcessedStages = processedStages;
+    this.lastFailedStageIndex = failedStageIndex;
+    this.lastStageResults = response.stageResults.slice();
+    this.lastStageError = lastStageError;
+    if (changed) {
+      this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
+    }
+  }
+
+  private chainHealthy(): boolean {
+    return this.unhealthyReason === undefined && this.stageHealthy;
   }
 
   private dispatchChainPressureEvents(
@@ -441,6 +483,11 @@ function stageWetMix(stageWetMixes: ArrayLike<number> | undefined, index: number
 
 function boundedWetMix(value: unknown, fallback: number): number {
   return boundedLiveEffectNumber(value, fallback, 0, 1);
+}
+
+function boundedFailedStageIndex(value: unknown, stageCount: number): number | undefined {
+  const bounded = boundedOptionalNumber(value, 0, Math.max(0, stageCount - 1));
+  return bounded === undefined ? undefined : Math.floor(bounded);
 }
 
 function stageResult(index: number, stage: LiveEffectRackChainStage, response: LiveEffectBlockResponse, durationMs: number): LiveEffectRackChainStageResult {
