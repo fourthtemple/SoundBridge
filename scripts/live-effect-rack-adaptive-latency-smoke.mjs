@@ -2,7 +2,8 @@ import {
   createLiveEffectRackAdaptiveLatencyController,
   createLiveEffectRackBlockScheduler,
   createLiveEffectRackSchedulerAdaptiveLatencyController,
-  createLiveEffectRackChainSchedulerAdaptiveLatencyController
+  createLiveEffectRackChainSchedulerAdaptiveLatencyController,
+  createLiveEffectRackFrameBatchSchedulerAdaptiveLatencyController
 } from "../packages/web-client/dist/soundbridge-client.js";
 
 function assert(condition, message) {
@@ -384,5 +385,103 @@ assert(chainRecovery.appliedDirection === "decrease", "adaptive chain scheduler 
 assert(chainRecovery.targetTransportLatencySamples === 512, "adaptive chain scheduler latency recovers in bounded one-block steps");
 assert(chainScheduler.snapshot().transportLatencySamples === 512, "adaptive chain scheduler latency applies the recovery target");
 assert(chainRecovery.deadlinePressure?.pressure === false, "adaptive chain scheduler latency snapshots show recovered pressure");
+
+const batchScheduler = createLiveEffectRackBlockScheduler({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 128
+});
+const batchController = createLiveEffectRackFrameBatchSchedulerAdaptiveLatencyController({
+  scheduler: batchScheduler,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0,
+  processBudgetMs: 8,
+  processTimeoutMs: 12,
+  minSamples: 2,
+  cooldownBlocks: 1,
+  maxLatencyIncreaseBlocks: 2,
+  latencyRecoveryBlocks: 2,
+  maxLatencyDecreaseBlocks: 1,
+  minTransportLatencyBlocks: 0,
+  safetyMarginBlocks: 0
+});
+
+const batchReady = batchController.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 128,
+  dryTargets: 0,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+assert(batchReady.applied === false, "adaptive frame batch scheduler latency waits for enough batch samples");
+assert(batchReady.batchLatencySamples === 128, "adaptive frame batch scheduler latency reports aggregate batch latency");
+assert(batchReady.currentTransportLatencySamples === 128, "adaptive frame batch scheduler latency reads the scheduler latency");
+assert(batchReady.targetTransportLatencySamples === 128, "adaptive frame batch scheduler latency keeps stable batch latency unchanged");
+
+const batchRaise = batchController.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 128,
+  dryTargets: 1,
+  skippedTargets: 1,
+  failedTargets: 0,
+  processBudgetTripped: true
+});
+assert(batchRaise.applied === true, "adaptive frame batch scheduler latency applies dry-pressure recommendations");
+assert(batchRaise.appliedDirection === "increase", "adaptive frame batch scheduler latency reports upward changes");
+assert(batchRaise.targetTransportLatencySamples === 256, "adaptive frame batch scheduler latency adds one dry-pressure safety block");
+assert(batchScheduler.snapshot().transportLatencySamples === 256, "adaptive frame batch scheduler latency updates the scheduler");
+assert(
+  batchScheduler.snapshot().deadlinePressure.reasons.includes("dry-output-pressure"),
+  "adaptive frame batch scheduler latency keeps batch dry pressure observable"
+);
+assert(
+  batchRaise.deadlinePressure?.reasons.includes("increase-transport-latency"),
+  "adaptive frame batch scheduler latency snapshots include latency pressure reasons"
+);
+
+const batchCooldown = batchController.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 128,
+  dryTargets: 1,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+assert(batchCooldown.applied === false, "adaptive frame batch scheduler latency observes cooldown between increases");
+
+batchController.reset();
+batchController.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 128,
+  dryTargets: 0,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+const batchStable = batchController.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 128,
+  dryTargets: 0,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+assert(batchStable.applied === false && batchStable.stableBlocks === 1, "adaptive frame batch scheduler latency counts stable recovery blocks");
+const batchRecovery = batchController.record({
+  totalDurationMs: 1,
+  maxDurationMs: 0.5,
+  latencySamples: 128,
+  dryTargets: 0,
+  skippedTargets: 0,
+  failedTargets: 0
+});
+assert(batchRecovery.applied === true, "adaptive frame batch scheduler latency recovers downward after stable batch health");
+assert(batchRecovery.appliedDirection === "decrease", "adaptive frame batch scheduler latency reports downward scheduler changes");
+assert(batchRecovery.targetTransportLatencySamples === 128, "adaptive frame batch scheduler latency recovers to aggregate batch latency");
+assert(batchScheduler.snapshot().transportLatencySamples === 128, "adaptive frame batch scheduler latency applies the recovery target");
+assert(batchRecovery.deadlinePressure?.pressure === false, "adaptive frame batch scheduler latency snapshots show recovered pressure");
 
 console.log("Live effect rack adaptive latency smoke checks passed.");
