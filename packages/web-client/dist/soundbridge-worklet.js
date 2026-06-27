@@ -25,6 +25,8 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.adaptiveOutputLatency = processorOptions.adaptiveOutputLatency !== false;
     this.latencyMissThresholdBlocks = this.boundedInteger(processorOptions.latencyMissThresholdBlocks, 2, 1, 32);
     this.latencyRecoveryBlocks = this.boundedInteger(processorOptions.latencyRecoveryBlocks, 512, 32, 8192);
+    this.targetResponseDeadlineLeadBlocks = this.boundedInteger(processorOptions.targetResponseDeadlineLeadBlocks, 1, 0, 16);
+    this.latencyPressureThresholdBlocks = this.boundedInteger(processorOptions.latencyPressureThresholdBlocks, 4, 1, 64);
     this.blockId = 0;
     this.lastFrames = 128;
     this.underruns = 0;
@@ -37,6 +39,9 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.sharedOutputDroppedBlocks = 0;
     this.consecutiveLatencyMisses = 0;
     this.consecutiveOnTimeBlocks = 0;
+    this.consecutiveLowDeadlineLeadBlocks = 0;
+    this.latencySafetyBlocks = 0;
+    this.latencySafetyInsertions = 0;
     this.inputBufferAllocations = 0;
     this.inputBufferReuses = 0;
     this.pooledInputBuffers = 0;
@@ -65,21 +70,28 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.drainSharedOutput();
     const outgoing = this.copyInputBlock(input, frames);
     const currentBlockId = this.blockId++;
-    const targetBlockId = currentBlockId - this.outputLatencyBlocks;
+    const insertingSafetyBlock = this.latencySafetyBlocks > 0;
+    const targetBlockId = insertingSafetyBlock ? -1 : currentBlockId - this.outputLatencyBlocks;
     const queued = targetBlockId >= 0 ? this.outputBlocks.get(targetBlockId) : undefined;
 
     if (queued) {
       this.outputBlocks.delete(targetBlockId);
       this.writeBlock(output, queued, frames);
       this.processedBlocks += 1;
+    } else if (insertingSafetyBlock) {
+      this.writeBlock(output, outgoing, frames);
+      this.latencySafetyBlocks -= 1;
+      this.latencySafetyInsertions += 1;
     } else {
       this.writeBlock(output, outgoing, frames);
       this.underruns += 1;
     }
-    this.recordOutputTiming(Boolean(queued), targetBlockId);
-    const staleDropped = this.dropStaleOutputBlocks(targetBlockId);
-    if (staleDropped > 0) {
-      this.recordLateOutput();
+    if (!insertingSafetyBlock) {
+      this.recordOutputTiming(Boolean(queued), targetBlockId);
+      const staleDropped = this.dropStaleOutputBlocks(targetBlockId);
+      if (staleDropped > 0) {
+        this.recordLateOutput();
+      }
     }
 
     this.postProcessBlock(currentBlockId, frames, outgoing);
@@ -97,9 +109,14 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         minOutputLatencyBlocks: this.minOutputLatencyBlocks,
         maxOutputLatencyBlocks: this.maxOutputLatencyBlocks,
         adaptiveOutputLatency: this.adaptiveOutputLatency,
+        targetResponseDeadlineLeadBlocks: this.targetResponseDeadlineLeadBlocks,
+        latencyPressureThresholdBlocks: this.latencyPressureThresholdBlocks,
         transportLatencySamples: this.transportLatencySamples(),
         latencyIncreases: this.latencyIncreases,
         latencyDecreases: this.latencyDecreases,
+        consecutiveLowDeadlineLeadBlocks: this.consecutiveLowDeadlineLeadBlocks,
+        latencySafetyBlocks: this.latencySafetyBlocks,
+        latencySafetyInsertions: this.latencySafetyInsertions,
         sharedAudioEnabled: Boolean(this.sharedAudio),
         sharedAudioWakeMode: this.sharedAudioWakeMode,
         sharedInputQueuedBlocks: this.sharedAudio ? Atomics.load(this.sharedAudio.inputControl, SoundBridgeAudioProcessor.sharedAvailable) : 0,
@@ -416,18 +433,14 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         this.outputLatencyBlocks -= 1;
         this.latencyDecreases += 1;
         this.consecutiveOnTimeBlocks = 0;
+        this.consecutiveLowDeadlineLeadBlocks = 0;
       }
       return;
     }
     this.consecutiveOnTimeBlocks = 0;
     this.consecutiveLatencyMisses += 1;
-    if (
-      this.outputLatencyBlocks < this.maxOutputLatencyBlocks &&
-      this.consecutiveLatencyMisses >= this.latencyMissThresholdBlocks
-    ) {
-      this.outputLatencyBlocks += 1;
-      this.latencyIncreases += 1;
-      this.consecutiveLatencyMisses = 0;
+    if (this.consecutiveLatencyMisses >= this.latencyMissThresholdBlocks) {
+      this.raiseOutputLatency();
     }
   }
 
@@ -438,9 +451,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.consecutiveOnTimeBlocks = 0;
     this.consecutiveLatencyMisses += 1;
     if (this.consecutiveLatencyMisses >= this.latencyMissThresholdBlocks) {
-      this.outputLatencyBlocks += 1;
-      this.latencyIncreases += 1;
-      this.consecutiveLatencyMisses = 0;
+      this.raiseOutputLatency();
     }
   }
 
@@ -457,6 +468,38 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       this.responseDeadlineMisses += 1;
       this.responseDeadlineMissesSinceLastStats += 1;
     }
+    this.recordLatencyPressure(leadBlocks);
+  }
+
+  recordLatencyPressure(leadBlocks) {
+    if (!this.canAdaptLatency()) {
+      return;
+    }
+    if (leadBlocks >= this.targetResponseDeadlineLeadBlocks) {
+      this.consecutiveLowDeadlineLeadBlocks = 0;
+      return;
+    }
+    this.consecutiveOnTimeBlocks = 0;
+    this.consecutiveLowDeadlineLeadBlocks += 1;
+    if (this.consecutiveLowDeadlineLeadBlocks >= this.latencyPressureThresholdBlocks) {
+      this.raiseOutputLatency(true);
+    }
+  }
+
+  raiseOutputLatency(insertSafetyBlock = false) {
+    if (this.outputLatencyBlocks >= this.maxOutputLatencyBlocks) {
+      this.consecutiveLatencyMisses = 0;
+      this.consecutiveLowDeadlineLeadBlocks = 0;
+      return;
+    }
+    this.outputLatencyBlocks += 1;
+    if (insertSafetyBlock) {
+      this.latencySafetyBlocks += 1;
+    }
+    this.latencyIncreases += 1;
+    this.consecutiveLatencyMisses = 0;
+    this.consecutiveLowDeadlineLeadBlocks = 0;
+    this.consecutiveOnTimeBlocks = 0;
   }
 
   resetResponseDeadlineWindow() {
@@ -470,6 +513,9 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.responseBlocks = 0;
     this.responseDeadlineMisses = 0;
     this.responseDeadlineLeadBlocks = 0;
+    this.consecutiveLowDeadlineLeadBlocks = 0;
+    this.latencySafetyBlocks = 0;
+    this.latencySafetyInsertions = 0;
     this.resetResponseDeadlineWindow();
   }
 

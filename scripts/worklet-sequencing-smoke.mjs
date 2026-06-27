@@ -179,6 +179,32 @@ assert(adaptiveProcessor.outputLatencyBlocks === 2, "direct worklet transport ra
 assert(adaptiveProcessor.latencyIncreases === 1, "direct worklet transport counts adaptive latency raises");
 assert(adaptiveProcessor.transportLatencySamples() === 2, "direct worklet transport reports adaptive transport latency samples");
 
+const pressureProcessor = new processorCtor({
+  processorOptions: {
+    outputChannels: 1,
+    maxQueuedOutputBlocks: 6,
+    outputLatencyBlocks: 1,
+    maxOutputLatencyBlocks: 3,
+    targetResponseDeadlineLeadBlocks: 1,
+    latencyPressureThresholdBlocks: 2
+  }
+});
+const pressureMainPort = lastPort;
+const pressureTransportPort = new TestPort();
+pressureMainPort.onmessage({ data: { type: "connect-transport", port: pressureTransportPort } });
+pressureProcessor.process([[Float32Array.from([10])]], [[new Float32Array(1)]]);
+pressureTransportPort.onmessage({ data: { type: "processed", blockId: 0, channels: [Float32Array.from([10])] } });
+assert(pressureProcessor.consecutiveLowDeadlineLeadBlocks === 1, "worklet records low response deadline lead pressure");
+pressureProcessor.process([[Float32Array.from([11])]], [[new Float32Array(1)]]);
+pressureTransportPort.onmessage({ data: { type: "processed", blockId: 1, channels: [Float32Array.from([11])] } });
+assert(pressureProcessor.outputLatencyBlocks === 2, "worklet raises latency before underrun after repeated low deadline lead");
+assert(pressureProcessor.latencyIncreases === 1, "worklet counts preemptive deadline-pressure latency raises");
+assert(pressureProcessor.latencySafetyBlocks === 1, "worklet schedules a safety block when preemptively raising latency");
+const underrunsBeforeSafety = pressureProcessor.underruns;
+pressureProcessor.process([[Float32Array.from([12])]], [[new Float32Array(1)]]);
+assert(pressureProcessor.latencySafetyInsertions === 1, "worklet inserts a controlled safety block to grow latency");
+assert(pressureProcessor.underruns === underrunsBeforeSafety, "worklet does not count safety latency growth as an underrun");
+
 const statsProcessor = new processorCtor({
   processorOptions: {
     outputChannels: 1,
@@ -195,6 +221,11 @@ assert(typeof statsMessage?.inFlightBlocks === "number", "worklet stats report i
 assert(typeof statsMessage?.transportLatencySamples === "number", "worklet stats report transport latency samples");
 assert(typeof statsMessage?.latencyIncreases === "number", "worklet stats report adaptive latency increases");
 assert(typeof statsMessage?.latencyDecreases === "number", "worklet stats report adaptive latency decreases");
+assert(typeof statsMessage?.targetResponseDeadlineLeadBlocks === "number", "worklet stats report target response deadline lead");
+assert(typeof statsMessage?.latencyPressureThresholdBlocks === "number", "worklet stats report latency pressure threshold");
+assert(typeof statsMessage?.consecutiveLowDeadlineLeadBlocks === "number", "worklet stats report low deadline pressure");
+assert(typeof statsMessage?.latencySafetyBlocks === "number", "worklet stats report pending safety latency blocks");
+assert(typeof statsMessage?.latencySafetyInsertions === "number", "worklet stats report safety latency insertions");
 assert(typeof statsMessage?.sharedAudioEnabled === "boolean", "worklet stats report shared audio enablement");
 assert(typeof statsMessage?.sharedAudioWakeMode === "string", "worklet stats report shared audio wake mode");
 assert(typeof statsMessage?.sharedInputDroppedBlocks === "number", "worklet stats report shared input drops");

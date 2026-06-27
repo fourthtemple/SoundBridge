@@ -632,7 +632,9 @@ export class SoundBridgeAudioNode extends EventTarget {
         outputLatencyBlocks: options.outputLatencyBlocks,
         minOutputLatencyBlocks: options.minOutputLatencyBlocks,
         maxOutputLatencyBlocks: options.maxOutputLatencyBlocks,
-        adaptiveOutputLatency: options.adaptiveOutputLatency
+        adaptiveOutputLatency: options.adaptiveOutputLatency,
+        targetResponseDeadlineLeadBlocks: options.targetResponseDeadlineLeadBlocks,
+        latencyPressureThresholdBlocks: options.latencyPressureThresholdBlocks
       }
     });
     this.node.port.onmessage = (event) => this.handleWorkletMessage(event.data);
@@ -664,6 +666,8 @@ export class SoundBridgeAudioNode extends EventTarget {
       minOutputLatencyBlocks: 1,
       maxOutputLatencyBlocks: 4,
       adaptiveOutputLatency: options.adaptiveOutputLatency !== false,
+      targetResponseDeadlineLeadBlocks: boundedAudioNodeInteger(options.targetResponseDeadlineLeadBlocks, 1, 0, 16),
+      latencyPressureThresholdBlocks: boundedAudioNodeInteger(options.latencyPressureThresholdBlocks, 4, 1, 64),
       audioTransport: options.audioTransport === "json" ? "json" : "binary",
       audioTransferMode: options.audioTransferMode ?? "auto",
       sharedBufferBlocks: boundedAudioNodeInteger(options.sharedBufferBlocks, 8, 2, 64),
