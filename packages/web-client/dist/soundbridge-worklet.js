@@ -41,6 +41,13 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.inputBufferReuses = 0;
     this.pooledInputBuffers = 0;
     this.inFlightBlocks = 0;
+    this.responseBlocks = 0;
+    this.responseBlocksSinceLastStats = 0;
+    this.responseDeadlineMisses = 0;
+    this.responseDeadlineMissesSinceLastStats = 0;
+    this.responseDeadlineLeadBlocks = 0;
+    this.responseDeadlineLeadMinBlocks = void 0;
+    this.responseDeadlineLeadMaxBlocks = void 0;
     this.outputBlocks = new Map();
     this.inputBufferPool = new Map();
     this.maxInFlightBlocks = this.boundedInteger(processorOptions.maxInFlightBlocks, 8, 1, 64);
@@ -78,6 +85,9 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.postProcessBlock(currentBlockId, frames, outgoing);
 
     if (this.blockId % 128 === 0) {
+      const leadMinBlocks = this.responseDeadlineLeadMinBlocks ?? 0;
+      const leadMaxBlocks = this.responseDeadlineLeadMaxBlocks ?? 0;
+      const jitterBlocks = this.responseBlocksSinceLastStats > 0 ? leadMaxBlocks - leadMinBlocks : 0;
       this.port.postMessage({
         type: "stats",
         processedBlocks: this.processedBlocks,
@@ -101,8 +111,19 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         inputBufferAllocations: this.inputBufferAllocations,
         inputBufferReuses: this.inputBufferReuses,
         pooledInputBuffers: this.pooledInputBuffers,
-        inFlightBlocks: this.inFlightBlocks
+        inFlightBlocks: this.inFlightBlocks,
+        responseBlocks: this.responseBlocks,
+        responseBlocksSinceLastStats: this.responseBlocksSinceLastStats,
+        responseDeadlineLeadBlocks: this.responseDeadlineLeadBlocks,
+        responseDeadlineLeadMinBlocks: this.responseBlocksSinceLastStats > 0 ? leadMinBlocks : 0,
+        responseDeadlineLeadMaxBlocks: this.responseBlocksSinceLastStats > 0 ? leadMaxBlocks : 0,
+        responseDeadlineLeadSamples: this.responseDeadlineLeadBlocks * this.lastFrames,
+        responseJitterBlocks: jitterBlocks,
+        responseJitterSamples: jitterBlocks * this.lastFrames,
+        responseDeadlineMisses: this.responseDeadlineMisses,
+        responseDeadlineMissesSinceLastStats: this.responseDeadlineMissesSinceLastStats
       });
+      this.resetResponseDeadlineWindow();
     }
 
     return true;
@@ -116,6 +137,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     if (message.type === "destroy") {
       this.outputBlocks.clear();
       this.inputBufferPool.clear();
+      this.resetResponseDeadlineState();
       this.pooledInputBuffers = 0;
       this.sharedAudio = void 0;
       this.sharedAudioWakeMode = "none";
@@ -170,6 +192,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       return;
     }
 
+    this.recordResponseDeadline(blockId);
     if (blockId < this.blockId - this.outputLatencyBlocks) {
       this.staleOutputBlocks += 1;
       this.recordLateOutput();
@@ -293,6 +316,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   }
 
   queueSharedOutputBlock(blockId, frames, channels, slotIndex, shared) {
+    this.recordResponseDeadline(blockId);
     if (blockId < this.blockId - this.outputLatencyBlocks) {
       this.staleOutputBlocks += 1;
       this.recordLateOutput();
@@ -418,6 +442,35 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       this.latencyIncreases += 1;
       this.consecutiveLatencyMisses = 0;
     }
+  }
+
+  recordResponseDeadline(blockId) {
+    const leadBlocks = blockId - (this.blockId - this.outputLatencyBlocks);
+    this.responseBlocks += 1;
+    this.responseBlocksSinceLastStats += 1;
+    this.responseDeadlineLeadBlocks = leadBlocks;
+    this.responseDeadlineLeadMinBlocks =
+      this.responseDeadlineLeadMinBlocks === void 0 ? leadBlocks : Math.min(this.responseDeadlineLeadMinBlocks, leadBlocks);
+    this.responseDeadlineLeadMaxBlocks =
+      this.responseDeadlineLeadMaxBlocks === void 0 ? leadBlocks : Math.max(this.responseDeadlineLeadMaxBlocks, leadBlocks);
+    if (leadBlocks < 0) {
+      this.responseDeadlineMisses += 1;
+      this.responseDeadlineMissesSinceLastStats += 1;
+    }
+  }
+
+  resetResponseDeadlineWindow() {
+    this.responseBlocksSinceLastStats = 0;
+    this.responseDeadlineMissesSinceLastStats = 0;
+    this.responseDeadlineLeadMinBlocks = void 0;
+    this.responseDeadlineLeadMaxBlocks = void 0;
+  }
+
+  resetResponseDeadlineState() {
+    this.responseBlocks = 0;
+    this.responseDeadlineMisses = 0;
+    this.responseDeadlineLeadBlocks = 0;
+    this.resetResponseDeadlineWindow();
   }
 
   canAdaptLatency() {

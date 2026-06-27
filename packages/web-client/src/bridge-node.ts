@@ -160,6 +160,16 @@ export class SoundBridgeAudioNode extends EventTarget {
       inputBufferReuses?: number;
       pooledInputBuffers?: number;
       inFlightBlocks?: number;
+      responseBlocks?: number;
+      responseBlocksSinceLastStats?: number;
+      responseDeadlineLeadBlocks?: number;
+      responseDeadlineLeadMinBlocks?: number;
+      responseDeadlineLeadMaxBlocks?: number;
+      responseDeadlineLeadSamples?: number;
+      responseJitterBlocks?: number;
+      responseJitterSamples?: number;
+      responseDeadlineMisses?: number;
+      responseDeadlineMissesSinceLastStats?: number;
       renderEngine?: string;
       error?: unknown;
     };

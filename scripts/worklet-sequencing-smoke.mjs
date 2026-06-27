@@ -74,6 +74,7 @@ deliver(1, [101, 101]);
 assert(equal(renderBlock([2, 2]), [2, 2]), "out-of-order block 1 is not played in block 0's slot");
 
 deliver(0, [100, 100]);
+assert(processor.responseDeadlineMisses === 1, "late worklet responses count deadline misses");
 deliver(2, [102, 102]);
 assert(processor.staleOutputBlocks === 1, "late block 0 is counted as stale");
 assert(equal(renderBlock([3, 3]), [101, 101]), "block 1 plays in its scheduled output slot");
@@ -118,6 +119,8 @@ directTransportPort.onmessage({
   }
 });
 assert(directProcessor.inFlightBlocks === 0, "direct worklet transport releases in-flight blocks on response");
+assert(directProcessor.responseBlocks === 1, "direct worklet transport counts returned response blocks");
+assert(directProcessor.responseDeadlineLeadBlocks === 0, "direct worklet transport records just-in-time deadline lead");
 assert(
   directProcessor.outputBlocks.get(0)?.[0] === transferredOutput,
   "direct worklet transport queues transferred Float32Array output without an extra copy"
@@ -154,6 +157,8 @@ writeSharedOutput(sharedAudio, 0, [Float32Array.from([70, 70])]);
 const sharedOutput = [new Float32Array(2)];
 sharedProcessor.process([[Float32Array.from([8, 8])]], [sharedOutput]);
 assert(equal(Array.from(sharedOutput[0]), [70, 70]), "shared worklet transport drains shared output blocks");
+assert(sharedProcessor.responseBlocks === 1, "shared worklet transport counts returned response blocks");
+assert(sharedProcessor.responseDeadlineLeadBlocks === 0, "shared worklet transport records shared deadline lead");
 
 const adaptiveProcessor = new processorCtor({
   processorOptions: {
@@ -197,6 +202,16 @@ assert(typeof statsMessage?.sharedOutputDroppedBlocks === "number", "worklet sta
 assert(typeof statsMessage?.inputBufferAllocations === "number", "worklet stats report input buffer allocations");
 assert(typeof statsMessage?.inputBufferReuses === "number", "worklet stats report input buffer reuse");
 assert(typeof statsMessage?.pooledInputBuffers === "number", "worklet stats report pooled input buffers");
+assert(typeof statsMessage?.responseBlocks === "number", "worklet stats report response blocks");
+assert(typeof statsMessage?.responseBlocksSinceLastStats === "number", "worklet stats report windowed response blocks");
+assert(typeof statsMessage?.responseDeadlineLeadBlocks === "number", "worklet stats report latest response deadline lead");
+assert(typeof statsMessage?.responseDeadlineLeadMinBlocks === "number", "worklet stats report minimum response deadline lead");
+assert(typeof statsMessage?.responseDeadlineLeadMaxBlocks === "number", "worklet stats report maximum response deadline lead");
+assert(typeof statsMessage?.responseDeadlineLeadSamples === "number", "worklet stats report response deadline lead samples");
+assert(typeof statsMessage?.responseJitterBlocks === "number", "worklet stats report response jitter blocks");
+assert(typeof statsMessage?.responseJitterSamples === "number", "worklet stats report response jitter samples");
+assert(typeof statsMessage?.responseDeadlineMisses === "number", "worklet stats report response deadline misses");
+assert(typeof statsMessage?.responseDeadlineMissesSinceLastStats === "number", "worklet stats report windowed deadline misses");
 
 console.log("Worklet sequencing smoke checks passed.");
 
