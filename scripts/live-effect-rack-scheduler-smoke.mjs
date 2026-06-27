@@ -382,6 +382,8 @@ assert(
   staleBatch.processedTargets === 0 &&
     staleBatch.skippedTargets === 1 &&
     staleBatch.failedTargets === 0 &&
+    staleBatch.dryTargets === 1 &&
+    staleBatch.bypassedTargets === 0 &&
     staleBatch.healthy === true &&
     staleBatch.reportedLatencySamples === 320 &&
     staleBatch.results[0].response.renderEngine === "frame-batch-stale-input" &&
@@ -488,6 +490,7 @@ assert(
     deadlineSkippedBatch.skippedTargets === 1 &&
     deadlineSkippedBatch.failedTargets === 0 &&
     deadlineSkippedBatch.dryTargets === 1 &&
+    deadlineSkippedBatch.bypassedTargets === 0 &&
     deadlineSkippedBatch.healthy === true &&
     deadlineSkippedBatch.reportedLatencySamples === 256 &&
     deadlineSkippedBatch.results[0].response.renderEngine === "frame-batch-deadline-pressure" &&
@@ -566,6 +569,7 @@ assert(
   budgetTrip.processedTargets === 0 &&
     budgetTrip.skippedTargets === 1 &&
     budgetTrip.dryTargets === 1 &&
+    budgetTrip.bypassedTargets === 0 &&
     budgetTrip.results[0].response.renderEngine === "frame-batch-process-budget-exceeded",
   "live frame batch returns dry skipped results when the aggregate budget trips"
 );
@@ -707,6 +711,7 @@ assert(
   timeoutTrip.processedTargets === 0 &&
     timeoutTrip.skippedTargets === 1 &&
     timeoutTrip.dryTargets === 1 &&
+    timeoutTrip.bypassedTargets === 0 &&
     timeoutTrip.results[0].response.renderEngine === "frame-batch-process-timeout",
   "live frame batch returns dry skipped results when the aggregate timeout trips"
 );

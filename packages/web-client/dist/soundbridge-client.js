@@ -3994,7 +3994,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   result(frame, results, totalDurationMs, processBudgetExceeded, processTimedOut, error) {
     const failedTargets = results.filter((result) => result.error !== void 0 || result.healthy === false).length;
     const dryTargets = results.filter((result) => result.dry).length;
-    const bypassedTargets = results.filter((result) => result.bypassed).length;
+    const bypassedTargets = results.filter(isIntentionalFrameBatchBypassResult).length;
     const skippedTargets = results.filter((result) => result.skipped).length;
     const result = {
       frame,
@@ -4075,6 +4075,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
       health.timeoutRecoveryDryBlocks,
       health.failedTargets,
       health.dryTargets,
+      health.bypassedTargets,
       health.skippedTargets,
       health.latencySamples,
       health.reportedLatencySamples,
@@ -4144,6 +4145,16 @@ export function createLivePerformanceFrameBatchProcessor(options) {
 
 function maxLiveEffectFrameBatchLatency(results, key) {
   return results.reduce((max, result) => Math.max(max, result[key]), 0);
+}
+
+function isIntentionalFrameBatchBypassResult(result) {
+  return (
+    result.bypassed &&
+    result.skipped === false &&
+    result.healthy !== false &&
+    result.error === void 0 &&
+    result.response?.renderEngine === "dry-bypass"
+  );
 }
 
 function liveEffectFrameBatchBlockDurationMs(results) {

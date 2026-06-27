@@ -471,7 +471,8 @@ batchController.record({
   lastResponseDeadlineLeadBlocks: 1,
   responseDeadlineMisses: 0,
   latencySamples: 128,
-  dryTargets: 0,
+  dryTargets: 1,
+  bypassedTargets: 1,
   skippedTargets: 0,
   failedTargets: 0
 });
@@ -482,11 +483,12 @@ const batchStable = batchController.record({
   lastResponseDeadlineLeadBlocks: 1,
   responseDeadlineMisses: 0,
   latencySamples: 128,
-  dryTargets: 0,
+  dryTargets: 1,
+  bypassedTargets: 1,
   skippedTargets: 0,
   failedTargets: 0
 });
-assert(batchStable.applied === false && batchStable.stableBlocks === 1, "adaptive frame batch scheduler latency counts stable recovery blocks");
+assert(batchStable.applied === false && batchStable.stableBlocks === 1, "adaptive frame batch scheduler latency counts bypass-only batches as stable recovery blocks");
 const batchRecovery = batchController.record({
   totalDurationMs: 1,
   maxDurationMs: 0.5,
@@ -494,7 +496,8 @@ const batchRecovery = batchController.record({
   lastResponseDeadlineLeadBlocks: 1,
   responseDeadlineMisses: 0,
   latencySamples: 128,
-  dryTargets: 0,
+  dryTargets: 1,
+  bypassedTargets: 1,
   skippedTargets: 0,
   failedTargets: 0
 });
