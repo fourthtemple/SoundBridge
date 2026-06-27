@@ -675,6 +675,7 @@ export function createLivePerformanceAudioNodeOptions(options) {
     maxConsecutiveRenderBudgetMisses: boundedAudioNodeInteger(options.maxConsecutiveRenderBudgetMisses, 2, 0, 1024),
     maxConsecutiveAudioErrors: boundedAudioNodeInteger(options.maxConsecutiveAudioErrors, 1, 0, 1024),
     maxConsecutiveTransportPressureEvents: boundedAudioNodeInteger(options.maxConsecutiveTransportPressureEvents, 3, 0, 1024),
+    transportPressureAutoBypassReasons: boundedAudioNodeTransportPressureReasons(options.transportPressureAutoBypassReasons),
     bypassed: options.bypassed === true
   };
 }
@@ -834,6 +835,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.consecutiveTransportPressureEvents = 0;
     this.maxConsecutiveTransportPressureEvents = options.maxConsecutiveTransportPressureEvents;
     this.transportPressureAutoBypassed = false;
+    this.transportPressureAutoBypassReasons = options.transportPressureAutoBypassReasons;
     this.lastTransportPressureReasons = [];
     this.lastRenderEngine = undefined;
     this.lastRenderDurationMs = undefined;
@@ -919,6 +921,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       maxConsecutiveRenderBudgetMisses: boundedAudioNodeInteger(options.maxConsecutiveRenderBudgetMisses, 0, 0, 1024),
       maxConsecutiveAudioErrors: boundedAudioNodeInteger(options.maxConsecutiveAudioErrors, 0, 0, 1024),
       maxConsecutiveTransportPressureEvents: boundedAudioNodeInteger(options.maxConsecutiveTransportPressureEvents, 0, 0, 1024),
+      transportPressureAutoBypassReasons: boundedAudioNodeTransportPressureReasons(options.transportPressureAutoBypassReasons),
       bypassed: options.bypassed === true,
       workletUrl: options.workletUrl ?? "/packages/web-client/dist/soundbridge-worklet.js"
     };
@@ -1056,6 +1059,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       consecutiveTransportPressureEvents: this.consecutiveTransportPressureEvents,
       maxConsecutiveTransportPressureEvents: this.maxConsecutiveTransportPressureEvents,
       transportPressureAutoBypassed: this.transportPressureAutoBypassed,
+      transportPressureAutoBypassReasons: this.transportPressureAutoBypassReasons === undefined ? undefined : [...this.transportPressureAutoBypassReasons],
       lastTransportPressureReasons: [...this.lastTransportPressureReasons],
       lastRenderEngine: this.lastRenderEngine,
       lastRenderDurationMs: this.lastRenderDurationMs,
@@ -1289,11 +1293,13 @@ export class SoundBridgeAudioNode extends EventTarget {
       if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
       return;
     }
+    const autoBypassPressure = shouldAutoBypassAudioNodeTransportPressure(reasons, this.transportPressureAutoBypassReasons);
     this.transportPressureEvents = Math.min(1024, this.transportPressureEvents + 1);
-    this.consecutiveTransportPressureEvents = Math.min(1024, this.consecutiveTransportPressureEvents + 1);
+    if (autoBypassPressure) this.consecutiveTransportPressureEvents = Math.min(1024, this.consecutiveTransportPressureEvents + 1);
+    else if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
     this.lastTransportPressureReasons = reasons;
     this.dispatchEvent(new CustomEvent("transport-pressure", { detail: { reasons, stats, health: this.health } }));
-    if (this.maxConsecutiveTransportPressureEvents > 0 && this.consecutiveTransportPressureEvents >= this.maxConsecutiveTransportPressureEvents && !this.bypassed && !this.transportPressureAutoBypassed) {
+    if (autoBypassPressure && this.maxConsecutiveTransportPressureEvents > 0 && this.consecutiveTransportPressureEvents >= this.maxConsecutiveTransportPressureEvents && !this.bypassed && !this.transportPressureAutoBypassed) {
       this.transportPressureAutoBypassed = true;
       this.unhealthyReason = "transport-pressure";
       this.setBypassed(true);
@@ -1379,6 +1385,28 @@ function boundedAudioNodeOptionalNumber(value, min, max) {
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : undefined;
 }
 
+export function boundedAudioNodeTransportPressureReasons(reasons) {
+  if (reasons === undefined || reasons === null) return undefined;
+  const values = [];
+  const length = boundedAudioNodeInteger(reasons.length, 0, 0, 16);
+  for (let index = 0; index < length; index += 1) {
+    const reason = audioNodeTransportPressureReason(reasons[index]);
+    if (reason !== undefined && !values.includes(reason)) values.push(reason);
+  }
+  return values;
+}
+
+export function shouldAutoBypassAudioNodeTransportPressure(reasons, autoBypassReasons) {
+  if (autoBypassReasons === undefined || autoBypassReasons === null) return true;
+  const allowed = boundedAudioNodeTransportPressureReasons(autoBypassReasons) ?? [];
+  const length = boundedAudioNodeInteger(reasons.length, 0, 0, 16);
+  for (let index = 0; index < length; index += 1) {
+    const reason = audioNodeTransportPressureReason(reasons[index]);
+    if (reason !== undefined && allowed.includes(reason)) return true;
+  }
+  return false;
+}
+
 function combinedAudioNodeLatencySamples(pluginLatencySamples, transportLatencySamples) {
   return Math.min(1048576, pluginLatencySamples + transportLatencySamples);
 }
@@ -1434,6 +1462,19 @@ function audioNodeSharedQueueMaxBlocks(options) {
   const outputQueued = boundedAudioNodeOptionalNumber(options.sharedOutputQueuedBlocks, 0, 64);
   if (inputQueued === void 0 && outputQueued === void 0) return void 0;
   return Math.max(boundedAudioNodeInteger(inputQueued, 0, 0, 64), boundedAudioNodeInteger(outputQueued, 0, 0, 64));
+}
+
+function audioNodeTransportPressureReason(reason) {
+  return reason === "deadline-miss" ||
+    reason === "dropped-input" ||
+    reason === "latency-safety" ||
+    reason === "response-jitter" ||
+    reason === "shared-input-drop" ||
+    reason === "shared-output-drop" ||
+    reason === "stale-output" ||
+    reason === "underrun"
+    ? reason
+    : undefined;
 }
 
 function audioNodeFallbackReason(reason) {

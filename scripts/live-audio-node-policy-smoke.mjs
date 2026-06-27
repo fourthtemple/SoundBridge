@@ -1,10 +1,14 @@
 import {
+  SoundBridgeAudioNode,
+  boundedAudioNodeTransportPressureReasons,
   calibrateLivePerformanceAudioNodePolicy,
   createLivePerformanceAudioNodeAdaptiveLatencyController,
   createLivePerformanceAudioNodeCalibrationWindow,
+  createLivePerformanceAudioNodeOptions,
   createLivePerformanceAudioNodePolicy,
   livePerformanceAudioNodeOptionsFromCalibration,
-  refreshLivePerformanceAudioNodeLatencyFromCalibration
+  refreshLivePerformanceAudioNodeLatencyFromCalibration,
+  shouldAutoBypassAudioNodeTransportPressure
 } from "../packages/web-client/dist/soundbridge-client.js";
 
 function assert(condition, message) {
@@ -20,6 +24,17 @@ function near(actual, expected) {
 function includesAll(values, expectedValues) {
   return expectedValues.every((value) => values.includes(value));
 }
+
+assert(
+  boundedAudioNodeTransportPressureReasons(["deadline-miss", "invalid", "deadline-miss", "shared-output-drop"]).join(",") === "deadline-miss,shared-output-drop",
+  "live AudioNode transport pressure reason filters are bounded and deduplicated"
+);
+assert(shouldAutoBypassAudioNodeTransportPressure(["response-jitter"], undefined) === true, "live AudioNode auto-bypass defaults to any pressure reason");
+assert(
+  shouldAutoBypassAudioNodeTransportPressure(["response-jitter"], ["deadline-miss"]) === false &&
+    shouldAutoBypassAudioNodeTransportPressure(["response-jitter", "deadline-miss"], ["deadline-miss"]) === true,
+  "live AudioNode auto-bypass can be filtered to selected pressure reasons"
+);
 
 const policy = createLivePerformanceAudioNodePolicy({
   instanceId: "inst-audio-policy",
@@ -257,6 +272,82 @@ const refreshed = await refreshLivePerformanceAudioNodeLatencyFromCalibration({
 }, stressedSnapshot.calibration);
 assert(latencyRefreshes.length === 1 && latencyRefreshes[0] === 896, "live AudioNode calibration helper refreshes latency with recommended transport latency");
 assert(refreshed.transportLatencySamples === 896, "live AudioNode calibration helper returns the latency refresh result");
+
+const filteredLiveOptions = createLivePerformanceAudioNodeOptions({
+  instanceId: "inst-filtered-live",
+  transportPressureAutoBypassReasons: ["deadline-miss", "response-jitter", "deadline-miss"]
+});
+assert(
+  filteredLiveOptions.transportPressureAutoBypassReasons.join(",") === "deadline-miss,response-jitter",
+  "live AudioNode options normalize transport-pressure auto-bypass filters"
+);
+
+class FakeAudioNodePort {
+  onmessage = undefined;
+  messages = [];
+  postMessage(message) {
+    this.messages.push(message);
+  }
+}
+class FakeAudioWorkletNodeForPolicy {
+  static last;
+  constructor(_context, _name, options) {
+    this.options = options;
+    this.port = new FakeAudioNodePort();
+    FakeAudioWorkletNodeForPolicy.last = this;
+  }
+  connect(destination) {
+    return destination;
+  }
+  disconnect() {}
+}
+const previousAudioWorkletNode = globalThis.AudioWorkletNode;
+globalThis.AudioWorkletNode = FakeAudioWorkletNodeForPolicy;
+const filteredNode = new SoundBridgeAudioNode(
+  { sampleRate: 48000 },
+  { createAudioWorkletTransportConnection: () => undefined, destroyInstance: async () => undefined },
+  {
+    ...createLivePerformanceAudioNodeOptions({
+      instanceId: "inst-filtered-node",
+      maxConsecutiveTransportPressureEvents: 2,
+      transportPressureAutoBypassReasons: ["deadline-miss"]
+    }),
+    workletUrl: "/unused-worklet.js"
+  }
+);
+globalThis.AudioWorkletNode = previousAudioWorkletNode;
+let filteredPressureEvents = 0;
+let filteredAutoBypassEvents = 0;
+filteredNode.addEventListener("transport-pressure", () => {
+  filteredPressureEvents += 1;
+});
+filteredNode.addEventListener("transport-pressure-auto-bypassed", () => {
+  filteredAutoBypassEvents += 1;
+});
+const filteredStatsBase = {
+  type: "stats",
+  outputLatencyBlocks: 2,
+  transportLatencySamples: 256,
+  responseJitterBlocks: 3,
+  responseJitterSamples: 384,
+  responseDeadlineMisses: 0,
+  staleOutputBlocks: 0,
+  droppedInputBlocks: 0,
+  underruns: 0,
+  sharedInputDroppedBlocks: 0,
+  sharedOutputDroppedBlocks: 0
+};
+FakeAudioWorkletNodeForPolicy.last.port.onmessage({ data: { ...filteredStatsBase, latencyIncreases: 1 } });
+FakeAudioWorkletNodeForPolicy.last.port.onmessage({ data: { ...filteredStatsBase, latencyIncreases: 2 } });
+assert(filteredPressureEvents === 2, "filtered AudioNode still emits transport-pressure for soft pressure");
+assert(filteredNode.health.consecutiveTransportPressureEvents === 0, "filtered AudioNode does not count unmatched pressure toward auto-bypass");
+assert(filteredNode.health.bypassed === false && filteredAutoBypassEvents === 0, "filtered AudioNode does not auto-bypass on unmatched pressure");
+assert(filteredNode.health.transportPressureAutoBypassReasons.join(",") === "deadline-miss", "filtered AudioNode health reports auto-bypass reasons");
+FakeAudioWorkletNodeForPolicy.last.port.onmessage({ data: { ...filteredStatsBase, latencyIncreases: 2, responseDeadlineMisses: 1 } });
+assert(filteredNode.health.consecutiveTransportPressureEvents === 1, "filtered AudioNode starts the auto-bypass streak on matched pressure");
+FakeAudioWorkletNodeForPolicy.last.port.onmessage({ data: { ...filteredStatsBase, latencyIncreases: 2, responseDeadlineMisses: 2 } });
+assert(filteredNode.health.bypassed === true, "filtered AudioNode auto-bypasses after sustained matched pressure");
+assert(filteredAutoBypassEvents === 1, "filtered AudioNode emits auto-bypass after matched pressure threshold");
 
 const adaptiveNode = {
   health: {

@@ -1,17 +1,19 @@
 import type { AudioBlockResponse } from "../../protocol/src/messages";
 import {
   audioNodeLatencyMilliseconds,
+  boundedAudioNodeTransportPressureReasons,
   boundedInteger,
   boundedOptionalNumber,
   combinedAudioNodeLatencySamples,
-  createLivePerformanceAudioNodeOptions
+  createLivePerformanceAudioNodeOptions,
+  shouldAutoBypassAudioNodeTransportPressure
 } from "./bridge-node-options";
-import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
+import type { LivePerformanceAudioNodeOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
 import { SoundBridgeClient } from "./client";
 import { liveTransportForBlock } from "./live-transport";
 
-export { LivePerformanceAudioNodeCalibrationWindow, calibrateLivePerformanceAudioNodePolicy, createLivePerformanceAudioNodeCalibrationWindow, createLivePerformanceAudioNodeOptions, createLivePerformanceAudioNodePolicy, livePerformanceAudioNodeOptionsFromCalibration, refreshLivePerformanceAudioNodeLatencyFromCalibration } from "./bridge-node-options";
-export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions } from "./bridge-node-options";
+export { LivePerformanceAudioNodeCalibrationWindow, boundedAudioNodeTransportPressureReasons, calibrateLivePerformanceAudioNodePolicy, createLivePerformanceAudioNodeCalibrationWindow, createLivePerformanceAudioNodeOptions, createLivePerformanceAudioNodePolicy, livePerformanceAudioNodeOptionsFromCalibration, refreshLivePerformanceAudioNodeLatencyFromCalibration, shouldAutoBypassAudioNodeTransportPressure } from "./bridge-node-options";
+export type { LivePerformanceAudioNodeCalibration, LivePerformanceAudioNodeCalibrationHealthSample, LivePerformanceAudioNodeCalibrationOptions, LivePerformanceAudioNodeCalibrationWindowOptions, LivePerformanceAudioNodeCalibrationWindowSnapshot, LivePerformanceAudioNodeLatencyRefresher, LivePerformanceAudioNodeOptions, LivePerformanceAudioNodePolicy, LivePerformanceAudioNodePolicyOptions, SoundBridgeAudioNodeFallbackOutputEventDetail, SoundBridgeAudioNodeFallbackReason, SoundBridgeAudioNodeHealth, SoundBridgeAudioNodeOptions, SoundBridgeAudioNodeTransportPressureReason } from "./bridge-node-options";
 export { LivePerformanceAudioNodeAdaptiveLatencyController, createLivePerformanceAudioNodeAdaptiveLatencyController } from "./live-audio-node-adaptive-latency";
 export type { LivePerformanceAudioNodeAdaptiveLatencyDirection, LivePerformanceAudioNodeAdaptiveLatencyOptions, LivePerformanceAudioNodeAdaptiveLatencySnapshot, LivePerformanceAudioNodeAdaptiveLatencyTarget } from "./live-audio-node-adaptive-latency";
 
@@ -59,6 +61,7 @@ export class SoundBridgeAudioNode extends EventTarget {
   private consecutiveTransportPressureEvents = 0;
   private maxConsecutiveTransportPressureEvents: number;
   private transportPressureAutoBypassed = false;
+  private readonly transportPressureAutoBypassReasons?: SoundBridgeAudioNodeTransportPressureReason[];
   private lastTransportPressureReasons: string[] = [];
   private lastRenderEngine?: string;
   private lastRenderDurationMs?: number;
@@ -86,6 +89,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.maxConsecutiveRenderBudgetMisses = options.maxConsecutiveRenderBudgetMisses;
     this.maxConsecutiveAudioErrors = options.maxConsecutiveAudioErrors;
     this.maxConsecutiveTransportPressureEvents = options.maxConsecutiveTransportPressureEvents;
+    this.transportPressureAutoBypassReasons = options.transportPressureAutoBypassReasons;
     this.bypassed = options.bypassed;
     this.node = new AudioWorkletNode(context, "soundbridge-audio-processor", {
       numberOfInputs: options.inputChannels > 0 ? 1 : 0,
@@ -161,6 +165,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       maxConsecutiveRenderBudgetMisses: boundedInteger(options.maxConsecutiveRenderBudgetMisses, 0, 0, 1024),
       maxConsecutiveAudioErrors: boundedInteger(options.maxConsecutiveAudioErrors, 0, 0, 1024),
       maxConsecutiveTransportPressureEvents: boundedInteger(options.maxConsecutiveTransportPressureEvents, 0, 0, 1024),
+      transportPressureAutoBypassReasons: boundedAudioNodeTransportPressureReasons(options.transportPressureAutoBypassReasons),
       bypassed: options.bypassed === true,
       workletUrl: options.workletUrl ?? "/packages/web-client/dist/soundbridge-worklet.js"
     };
@@ -302,6 +307,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       consecutiveTransportPressureEvents: this.consecutiveTransportPressureEvents,
       maxConsecutiveTransportPressureEvents: this.maxConsecutiveTransportPressureEvents,
       transportPressureAutoBypassed: this.transportPressureAutoBypassed,
+      transportPressureAutoBypassReasons: this.transportPressureAutoBypassReasons === undefined ? undefined : [...this.transportPressureAutoBypassReasons],
       lastTransportPressureReasons: [...this.lastTransportPressureReasons],
       lastRenderEngine: this.lastRenderEngine,
       lastRenderDurationMs: this.lastRenderDurationMs,
@@ -629,11 +635,13 @@ export class SoundBridgeAudioNode extends EventTarget {
       if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
       return;
     }
+    const autoBypassPressure = shouldAutoBypassAudioNodeTransportPressure(reasons, this.transportPressureAutoBypassReasons);
     this.transportPressureEvents = Math.min(1024, this.transportPressureEvents + 1);
-    this.consecutiveTransportPressureEvents = Math.min(1024, this.consecutiveTransportPressureEvents + 1);
+    if (autoBypassPressure) this.consecutiveTransportPressureEvents = Math.min(1024, this.consecutiveTransportPressureEvents + 1);
+    else if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
     this.lastTransportPressureReasons = reasons;
     this.dispatchEvent(new CustomEvent("transport-pressure", { detail: { reasons, stats, health: this.health } }));
-    if (this.maxConsecutiveTransportPressureEvents > 0 && this.consecutiveTransportPressureEvents >= this.maxConsecutiveTransportPressureEvents && !this.bypassed && !this.transportPressureAutoBypassed) {
+    if (autoBypassPressure && this.maxConsecutiveTransportPressureEvents > 0 && this.consecutiveTransportPressureEvents >= this.maxConsecutiveTransportPressureEvents && !this.bypassed && !this.transportPressureAutoBypassed) {
       this.transportPressureAutoBypassed = true;
       this.unhealthyReason = "transport-pressure";
       this.setBypassed(true);

@@ -22,6 +22,7 @@ export interface SoundBridgeAudioNodeOptions {
   maxConsecutiveRenderBudgetMisses?: number;
   maxConsecutiveAudioErrors?: number;
   maxConsecutiveTransportPressureEvents?: number;
+  transportPressureAutoBypassReasons?: ArrayLike<SoundBridgeAudioNodeTransportPressureReason>;
   bypassed?: boolean;
   workletUrl?: string;
 }
@@ -29,6 +30,15 @@ export interface SoundBridgeAudioNodeOptions {
 export interface LivePerformanceAudioNodeOptions extends SoundBridgeAudioNodeOptions {}
 
 export type SoundBridgeAudioNodeFallbackReason = "bypass" | "latency-safety" | "underrun";
+export type SoundBridgeAudioNodeTransportPressureReason =
+  | "deadline-miss"
+  | "dropped-input"
+  | "latency-safety"
+  | "response-jitter"
+  | "shared-input-drop"
+  | "shared-output-drop"
+  | "stale-output"
+  | "underrun";
 
 export interface SoundBridgeAudioNodeFallbackOutputEventDetail {
   deltaBlocks: number;
@@ -79,6 +89,7 @@ export interface SoundBridgeAudioNodeHealth {
   consecutiveTransportPressureEvents: number;
   maxConsecutiveTransportPressureEvents: number;
   transportPressureAutoBypassed: boolean;
+  transportPressureAutoBypassReasons?: SoundBridgeAudioNodeTransportPressureReason[];
   lastTransportPressureReasons: string[];
   lastRenderEngine?: string;
   lastRenderDurationMs?: number;
@@ -253,6 +264,7 @@ export function createLivePerformanceAudioNodeOptions(options: LivePerformanceAu
     maxConsecutiveRenderBudgetMisses: boundedInteger(options.maxConsecutiveRenderBudgetMisses, 2, 0, 1024),
     maxConsecutiveAudioErrors: boundedInteger(options.maxConsecutiveAudioErrors, 1, 0, 1024),
     maxConsecutiveTransportPressureEvents: boundedInteger(options.maxConsecutiveTransportPressureEvents, 3, 0, 1024),
+    transportPressureAutoBypassReasons: boundedAudioNodeTransportPressureReasons(options.transportPressureAutoBypassReasons),
     bypassed: options.bypassed === true
   };
 }
@@ -379,6 +391,33 @@ export function boundedOptionalNumber(value: unknown, min: number, max: number):
   return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : undefined;
 }
 
+export function boundedAudioNodeTransportPressureReasons(
+  reasons: ArrayLike<SoundBridgeAudioNodeTransportPressureReason> | undefined
+): SoundBridgeAudioNodeTransportPressureReason[] | undefined {
+  if (reasons === undefined || reasons === null) return undefined;
+  const values: SoundBridgeAudioNodeTransportPressureReason[] = [];
+  const length = boundedInteger(reasons.length, 0, 0, 16);
+  for (let index = 0; index < length; index += 1) {
+    const reason = audioNodeTransportPressureReason(reasons[index]);
+    if (reason !== undefined && !values.includes(reason)) values.push(reason);
+  }
+  return values;
+}
+
+export function shouldAutoBypassAudioNodeTransportPressure(
+  reasons: ArrayLike<unknown>,
+  autoBypassReasons?: ArrayLike<SoundBridgeAudioNodeTransportPressureReason>
+): boolean {
+  if (autoBypassReasons === undefined || autoBypassReasons === null) return true;
+  const allowed = boundedAudioNodeTransportPressureReasons(autoBypassReasons) ?? [];
+  const length = boundedInteger(reasons.length, 0, 0, 16);
+  for (let index = 0; index < length; index += 1) {
+    const reason = audioNodeTransportPressureReason(reasons[index]);
+    if (reason !== undefined && allowed.includes(reason)) return true;
+  }
+  return false;
+}
+
 export function combinedAudioNodeLatencySamples(pluginLatencySamples: number, transportLatencySamples: number): number {
   return Math.min(1_048_576, pluginLatencySamples + transportLatencySamples);
 }
@@ -434,6 +473,19 @@ function audioNodeSharedQueueMaxBlocks(options: LivePerformanceAudioNodeCalibrat
   const outputQueued = boundedOptionalNumber(options.sharedOutputQueuedBlocks, 0, 64);
   if (inputQueued === undefined && outputQueued === undefined) return undefined;
   return Math.max(boundedInteger(inputQueued, 0, 0, 64), boundedInteger(outputQueued, 0, 0, 64));
+}
+
+function audioNodeTransportPressureReason(reason: unknown): SoundBridgeAudioNodeTransportPressureReason | undefined {
+  return reason === "deadline-miss" ||
+    reason === "dropped-input" ||
+    reason === "latency-safety" ||
+    reason === "response-jitter" ||
+    reason === "shared-input-drop" ||
+    reason === "shared-output-drop" ||
+    reason === "stale-output" ||
+    reason === "underrun"
+    ? reason
+    : undefined;
 }
 
 function audioNodeCalibrationWarnings(calibration: {
