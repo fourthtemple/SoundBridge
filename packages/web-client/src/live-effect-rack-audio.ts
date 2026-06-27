@@ -55,17 +55,18 @@ export function boundedLiveEffectChannels(
   maxFrames: number
 ): ArrayLike<number>[] {
   const count = boundedAudioCount(channelCount);
-  const frames = boundedAudioFrames(channels[0]?.length ?? 0, maxFrames);
+  const frames = boundedAudioFrames(channels, count, maxFrames);
   let changed = channels.length !== count;
   const bounded = Array.from({ length: count }, (_, index) => {
     const source = channels.length > 0 ? channels[index % channels.length] : undefined;
-    if (!source) {
+    if (channelLength(source) <= 0) {
       changed = true;
       return Array.from({ length: frames }, () => 0);
     }
-    if (source.length > frames) {
+    const normalized = normalizedChannel(source, frames);
+    if (normalized) {
       changed = true;
-      return sliceChannel(source, frames);
+      return normalized;
     }
     return source;
   });
@@ -115,15 +116,29 @@ function boundedAudioCount(value: number): number {
   return Number.isFinite(count) ? Math.max(1, Math.min(32, count)) : 1;
 }
 
-function boundedAudioFrames(length: number, maxFrames: number): number {
-  const frames = Math.floor(Number(length));
+function boundedAudioFrames(channels: ArrayLike<number>[], channelCount: number, maxFrames: number): number {
+  let frames = 0;
+  const count = Math.min(channelCount, channels.length);
+  for (let index = 0; index < count; index += 1) frames = Math.max(frames, channelLength(channels[index]));
   const max = Math.floor(Number(maxFrames));
   if (!Number.isFinite(frames) || frames <= 0) return 0;
   return Number.isFinite(max) && max > 0 ? Math.min(frames, Math.min(max, 8192)) : Math.min(frames, 8192);
 }
 
-function sliceChannel(channel: ArrayLike<number>, frames: number): ArrayLike<number> {
-  if ("subarray" in channel && typeof channel.subarray === "function") return channel.subarray(0, frames);
-  if (Array.isArray(channel)) return channel.slice(0, frames);
-  return Array.from({ length: frames }, (_unused, index) => channel[index] ?? 0);
+function normalizedChannel(channel: ArrayLike<number>, frames: number): ArrayLike<number> | undefined {
+  if (channelLength(channel) !== frames) return Array.from({ length: frames }, (_unused, index) => finiteSample(channel[index]));
+  for (let index = 0; index < frames; index += 1) {
+    if (!Number.isFinite(Number(channel[index] ?? 0))) return Array.from({ length: frames }, (_unused, frame) => finiteSample(channel[frame]));
+  }
+  return undefined;
+}
+
+function channelLength(channel: ArrayLike<number> | undefined): number {
+  const length = Math.floor(Number(channel?.length ?? 0));
+  return Number.isFinite(length) && length > 0 ? length : 0;
+}
+
+function finiteSample(value: unknown): number {
+  const sample = Number(value ?? 0);
+  return Number.isFinite(sample) ? sample : 0;
 }

@@ -2099,17 +2099,18 @@ function wetMixedLiveEffectChannels(wetChannels, dryInput, outputChannels, wetMi
 
 function boundedLiveEffectChannels(channels, channelCount, maxFrames) {
   const count = boundedLiveEffectAudioCount(channelCount);
-  const frames = boundedLiveEffectAudioFrames(channels[0]?.length ?? 0, maxFrames);
+  const frames = boundedLiveEffectAudioFrames(channels, count, maxFrames);
   let changed = channels.length !== count;
   const bounded = Array.from({ length: count }, (_, index) => {
     const source = channels.length > 0 ? channels[index % channels.length] : void 0;
-    if (!source) {
+    if (liveEffectChannelLength(source) <= 0) {
       changed = true;
       return Array.from({ length: frames }, () => 0);
     }
-    if (source.length > frames) {
+    const normalized = normalizedLiveEffectChannel(source, frames);
+    if (normalized) {
       changed = true;
-      return sliceLiveEffectChannel(source, frames);
+      return normalized;
     }
     return source;
   });
@@ -2159,17 +2160,31 @@ function boundedLiveEffectAudioCount(value) {
   return Number.isFinite(count) ? Math.max(1, Math.min(32, count)) : 1;
 }
 
-function boundedLiveEffectAudioFrames(length, maxFrames) {
-  const frames = Math.floor(Number(length));
+function boundedLiveEffectAudioFrames(channels, channelCount, maxFrames) {
+  let frames = 0;
+  const count = Math.min(channelCount, channels.length);
+  for (let index = 0; index < count; index += 1) frames = Math.max(frames, liveEffectChannelLength(channels[index]));
   const max = Math.floor(Number(maxFrames));
   if (!Number.isFinite(frames) || frames <= 0) return 0;
   return Number.isFinite(max) && max > 0 ? Math.min(frames, Math.min(max, 8192)) : Math.min(frames, 8192);
 }
 
-function sliceLiveEffectChannel(channel, frames) {
-  if ("subarray" in channel && typeof channel.subarray === "function") return channel.subarray(0, frames);
-  if (Array.isArray(channel)) return channel.slice(0, frames);
-  return Array.from({ length: frames }, (_unused, index) => channel[index] ?? 0);
+function normalizedLiveEffectChannel(channel, frames) {
+  if (liveEffectChannelLength(channel) !== frames) return Array.from({ length: frames }, (_unused, index) => finiteLiveEffectSample(channel[index]));
+  for (let index = 0; index < frames; index += 1) {
+    if (!Number.isFinite(Number(channel[index] ?? 0))) return Array.from({ length: frames }, (_unused, frame) => finiteLiveEffectSample(channel[frame]));
+  }
+  return void 0;
+}
+
+function liveEffectChannelLength(channel) {
+  const length = Math.floor(Number(channel?.length ?? 0));
+  return Number.isFinite(length) && length > 0 ? length : 0;
+}
+
+function finiteLiveEffectSample(value) {
+  const sample = Number(value ?? 0);
+  return Number.isFinite(sample) ? sample : 0;
 }
 
 const PARAMETER_CATEGORY_PATTERNS = [
