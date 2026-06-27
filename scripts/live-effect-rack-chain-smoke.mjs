@@ -700,6 +700,7 @@ assert(pressuredFilteredWetResponse.bypassed === false, "live rack chain pressur
 assert(
   pressuredDryResponse.bypassed === true &&
     pressuredDryResponse.renderEngine === "chain-deadline-pressure" &&
+    pressuredDryResponse.deadlinePressure?.reasons.includes("deadline-miss") &&
     pressuredDryResponse.processedStages === 0 &&
     pressuredDryResponse.channels[0][0] === 2 &&
     deadlinePressureStage.requests.length === 2,
@@ -709,10 +710,11 @@ assert(
   deadlinePressureChain.health.lastDryReason === "chain-deadline-pressure",
   "live rack chain records scheduler deadline-pressure dry reason"
 );
-assert(deadlinePressureChain.health.dryOutputBlocks === 1, "live rack chain counts scheduler deadline-pressure dry output");
 assert(
-  deadlinePressureDryOutputEvents.length === 1 &&
+    deadlinePressureChain.health.dryOutputBlocks === 1 &&
+    deadlinePressureDryOutputEvents.length === 1 &&
     deadlinePressureDryOutputEvents[0].reason === "chain-deadline-pressure" &&
+    deadlinePressureDryOutputEvents[0].deadlinePressure?.reasons.includes("deadline-miss") &&
     deadlinePressureDryOutputEvents[0].health.dryOutputBlocks === 1,
   "live rack chain emits every scheduler deadline-pressure dry output"
 );

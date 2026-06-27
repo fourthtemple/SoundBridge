@@ -159,6 +159,7 @@ assert(pressureFilteredWet.bypassed === false, "live rack scheduled pressure rea
 assert(
   pressureDry.bypassed === true &&
     pressureDry.renderEngine === "dry-deadline-pressure" &&
+    pressureDry.deadlinePressure?.reasons.includes("deadline-miss") &&
     rack.health.dryOutputBlocks === 2 &&
     rack.health.lastDryReason === "deadline-pressure",
   "live rack can fail dry before processing scheduler deadline-pressure blocks"
@@ -171,6 +172,7 @@ assert(
 assert(
   dryOutputEvents.length === 2 &&
     dryOutputEvents[1].reason === "deadline-pressure" &&
+    dryOutputEvents[1].deadlinePressure?.reasons.includes("deadline-miss") &&
     dryOutputEvents[1].health.dryOutputBlocks === 2,
   "live rack emits every scheduler deadline-pressure dry output"
 );

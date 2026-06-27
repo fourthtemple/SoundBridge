@@ -1,7 +1,7 @@
 import type { AudioBlockResponse, HostTransportState, PluginMetadata } from "../../protocol/src/messages";
 import type { SoundBridgeClient, BinaryAudioBlockRequest } from "./client";
 import type { LiveEffectDryReason } from "./live-effect-rack-metrics";
-import type { LiveEffectRackDeadlinePressureSkipOptions } from "./live-effect-rack-scheduler";
+import type { LiveEffectRackDeadlinePressure, LiveEffectRackDeadlinePressureSkipOptions } from "./live-effect-rack-scheduler";
 
 export interface LiveEffectRackOptions {
   client: SoundBridgeClient;
@@ -47,12 +47,14 @@ export interface LiveEffectBlockResponse extends Omit<AudioBlockResponse, "chann
   bypassed: boolean;
   healthy: boolean;
   error?: unknown;
+  deadlinePressure?: LiveEffectRackDeadlinePressure;
 }
 
 export interface LiveEffectRackDryOutputEventDetail {
   response: LiveEffectBlockResponse;
   health: LiveEffectRackHealth;
   reason?: LiveEffectDryReason;
+  deadlinePressure?: LiveEffectRackDeadlinePressure;
 }
 
 export interface LiveEffectRackProcessOptions extends LiveEffectRackDeadlinePressureSkipOptions {}

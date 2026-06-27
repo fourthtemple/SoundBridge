@@ -9,6 +9,7 @@ import {
   withLiveEffectTimeout
 } from "./live-effect-rack-metrics";
 import type {
+  LiveEffectRackDeadlinePressure,
   LiveEffectRackDeadlinePressureSkipOptions,
   LiveEffectRackScheduledBlock,
   LiveEffectRackScheduledFrame,
@@ -95,6 +96,7 @@ export interface LiveEffectRackFrameBatchTargetResult {
 
 export interface LiveEffectRackFrameBatchResult {
   frame: LiveEffectRackScheduledFrame;
+  deadlinePressure?: LiveEffectRackDeadlinePressure;
   results: LiveEffectRackFrameBatchTargetResult[];
   targetCount: number;
   processedTargets: number;
@@ -357,7 +359,8 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
         infiniteTail: false,
         renderEngine,
         bypassed: true,
-        healthy: health?.healthy !== false
+        healthy: health?.healthy !== false,
+        deadlinePressure: frame.deadlinePressure
       },
       bypassed: true,
       dry: true,
@@ -493,7 +496,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
       this.schedulerDryTargetResult(frame, targets[index], index, renderEngine)
     );
     const result = this.result(frame, results, 0, false, false, undefined);
-    this.dispatchEvent(new CustomEvent(renderEngine, { detail: { result, health: this.health } }));
+    this.dispatchEvent(new CustomEvent(renderEngine, { detail: { result, health: this.health, deadlinePressure: frame.deadlinePressure } }));
     return result;
   }
 
@@ -545,6 +548,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     const skippedTargets = results.filter((result) => result.skipped).length;
     const result = {
       frame,
+      deadlinePressure: frame.deadlinePressure,
       results,
       targetCount: results.length,
       processedTargets: results.filter((result) => result.response !== undefined && !result.skipped).length,

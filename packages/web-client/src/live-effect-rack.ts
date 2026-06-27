@@ -44,7 +44,7 @@ import type {
 } from "./live-effect-rack-types";
 import { createLiveEffectRackPolicy } from "./live-effect-rack-policy";
 import { shouldSkipLiveEffectDeadlinePressure } from "./live-effect-rack-scheduler";
-import type { LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
+import type { LiveEffectRackDeadlinePressure, LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
 export { calibrateLiveEffectRackPolicy, createLiveEffectRackPolicy } from "./live-effect-rack-policy";
 export type { LiveEffectRackCalibration, LiveEffectRackCalibrationOptions, LiveEffectRackPolicy, LiveEffectRackPolicyOptions } from "./live-effect-rack-policy";
 export { LiveEffectRackCalibrationWindow, LiveEffectRackChainCalibrationWindow, LiveEffectRackFrameBatchCalibrationWindow, createLiveEffectRackCalibrationWindow, createLiveEffectRackChainCalibrationWindow, createLiveEffectRackFrameBatchCalibrationWindow, liveEffectRackPolicyOptionsFromCalibration, refreshLiveEffectRackLatencyFromCalibration } from "./live-effect-rack-calibration";
@@ -412,7 +412,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       return response;
     }
     if (shouldSkipLiveEffectDeadlinePressure(scheduled.deadlinePressure, options)) {
-      const response = this.dryResponse(scheduled.request, undefined, "dry-deadline-pressure");
+      const response = this.dryResponse(scheduled.request, undefined, "dry-deadline-pressure", scheduled.deadlinePressure);
       this.dispatchEvent(new CustomEvent("deadline-pressure", { detail: { response, health: this.health } }));
       return response;
     }
@@ -473,7 +473,12 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     }
   }
 
-  private dryResponse(request: LiveEffectBlockRequest, error: unknown, renderEngine = "dry-bypass"): LiveEffectBlockResponse {
+  private dryResponse(
+    request: LiveEffectBlockRequest,
+    error: unknown,
+    renderEngine = "dry-bypass",
+    deadlinePressure?: LiveEffectRackDeadlinePressure
+  ): LiveEffectBlockResponse {
     this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
     const response = this.finishResponse({
       blockId: request.blockId,
@@ -484,9 +489,10 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       renderEngine,
       bypassed: true,
       healthy: this.healthy,
-      error
+      error,
+      deadlinePressure
     });
-    const detail: LiveEffectRackDryOutputEventDetail = { response, health: this.health, reason: this.lastDryReason };
+    const detail: LiveEffectRackDryOutputEventDetail = { response, health: this.health, reason: this.lastDryReason, deadlinePressure };
     this.dispatchEvent(new CustomEvent("dry-output", { detail }));
     return response;
   }

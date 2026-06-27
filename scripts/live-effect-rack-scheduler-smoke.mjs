@@ -479,7 +479,7 @@ assert(
 let batchDeadlinePressureEvents = 0;
 telemetryProcessor.addEventListener("frame-batch-deadline-pressure", (event) => {
   batchDeadlinePressureEvents += 1;
-  assert(event.detail.result.skippedTargets === 1, "live frame batch deadline-pressure events include skipped results");
+  assert(event.detail.result.skippedTargets === 1 && event.detail.deadlinePressure?.reasons.includes("deadline-miss"), "live frame batch deadline-pressure events include skipped results and pressure reasons");
 });
 const deadlineSkipTarget = {
   health: { healthy: true, reportedLatencySamples: 256 },
@@ -498,7 +498,9 @@ assert(
     deadlineSkippedBatch.dryTargets === 1 &&
     deadlineSkippedBatch.bypassedTargets === 0 &&
     deadlineSkippedBatch.healthy === true &&
+    deadlineSkippedBatch.deadlinePressure?.reasons.includes("deadline-miss") &&
     deadlineSkippedBatch.reportedLatencySamples === 256 &&
+    deadlineSkippedBatch.results[0].response.deadlinePressure?.reasons.includes("deadline-miss") &&
     deadlineSkippedBatch.results[0].response.renderEngine === "frame-batch-deadline-pressure" &&
     batchDeadlinePressureEvents === 1,
   "live frame batch can fail dry before starting deadline-pressured shared-frame targets"

@@ -3130,7 +3130,10 @@ export class LiveEffectRackChain extends EventTarget {
       return Promise.resolve(this.chainDryResponse(
         scheduled.request,
         "chain-deadline-pressure",
-        this.chainOutputChannels(scheduled.request.channels)
+        this.chainOutputChannels(scheduled.request.channels),
+        void 0,
+        true,
+        scheduled.deadlinePressure
       ));
     }
     return this.processBlock(scheduled.request, options);
@@ -3170,7 +3173,7 @@ export class LiveEffectRackChain extends EventTarget {
     return true;
   }
 
-  chainDryResponse(request, renderEngine, outputChannels, error, healthy = this.chainHealthy()) {
+  chainDryResponse(request, renderEngine, outputChannels, error, healthy = this.chainHealthy(), deadlinePressure) {
     const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
     const response = this.finishOutputResponse({
       blockId: request.blockId,
@@ -3192,7 +3195,8 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessTimedOut: this.unhealthyReason === "process-timeout",
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
-      chainUnhealthyReason: this.unhealthyReason
+      chainUnhealthyReason: this.unhealthyReason,
+      deadlinePressure
     }, outputChannels);
     return this.recordChainLatency(response, request);
   }
@@ -3290,7 +3294,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastOutputPath = outputPath;
     const finalResponse = channels === response.channels ? response : { ...response, channels };
     if (lastDryReason !== void 0) {
-      this.dispatchEvent(new CustomEvent("dry-output", { detail: { response: finalResponse, health: this.health, reason: lastDryReason } }));
+      this.dispatchEvent(new CustomEvent("dry-output", { detail: { response: finalResponse, health: this.health, reason: lastDryReason, deadlinePressure: finalResponse.deadlinePressure } }));
     }
     return finalResponse;
   }
@@ -3902,7 +3906,8 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
         infiniteTail: false,
         renderEngine,
         bypassed: true,
-        healthy: health?.healthy !== false
+        healthy: health?.healthy !== false,
+        deadlinePressure: frame.deadlinePressure
       },
       bypassed: true,
       dry: true,
@@ -4012,7 +4017,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
       this.schedulerDryTargetResult(frame, targets[index], index, renderEngine)
     );
     const result = this.result(frame, results, 0, false, false, void 0);
-    this.dispatchEvent(new CustomEvent(renderEngine, { detail: { result, health: this.health } }));
+    this.dispatchEvent(new CustomEvent(renderEngine, { detail: { result, health: this.health, deadlinePressure: frame.deadlinePressure } }));
     return result;
   }
 
@@ -4057,6 +4062,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     const skippedTargets = results.filter((result) => result.skipped).length;
     const result = {
       frame,
+      deadlinePressure: frame.deadlinePressure,
       results,
       targetCount: results.length,
       processedTargets: results.filter((result) => result.response !== void 0 && !result.skipped).length,
@@ -4659,7 +4665,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       return response;
     }
     if (shouldSkipLiveEffectDeadlinePressure(scheduled.deadlinePressure, options)) {
-      const response = this.dryResponse(scheduled.request, void 0, "dry-deadline-pressure");
+      const response = this.dryResponse(scheduled.request, void 0, "dry-deadline-pressure", scheduled.deadlinePressure);
       this.dispatchEvent(new CustomEvent("deadline-pressure", { detail: { response, health: this.health } }));
       return response;
     }
@@ -4721,7 +4727,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     }
   }
 
-  dryResponse(request, error, renderEngine = "dry-bypass") {
+  dryResponse(request, error, renderEngine = "dry-bypass", deadlinePressure) {
     this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
     const response = this.finishResponse({
       blockId: request.blockId,
@@ -4732,9 +4738,10 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       renderEngine,
       bypassed: true,
       healthy: this.healthy,
-      error
+      error,
+      deadlinePressure
     });
-    this.dispatchEvent(new CustomEvent("dry-output", { detail: { response, health: this.health, reason: this.lastDryReason } }));
+    this.dispatchEvent(new CustomEvent("dry-output", { detail: { response, health: this.health, reason: this.lastDryReason, deadlinePressure } }));
     return response;
   }
 

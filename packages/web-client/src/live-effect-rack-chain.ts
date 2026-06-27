@@ -5,7 +5,7 @@ import type { LiveEffectRackTiming } from "./live-effect-rack-metrics";
 import { createLiveEffectRackPolicy } from "./live-effect-rack-policy";
 import { boundedFailedStageIndex, boundedWetMix, chainDryReason, isChainTimeoutError, isIntentionalChainBypassResponse, stageErrorResult, stageResult, stageWetMix } from "./live-effect-rack-chain-utils";
 import { shouldSkipLiveEffectDeadlinePressure } from "./live-effect-rack-scheduler";
-import type { LiveEffectRackDeadlinePressureSkipOptions, LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
+import type { LiveEffectRackDeadlinePressure, LiveEffectRackDeadlinePressureSkipOptions, LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler";
 
 const LIVE_EFFECT_CHAIN_MAX_STAGES = 16;
 
@@ -124,6 +124,7 @@ export interface LiveEffectRackChainDryOutputEventDetail {
   response: LiveEffectRackChainResponse;
   health: LiveEffectRackChainHealth;
   reason: LiveEffectRackChainDryReason;
+  deadlinePressure?: LiveEffectRackDeadlinePressure;
 }
 
 export class LiveEffectRackChain extends EventTarget {
@@ -345,7 +346,10 @@ export class LiveEffectRackChain extends EventTarget {
       return Promise.resolve(this.chainDryResponse(
         scheduled.request,
         "chain-deadline-pressure",
-        this.chainOutputChannels(scheduled.request.channels)
+        this.chainOutputChannels(scheduled.request.channels),
+        undefined,
+        true,
+        scheduled.deadlinePressure
       ));
     }
     return this.processBlock(scheduled.request, options);
@@ -390,7 +394,8 @@ export class LiveEffectRackChain extends EventTarget {
     renderEngine: string,
     outputChannels: number,
     error?: unknown,
-    healthy = this.chainHealthy()
+    healthy = this.chainHealthy(),
+    deadlinePressure?: LiveEffectRackDeadlinePressure
   ): LiveEffectRackChainResponse {
     const chainProcessBudgetTripped = this.unhealthyReason === "process-budget-exceeded";
     const response = this.finishOutputResponse({
@@ -413,7 +418,8 @@ export class LiveEffectRackChain extends EventTarget {
       chainProcessTimedOut: this.unhealthyReason === "process-timeout",
       chainProcessBudgetMisses: this.processBudgetMisses,
       chainProcessBudgetTripped,
-      chainUnhealthyReason: this.unhealthyReason
+      chainUnhealthyReason: this.unhealthyReason,
+      deadlinePressure
     }, outputChannels);
     return this.recordChainLatency(response, request);
   }
@@ -524,7 +530,12 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastOutputPath = outputPath;
     const finalResponse = channels === response.channels ? response : { ...response, channels };
     if (lastDryReason !== undefined) {
-      const detail: LiveEffectRackChainDryOutputEventDetail = { response: finalResponse, health: this.health, reason: lastDryReason };
+      const detail: LiveEffectRackChainDryOutputEventDetail = {
+        response: finalResponse,
+        health: this.health,
+        reason: lastDryReason,
+        deadlinePressure: finalResponse.deadlinePressure
+      };
       this.dispatchEvent(new CustomEvent("dry-output", { detail }));
     }
     return finalResponse;
