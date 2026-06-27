@@ -190,6 +190,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     }
 
     if (message.type === "dropped") {
+      this.inFlightBlocks = Math.max(0, this.inFlightBlocks - 1);
       this.droppedInputBlocks += 1;
       return;
     }
@@ -284,17 +285,13 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       channels
     };
     const transfer = channels.map((channel) => channel.buffer);
-    if (this.transportPort) {
-      if (this.inFlightBlocks >= this.maxInFlightBlocks) {
-        this.droppedInputBlocks += 1;
-        this.recycleInputBlock(channels, frames);
-      } else {
-        this.inFlightBlocks += 1;
-        this.transportPort.postMessage(processMessage, transfer);
-      }
-    } else {
-      this.port.postMessage(processMessage, transfer);
+    if (this.inFlightBlocks >= this.maxInFlightBlocks) {
+      this.droppedInputBlocks += 1;
+      this.recycleInputBlock(channels, frames);
+      return;
     }
+    this.inFlightBlocks += 1;
+    (this.transportPort ?? this.port).postMessage(processMessage, transfer);
   }
 
   writeSharedInput(blockId, frames, channels) {

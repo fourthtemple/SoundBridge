@@ -798,6 +798,7 @@ export class SoundBridgeAudioNode extends EventTarget {
           return;
         }
         this.dispatchEvent(new CustomEvent("audio-error", { detail: error }));
+        this.node.port.postMessage({ type: "audio-error", blockId: message.blockId, error: String(error instanceof Error ? error.message : error) });
       })
       .finally(() => {
         this.inFlightBlocks -= 1;

@@ -86,6 +86,30 @@ assert(processor.droppedInputBlocks === 1, "dropped input blocks are counted");
 const processIds = postedMessages.filter((message) => message.type === "process").map((message) => message.blockId);
 assert(equal(processIds, [0, 1, 2, 3, 4]), "worklet emits monotonic process block ids");
 
+const fallbackProcessor = new processorCtor({
+  processorOptions: {
+    outputChannels: 1,
+    maxInFlightBlocks: 1,
+    maxQueuedOutputBlocks: 4,
+    outputLatencyBlocks: 1
+  }
+});
+const fallbackPort = lastPort;
+fallbackProcessor.process([[Float32Array.from([20])]], [[new Float32Array(1)]]);
+fallbackProcessor.process([[Float32Array.from([21])]], [[new Float32Array(1)]]);
+assert(
+  equal(fallbackPort.messages.filter((message) => message.type === "process").map((message) => message.blockId), [0]),
+  "fallback worklet transport drops input before posting past its in-flight limit"
+);
+assert(fallbackProcessor.droppedInputBlocks === 1 && fallbackProcessor.inFlightBlocks === 1, "fallback worklet transport tracks bounded in-flight pressure");
+fallbackPort.onmessage({ data: { type: "audio-error", blockId: 0, error: "failed" } });
+assert(fallbackProcessor.inFlightBlocks === 0, "fallback worklet transport releases in-flight blocks on errors");
+fallbackProcessor.process([[Float32Array.from([22])]], [[new Float32Array(1)]]);
+assert(
+  equal(fallbackPort.messages.filter((message) => message.type === "process").map((message) => message.blockId), [0, 2]),
+  "fallback worklet transport resumes posting after an error releases capacity"
+);
+
 const directProcessor = new processorCtor({
   processorOptions: {
     outputChannels: 1,
