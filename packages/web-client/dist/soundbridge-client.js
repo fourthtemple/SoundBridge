@@ -2058,6 +2058,7 @@ export class LiveEffectRackChain extends EventTarget {
     this.lastFailedStageIndex = void 0;
     this.lastStageResults = [];
     this.lastStageError = void 0;
+    this.lastDryReason = void 0;
     this.processBudgetMisses = 0;
     this.recoveryDryBlocks = 0;
     this.lastError = void 0;
@@ -2085,6 +2086,7 @@ export class LiveEffectRackChain extends EventTarget {
       failedStageIndex: this.lastFailedStageIndex,
       stageResults: this.lastStageResults.slice(),
       lastStageError: this.lastStageError,
+      lastDryReason: this.lastDryReason,
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
       processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
@@ -2302,11 +2304,21 @@ export class LiveEffectRackChain extends EventTarget {
 
   finishOutputResponse(response, outputChannels) {
     const outputPath = response.bypassed ? "dry" : "wet";
+    this.recordDryReason(response);
     const normalized = boundedLiveEffectChannels(response.channels, outputChannels, this.maxBlockSize);
     const channels = transitionLiveEffectOutputChannels(normalized, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = liveEffectOutputTail(channels, outputChannels);
     this.lastOutputPath = outputPath;
     return channels === response.channels ? response : { ...response, channels };
+  }
+
+  recordDryReason(response) {
+    const lastDryReason = liveEffectChainDryReason(response);
+    if (lastDryReason === this.lastDryReason) {
+      return;
+    }
+    this.lastDryReason = lastDryReason;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 
   recordChainLatency(response, request) {
@@ -2391,6 +2403,16 @@ function liveEffectChainStageWetMix(stageWetMixes, index, fallback) {
 function liveEffectChainFailedStageIndex(value, stageCount) {
   const bounded = boundedLiveEffectOptionalNumber(value, 0, Math.max(0, stageCount - 1));
   return bounded === void 0 ? void 0 : Math.floor(bounded);
+}
+
+function liveEffectChainDryReason(response) {
+  if (response.renderEngine === "chain-bypass" || response.renderEngine === "chain-empty" || response.renderEngine === "chain-process-budget-exceeded" || response.renderEngine === "chain-stage-error" || response.renderEngine === "chain-stale-input") {
+    return response.renderEngine;
+  }
+  if (response.stageResults.length > 0 && response.stageResults.every((stage) => stage.bypassed)) {
+    return "chain-stage-bypass";
+  }
+  return response.bypassed ? "chain-bypass" : void 0;
 }
 
 function liveEffectChainStageResult(index, stage, response, durationMs) {

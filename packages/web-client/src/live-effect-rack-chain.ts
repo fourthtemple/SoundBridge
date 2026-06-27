@@ -5,6 +5,14 @@ import type { LiveEffectRackScheduledBlock } from "./live-effect-rack-scheduler"
 
 const LIVE_EFFECT_CHAIN_MAX_STAGES = 16;
 
+export type LiveEffectRackChainDryReason =
+  | "chain-bypass"
+  | "chain-empty"
+  | "chain-process-budget-exceeded"
+  | "chain-stage-bypass"
+  | "chain-stage-error"
+  | "chain-stale-input";
+
 export interface LiveEffectRackChainStage {
   readonly health?: Partial<LiveEffectRackHealth>;
   processBlock(request: LiveEffectBlockRequest): Promise<LiveEffectBlockResponse>;
@@ -70,6 +78,7 @@ export interface LiveEffectRackChainHealth {
   failedStageIndex?: number;
   stageResults: LiveEffectRackChainStageResult[];
   lastStageError?: unknown;
+  lastDryReason?: LiveEffectRackChainDryReason;
   processBudgetMs: number;
   maxConsecutiveProcessBudgetMisses: number;
   processBudgetRecoveryBlocks: number;
@@ -103,6 +112,7 @@ export class LiveEffectRackChain extends EventTarget {
   private lastFailedStageIndex?: number;
   private lastStageResults: LiveEffectRackChainStageResult[] = [];
   private lastStageError?: unknown;
+  private lastDryReason?: LiveEffectRackChainDryReason;
   private processBudgetMisses = 0;
   private recoveryDryBlocks = 0;
   private lastError?: unknown;
@@ -149,6 +159,7 @@ export class LiveEffectRackChain extends EventTarget {
       failedStageIndex: this.lastFailedStageIndex,
       stageResults: this.lastStageResults.slice(),
       lastStageError: this.lastStageError,
+      lastDryReason: this.lastDryReason,
       processBudgetMs: this.processBudgetMs,
       maxConsecutiveProcessBudgetMisses: this.maxConsecutiveProcessBudgetMisses,
       processBudgetRecoveryBlocks: this.processBudgetRecoveryBlocks,
@@ -380,11 +391,21 @@ export class LiveEffectRackChain extends EventTarget {
 
   private finishOutputResponse(response: LiveEffectRackChainResponse, outputChannels: number): LiveEffectRackChainResponse {
     const outputPath = response.bypassed ? "dry" : "wet";
+    this.recordDryReason(response);
     const normalized = boundedLiveEffectChannels(response.channels, outputChannels, this.maxBlockSize);
     const channels = transitionOutputChannels(normalized, this.lastOutputTail, this.lastOutputPath, outputPath, this.transitionFadeSamples);
     this.lastOutputTail = outputTail(channels, outputChannels);
     this.lastOutputPath = outputPath;
     return channels === response.channels ? response : { ...response, channels };
+  }
+
+  private recordDryReason(response: LiveEffectRackChainResponse): void {
+    const lastDryReason = chainDryReason(response);
+    if (lastDryReason === this.lastDryReason) {
+      return;
+    }
+    this.lastDryReason = lastDryReason;
+    this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
 
   private recordChainLatency(response: LiveEffectRackChainResponse, request: LiveEffectBlockRequest): LiveEffectRackChainResponse {
@@ -488,6 +509,20 @@ function boundedWetMix(value: unknown, fallback: number): number {
 function boundedFailedStageIndex(value: unknown, stageCount: number): number | undefined {
   const bounded = boundedOptionalNumber(value, 0, Math.max(0, stageCount - 1));
   return bounded === undefined ? undefined : Math.floor(bounded);
+}
+
+function chainDryReason(response: LiveEffectRackChainResponse): LiveEffectRackChainDryReason | undefined {
+  if (response.renderEngine === "chain-bypass" ||
+    response.renderEngine === "chain-empty" ||
+    response.renderEngine === "chain-process-budget-exceeded" ||
+    response.renderEngine === "chain-stage-error" ||
+    response.renderEngine === "chain-stale-input") {
+    return response.renderEngine;
+  }
+  if (response.stageResults.length > 0 && response.stageResults.every((stage) => stage.bypassed)) {
+    return "chain-stage-bypass";
+  }
+  return response.bypassed ? "chain-bypass" : undefined;
 }
 
 function stageResult(index: number, stage: LiveEffectRackChainStage, response: LiveEffectBlockResponse, durationMs: number): LiveEffectRackChainStageResult {

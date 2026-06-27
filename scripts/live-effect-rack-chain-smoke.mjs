@@ -209,6 +209,32 @@ assert(
   "live rack chain exposes recovered stage aggregate health"
 );
 
+const stageBypass = {
+  health: { instanceId: "inst-stage-bypass", lastDryReason: "manual-bypass" },
+  async processBlock(request) {
+    return {
+      blockId: request.blockId,
+      channels: request.channels,
+      renderEngine: "stage-bypass",
+      bypassed: true,
+      healthy: true
+    };
+  }
+};
+const stageBypassChain = createLiveEffectRackChain({
+  stages: [stageBypass],
+  outputChannels: 1,
+  maxBlockSize: 2
+});
+const stageBypassResponse = await stageBypassChain.processBlock({ blockId: 57, channels: [[0.5, 0.25]], sampleRate: 48000 });
+assert(
+  stageBypassResponse.bypassed === true &&
+    stageBypassResponse.renderEngine === "live-effect-rack-chain" &&
+    stageBypassChain.health.lastDryReason === "chain-stage-bypass" &&
+    stageBypassChain.health.stageResults[0].lastDryReason === "manual-bypass",
+  "live rack chain records all-stage-bypass dry reason"
+);
+
 fakeNowMs = 0;
 const timedChain = createLiveEffectRackChain({
   stages: [new FakeStage("timed-left", 1, 0, 0, 4), new FakeStage("timed-right", 1, 0, 0, 5)],
@@ -268,6 +294,7 @@ assert(
   initiallyBypassedChain.health.bypassed === true &&
     initiallyBypassed.bypassed === true &&
     initiallyBypassed.renderEngine === "chain-bypass" &&
+    initiallyBypassedChain.health.lastDryReason === "chain-bypass" &&
     initiallyBypassed.channels[0][0] === 0.2 &&
     initiallyBypassedStage.requests.length === 0,
   "live rack chain can start manually bypassed without processing stages"
@@ -296,6 +323,7 @@ assert(
   bypassDry.bypassed === true &&
     bypassDry.renderEngine === "chain-bypass" &&
     bypassHealthDuringDry.bypassed === true &&
+    bypassHealthDuringDry.lastDryReason === "chain-bypass" &&
     bypassRequestsAfterDry === 1 &&
     near(bypassDry.channels[0][0], 20 / 3) &&
     near(bypassDry.channels[0][1], 10 / 3) &&
@@ -308,8 +336,9 @@ assert(
     near(bypassWetAgain.channels[0][1], 20 / 3) &&
     bypassWetAgain.channels[0][2] === 10 &&
     bypassChain.health.bypassed === false &&
+    bypassChain.health.lastDryReason === undefined &&
     bypassStage.requests.length === 2 &&
-    bypassHealthEvents === 2,
+    bypassHealthEvents === 4,
   "live rack chain manual unbypass fades dry output back to wet processing"
 );
 
@@ -372,10 +401,11 @@ assert(
 assert(
   pressureChain.health.healthy === false &&
     pressureChain.health.processBudgetTripped === true &&
+    pressureChain.health.lastDryReason === "chain-process-budget-exceeded" &&
     pressureChain.health.lastError instanceof Error,
   "live rack chain health exposes tripped pressure"
 );
-assert(budgetEvents === 2 && tripEvents === 1 && healthEvents === 2, "live rack chain emits bounded pressure events");
+assert(budgetEvents === 2 && tripEvents === 1 && healthEvents === 3, "live rack chain emits bounded pressure events");
 const thirdPressure = await pressureChain.processBlock({ blockId: 8, channels: [[2, 2]], sampleRate: 48000 });
 assert(thirdPressure.bypassed === true && thirdPressure.channels[0][0] === 2, "tripped live rack chains stay dry");
 assert(pressureStage.requests.length === 2, "tripped live rack chains stop calling slow stages");
@@ -383,7 +413,8 @@ assert(pressureChain.retry() === true, "live rack chain retry clears recoverable
 assert(
   pressureChain.health.healthy === true &&
     pressureChain.health.processBudgetMisses === 0 &&
-    pressureChain.health.processBudgetExceeded === false,
+    pressureChain.health.processBudgetExceeded === false &&
+    pressureChain.health.lastDryReason === "chain-process-budget-exceeded",
   "live rack chain retry resets health"
 );
 const retriedPressure = await pressureChain.processBlock({ blockId: 9, channels: [[1, 1]], sampleRate: 48000 });
@@ -392,10 +423,11 @@ assert(pressureChain.retry() === false, "live rack chain retry only succeeds for
 assert(
   budgetEvents === 3 &&
     tripEvents === 1 &&
-    healthEvents === 4 &&
+    healthEvents === 6 &&
     retryEvents === 1,
   "live rack chain emits retry and post-retry pressure events"
 );
+assert(pressureChain.health.lastDryReason === undefined, "retried live rack chains clear dry reason after wet output");
 
 fakeNowMs = 0;
 const recoveryStage = new FakeStage("recovery", 3, 0, 0, 3);
@@ -439,6 +471,7 @@ const staleResponse = await chain.processScheduledBlock(staleScheduled);
 assert(staleResponse.bypassed === true, "live rack chain bypasses stale scheduled blocks");
 assert(staleResponse.processedStages === 0 && left.requests.length === 1, "live rack chain does not process stale scheduled blocks");
 assert(staleResponse.renderEngine === "chain-stale-input", "live rack chain labels stale scheduled bypasses");
+assert(chain.health.lastDryReason === "chain-stale-input", "live rack chain records stale scheduled dry reason");
 
 const throwingStage = {
   health: { instanceId: "inst-throw" },
@@ -454,14 +487,16 @@ assert(
   failingChain.health.healthy === false &&
     failingChain.health.stageHealthy === false &&
     failingChain.health.failedStageIndex === 1 &&
+    failingChain.health.lastDryReason === "chain-stage-error" &&
     failingChain.health.lastStageError instanceof Error,
   "live rack chain health exposes the last failed stage"
 );
 assert(failed.channels[0][0] === 2 && failed.channels[1][0] === 4, "live rack chain fails dry to last known audio");
 
-const empty = await createLiveEffectRackChain({ stages: [], outputChannels: 2, maxBlockSize: 4 })
-  .processBlock({ blockId: 1, channels: [[0.4, 0.3]], sampleRate: 48000 });
+const emptyChain = createLiveEffectRackChain({ stages: [], outputChannels: 2, maxBlockSize: 4 });
+const empty = await emptyChain.processBlock({ blockId: 1, channels: [[0.4, 0.3]], sampleRate: 48000 });
 assert(empty.bypassed === true && empty.renderEngine === "chain-empty", "live rack chain bypasses empty chains");
 assert(empty.channels.length === 2, "live rack chain bounds empty-chain output channels");
+assert(emptyChain.health.lastDryReason === "chain-empty", "live rack chain records empty-chain dry reason");
 
 console.log("Live effect rack chain smoke checks passed.");
