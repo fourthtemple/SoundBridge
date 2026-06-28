@@ -171,6 +171,14 @@ const sharedQueueSnapshot = sharedQueueWindow.record({
 assert(sharedQueueSnapshot.calibration.observedSharedQueueMaxBlocks === 7, "live AudioNode calibration window keeps shared queue gauges");
 assert(sharedQueueSnapshot.recommendedOptions.sharedBufferBlocks === 9, "live AudioNode calibration window recommends shared ring headroom");
 
+const sharedTransportCalibration = calibrateLivePerformanceAudioNodePolicy({ instanceId: "inst-shared-worker", maxInFlightBlocks: 2, sharedTransportInFlightBlocks: 2 });
+assert(sharedTransportCalibration.observedSharedTransportInFlightMaxBlocks === 2, "live AudioNode calibration reports shared worker in-flight pressure");
+assert(sharedTransportCalibration.warnings.includes("shared-transport-saturation"), "live AudioNode calibration warns when shared worker in-flight reaches the ceiling");
+const sharedTransportWindow = createLivePerformanceAudioNodeCalibrationWindow({ instanceId: "inst-shared-worker-window", maxInFlightBlocks: 2 });
+sharedTransportWindow.record({ sharedTransportInFlightBlocks: 1 });
+const sharedTransportSnapshot = sharedTransportWindow.record({ sharedTransportInFlightBlocks: 2 });
+assert(sharedTransportSnapshot.calibration.observedSharedTransportInFlightMaxBlocks === 2 && sharedTransportSnapshot.calibration.warnings.includes("shared-transport-saturation"), "live AudioNode calibration window keeps shared worker in-flight pressure");
+
 const sharedAllocationCalibration = calibrateLivePerformanceAudioNodePolicy({
   instanceId: "inst-shared-allocation",
   sharedInputBufferAllocations: 2

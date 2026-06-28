@@ -150,6 +150,7 @@ export interface LivePerformanceAudioNodeCalibrationOptions extends LivePerforma
   sharedInputQueuedMaxBlocks?: number;
   sharedOutputQueuedBlocks?: number;
   sharedOutputQueuedMaxBlocks?: number;
+  sharedTransportInFlightBlocks?: number;
   sharedInputDroppedBlocks?: number;
   sharedOutputDroppedBlocks?: number;
   sharedInputBufferAllocations?: number;
@@ -190,6 +191,7 @@ export interface LivePerformanceAudioNodeCalibration {
   observedResponseJitterP95Blocks?: number;
   observedDeadlineLeadMinBlocks?: number;
   observedSharedQueueMaxBlocks?: number;
+  observedSharedTransportInFlightMaxBlocks?: number;
   observedSharedInputBufferAllocations?: number;
   recommendedOutputLatencyBlocks: number;
   recommendedTransportLatencySamples: number;
@@ -214,6 +216,7 @@ export interface LivePerformanceAudioNodeCalibrationHealthSample {
   sharedInputQueuedMaxBlocks?: number;
   sharedOutputQueuedBlocks?: number;
   sharedOutputQueuedMaxBlocks?: number;
+  sharedTransportInFlightBlocks?: number;
   sharedInputDroppedBlocks?: number;
   sharedOutputDroppedBlocks?: number;
   sharedInputBufferAllocations?: number;
@@ -334,6 +337,7 @@ export function calibrateLivePerformanceAudioNodePolicy(options: LivePerformance
   const observedResponseJitterP95Blocks = audioNodePercentileSample(options.responseJitterBlocks, 0, 64);
   const observedDeadlineLeadMinBlocks = audioNodeMinimumSample(options.deadlineLeadBlocks, -64, 64);
   const observedSharedQueueMaxBlocks = audioNodeSharedQueueMaxBlocks(options);
+  const observedSharedTransportInFlightMaxBlocks = boundedInteger(options.sharedTransportInFlightBlocks, 0, 0, 64);
   const observedSharedInputBufferAllocations = boundedInteger(options.sharedInputBufferAllocations, 0, 0, Number.MAX_SAFE_INTEGER);
   const currentLatencyBlocks = audioNodeLatencyBlocks(policy.transportLatencySamples, policy.maxBlockFrames);
   const hasDropPressure = audioNodeDropPressure(options);
@@ -382,6 +386,7 @@ export function calibrateLivePerformanceAudioNodePolicy(options: LivePerformance
     observedResponseJitterP95Blocks,
     observedDeadlineLeadMinBlocks,
     observedSharedQueueMaxBlocks,
+    observedSharedTransportInFlightMaxBlocks,
     observedSharedInputBufferAllocations,
     recommendedOutputLatencyBlocks,
     recommendedMaxOutputLatencyBlocks,
@@ -397,6 +402,7 @@ export function calibrateLivePerformanceAudioNodePolicy(options: LivePerformance
     observedResponseJitterP95Blocks,
     observedDeadlineLeadMinBlocks,
     observedSharedQueueMaxBlocks,
+    observedSharedTransportInFlightMaxBlocks,
     observedSharedInputBufferAllocations,
     recommendedOutputLatencyBlocks,
     recommendedTransportLatencySamples,
@@ -523,6 +529,7 @@ function audioNodeCalibrationWarnings(calibration: {
   observedResponseJitterP95Blocks?: number;
   observedDeadlineLeadMinBlocks?: number;
   observedSharedQueueMaxBlocks?: number;
+  observedSharedTransportInFlightMaxBlocks?: number;
   observedSharedInputBufferAllocations?: number;
   recommendedOutputLatencyBlocks: number;
   recommendedMaxOutputLatencyBlocks: number;
@@ -537,6 +544,7 @@ function audioNodeCalibrationWarnings(calibration: {
   if ((calibration.observedDeadlineLeadMinBlocks ?? 0) < 0 || calibration.hasResponseDeadlineMisses) warnings.push("deadline-miss");
   if ((calibration.observedResponseJitterP95Blocks ?? 0) > calibration.policy.responseJitterThresholdBlocks) warnings.push("response-jitter");
   if ((calibration.observedSharedQueueMaxBlocks ?? 0) >= Math.max(1, calibration.policy.sharedBufferBlocks - 1)) warnings.push("shared-ring-pressure");
+  if ((calibration.observedSharedTransportInFlightMaxBlocks ?? 0) >= calibration.policy.maxInFlightBlocks) warnings.push("shared-transport-saturation");
   if ((calibration.observedSharedInputBufferAllocations ?? 0) > 0) warnings.push("shared-buffer-allocation");
   if (exceedsAudioNodePolicy(calibration.observedRenderP95Ms ?? 0, calibration.policy.blockDurationMs)) warnings.push("render-over-block-budget");
   if (calibration.recommendedOutputLatencyBlocks > calibration.currentLatencyBlocks) warnings.push("increase-output-latency");
@@ -568,8 +576,7 @@ export class LivePerformanceAudioNodeCalibrationWindow {
   private sharedOutputDroppedBlocks = 0;
   private sharedInputBufferAllocations = 0;
   private responseDeadlineMisses = 0;
-  private sharedInputQueuedBlocks = 0;
-  private sharedOutputQueuedBlocks = 0;
+  private sharedInputQueuedBlocks = 0; private sharedOutputQueuedBlocks = 0; private sharedTransportInFlightBlocks = 0;
   private pressureBaseline?: LivePerformanceAudioNodeCalibrationPressureCounters;
   private droppedSamples = 0;
 
@@ -604,8 +611,7 @@ export class LivePerformanceAudioNodeCalibrationWindow {
     this.sharedOutputDroppedBlocks = 0;
     this.sharedInputBufferAllocations = 0;
     this.responseDeadlineMisses = 0;
-    this.sharedInputQueuedBlocks = 0;
-    this.sharedOutputQueuedBlocks = 0;
+    this.sharedInputQueuedBlocks = this.sharedOutputQueuedBlocks = this.sharedTransportInFlightBlocks = 0;
     this.pressureBaseline = undefined;
     this.droppedSamples = 0;
   }
@@ -635,7 +641,8 @@ export class LivePerformanceAudioNodeCalibrationWindow {
       sharedInputBufferAllocations: this.sharedInputBufferAllocations,
       responseDeadlineMisses: this.responseDeadlineMisses,
       sharedInputQueuedBlocks: this.sharedInputQueuedBlocks,
-      sharedOutputQueuedBlocks: this.sharedOutputQueuedBlocks
+      sharedOutputQueuedBlocks: this.sharedOutputQueuedBlocks,
+      sharedTransportInFlightBlocks: this.sharedTransportInFlightBlocks
     });
   }
 
@@ -657,6 +664,7 @@ export class LivePerformanceAudioNodeCalibrationWindow {
   private recordPressure(health: LivePerformanceAudioNodeCalibrationHealthSample): void {
     this.sharedInputQueuedBlocks = Math.max(this.sharedInputQueuedBlocks, boundedInteger(health.sharedInputQueuedMaxBlocks ?? health.sharedInputQueuedBlocks, 0, 0, 64));
     this.sharedOutputQueuedBlocks = Math.max(this.sharedOutputQueuedBlocks, boundedInteger(health.sharedOutputQueuedMaxBlocks ?? health.sharedOutputQueuedBlocks, 0, 0, 64));
+    this.sharedTransportInFlightBlocks = Math.max(this.sharedTransportInFlightBlocks, boundedInteger(health.sharedTransportInFlightBlocks, 0, 0, 64));
     const counters = this.pressureCounters(health);
     if (this.pressureBaseline === undefined) {
       this.pressureBaseline = counters;
