@@ -78,6 +78,22 @@ assert(decodedResponse.payload.outputBuses[0].channels[0][0] === 999, "binary re
 assert(!("outputBuses" in readBinaryHeader(encodeBinaryAudioEnvelope(responseEnvelope)).payload), "binary response keeps output bus samples out of JSON header");
 assert(decodedResponse.payload.channels[0][2] < 0, "binary response restores output samples");
 
+const decodedSanitizedResponse = decodeBinaryAudioEnvelope(encodeBinaryAudioEnvelope({
+  ...responseEnvelope,
+  payload: {
+    ...responseEnvelope.payload,
+    channels: [Float32Array.from([Number.NaN, Number.POSITIVE_INFINITY, 0.5])]
+  }
+}));
+assert(decodedSanitizedResponse.payload.channels[0][0] === 0, "binary response sanitizes typed NaN samples");
+assert(decodedSanitizedResponse.payload.channels[0][1] === 0, "binary response sanitizes typed infinite samples");
+const decodedCoercedResponse = decodeBinaryAudioEnvelope(encodeBinaryAudioEnvelope({
+  ...responseEnvelope,
+  payload: { ...responseEnvelope.payload, channels: [["1", "bad"]] }
+}));
+assert(decodedCoercedResponse.payload.channels[0][0] === 1, "binary response coerces numeric string samples");
+assert(decodedCoercedResponse.payload.channels[0][1] === 0, "binary response sanitizes nonnumeric string samples");
+
 for (const malformed of [Buffer.alloc(0), Buffer.from("nope"), encodeBinaryAudioEnvelope(responseEnvelope).subarray(0, 10)]) {
   assertThrows(() => decodeBinaryAudioEnvelope(malformed), "malformed binary audio frames are rejected");
 }

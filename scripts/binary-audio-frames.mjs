@@ -151,15 +151,25 @@ function writeChannelBlocks(buffer, offset, blocks) {
 function normalizeChannelBlock(channels) {
   const limited = channels.slice(0, MAX_CHANNELS);
   const frames = Math.max(0, ...limited.map((channel) => channelFrameCount(channel)));
+  const blockFrames = Math.max(1, frames);
   return {
-    channels: limited.map((channel) =>
-      Array.from({ length: Math.max(1, frames) }, (_, index) => {
-        const value = Number(channel?.[index] ?? 0);
-        return Number.isFinite(value) ? value : 0;
-      })
-    ),
-    frames: Math.max(1, frames)
+    channels: limited.map((channel) => normalizeChannel(channel, blockFrames)),
+    frames: blockFrames
   };
+}
+
+function normalizeChannel(channel, frames) {
+  if (channel?.length === frames) {
+    let reusable = true;
+    for (let index = 0; reusable && index < frames; index += 1) reusable = Number.isFinite(channel[index]);
+    if (reusable) return channel;
+  }
+  const normalized = ArrayBuffer.isView(channel) ? new Float32Array(frames) : new Array(frames);
+  for (let index = 0; index < frames; index += 1) {
+    const value = Number(channel?.[index] ?? 0);
+    normalized[index] = Number.isFinite(value) ? value : 0;
+  }
+  return normalized;
 }
 
 function normalizeBusBlocks(buses) {

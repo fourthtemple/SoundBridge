@@ -623,17 +623,17 @@ function decodeBinaryAudioEnvelope(data: unknown): ResponseEnvelope {
 function normalizeBinaryBlock(channels: ArrayLike<number>[]): { channels: Float32Array[]; frames: number } {
   const limited = channels.slice(0, MAX_BINARY_CHANNELS);
   const frames = Math.max(1, Math.min(MAX_BINARY_FRAMES, Math.max(0, ...limited.map((channel) => Math.max(0, Math.floor(Number(channel.length ?? 0)) || 0)))));
-  return {
-    channels: limited.map((channel) => {
-      const normalized = new Float32Array(frames);
-      for (let index = 0; index < frames; index += 1) {
-        const value = Number(channel[index] ?? 0);
-        normalized[index] = Number.isFinite(value) ? value : 0;
-      }
-      return normalized;
-    }),
-    frames
-  };
+  return { channels: limited.map((channel) => {
+    let reusable = channel instanceof Float32Array && channel.length === frames;
+    for (let index = 0; reusable && index < frames; index += 1) reusable = Number.isFinite(channel[index]);
+    if (reusable) return channel;
+    const normalized = new Float32Array(frames);
+    for (let index = 0; index < frames; index += 1) {
+      const value = Number(channel[index] ?? 0);
+      normalized[index] = Number.isFinite(value) ? value : 0;
+    }
+    return normalized;
+  }), frames };
 }
 
 function normalizeBinaryBuses(buses?: BinaryAudioBusBlock[]): Array<{ index: number; channels: Float32Array[]; frames: number }> {
