@@ -3881,6 +3881,8 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   constructor(options) {
     super();
     this.scheduler = options.scheduler;
+    this.sampleRate = boundedLiveEffectInteger(options.sampleRate, 48000, 1, 384000);
+    this.maxBlockSize = boundedLiveEffectInteger(options.maxBlockSize, 128, 1, 8192);
     this.maxTargets = boundedLiveEffectInteger(options.maxTargets, LIVE_EFFECT_FRAME_BATCH_TARGETS, 1, 32);
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
     this.processTimeoutMs = boundedLiveEffectNumber(options.processTimeoutMs, 0, 0, 60000);
@@ -3912,6 +3914,11 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
 
   get health() {
     return this.healthFromResult(this.lastResult);
+  }
+
+  get timing() {
+    const health = this.health;
+    return liveEffectRackTiming(this.sampleRate, this.maxBlockSize, health.latencySamples, 0, health.reportedLatencySamples, this.processBudgetMs, this.processTimeoutMs, 0, 0);
   }
 
   async process(targets, options = {}) {
@@ -4149,10 +4156,6 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     };
   }
 
-  processBudgetDryResult(frame, targets, targetCount) {
-    return this.processPressureDryResult(frame, targets, targetCount);
-  }
-
   processPressureDryResult(frame, targets, targetCount) {
     const timeoutActive = this.processTimeoutTripped;
     const error = this.lastError ?? new Error(timeoutActive ? "frame_batch_process_timeout" : "frame_batch_process_budget_exceeded");
@@ -4350,6 +4353,8 @@ export function createLivePerformanceFrameBatchProcessorOptions(options) {
   });
   return {
     ...processorOptions,
+    sampleRate,
+    maxBlockSize,
     processBudgetMs: policy.processBudgetMs,
     processTimeoutMs: policy.processTimeoutMs,
     maxConsecutiveProcessBudgetMisses: policy.maxConsecutiveProcessBudgetMisses,

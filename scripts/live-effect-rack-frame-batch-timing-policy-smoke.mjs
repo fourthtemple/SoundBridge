@@ -1,4 +1,7 @@
-import { createLiveEffectRackFrameBatchProcessor } from "../packages/web-client/dist/soundbridge-client.js";
+import {
+  createLiveEffectRackFrameBatchProcessor,
+  createLivePerformanceFrameBatchProcessorOptions
+} from "../packages/web-client/dist/soundbridge-client.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -19,13 +22,13 @@ const scheduler = {
   }
 };
 const target = {
-  health: { healthy: true, latencySamples: 0, reportedLatencySamples: 0 },
+  health: { healthy: true, latencySamples: 8, reportedLatencySamples: 12 },
   async processScheduledBlock(scheduled) {
     now += 3;
     return {
       blockId: scheduled.blockId,
       channels: scheduled.request.channels,
-      latencySamples: 0,
+      latencySamples: 8,
       tailSamples: 0,
       infiniteTail: false,
       renderEngine: "frame-batch-timing-policy",
@@ -37,10 +40,20 @@ const target = {
 
 const processor = createLiveEffectRackFrameBatchProcessor({
   scheduler,
+  sampleRate: 96000,
+  maxBlockSize: 64,
   processBudgetMs: 2,
   processTimeoutMs: 4,
   nowMs: () => now
 });
+const performanceOptions = createLivePerformanceFrameBatchProcessorOptions({
+  scheduler,
+  sampleRate: 96000,
+  maxBlockSize: 64,
+  processBudgetBlocks: 2,
+  processTimeoutBlocks: 3
+});
+assert(performanceOptions.sampleRate === 96000 && performanceOptions.maxBlockSize === 64, "live frame batch performance options preserve timing dimensions");
 
 let timingEvents = 0;
 let healthEvents = 0;
@@ -65,6 +78,10 @@ const result = await processor.process([{ id: "deck-a", target, channels: [[0.1,
 assert(result.processBudgetMs === 6, "live frame batch timing policy applies refreshed process budget to future results");
 assert(result.processTimeoutMs === 12, "live frame batch timing policy applies refreshed timeout to future results");
 assert(processor.health.processBudgetMs === 6 && processor.health.processBudgetExceeded === false, "live frame batch timing policy applies refreshed process budget to future health");
+const timing = processor.timing;
+assert(timing.sampleRate === 96000 && timing.maxBlockSize === 64 && timing.blockDurationMs === 0.667, "live frame batch exposes host-readable block timing");
+assert(timing.pluginLatencySamples === 8 && timing.reportedLatencySamples === 12 && timing.reportedLatencyBlocks === 0.188, "live frame batch timing exposes aggregate latency");
+assert(timing.processBudgetMs === 6 && timing.processTimeoutMs === 12, "live frame batch timing follows refreshed budget and timeout");
 
 const bounded = processor.setTimingPolicy({ processBudgetMs: -1, processTimeoutMs: 100000 });
 assert(bounded.processBudgetMs === undefined, "live frame batch timing policy clamps negative process budgets to disabled");

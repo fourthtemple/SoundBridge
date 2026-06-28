@@ -6,8 +6,10 @@ import {
   boundedOptionalNumber,
   liveEffectBlockDurationMs,
   liveEffectNowMs,
+  liveEffectRackTiming,
   withLiveEffectTimeout
 } from "./live-effect-rack-metrics";
+import type { LiveEffectRackTiming } from "./live-effect-rack-metrics";
 import type {
   LiveEffectRackDeadlinePressure,
   LiveEffectRackDeadlinePressureSkipOptions,
@@ -63,6 +65,8 @@ export interface LiveEffectRackFrameBatchOptions extends LiveEffectRackDeadlineP
 
 export interface LiveEffectRackFrameBatchProcessorOptions {
   scheduler: LiveEffectRackFrameBatchScheduler;
+  sampleRate?: number;
+  maxBlockSize?: number;
   maxTargets?: number;
   processBudgetMs?: number;
   processTimeoutMs?: number;
@@ -157,6 +161,8 @@ export interface LiveEffectRackFrameBatchHealth {
 
 export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   readonly scheduler: LiveEffectRackFrameBatchScheduler;
+  readonly sampleRate: number;
+  readonly maxBlockSize: number;
   readonly maxTargets: number;
   processBudgetMs: number;
   processTimeoutMs: number;
@@ -183,6 +189,8 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   constructor(options: LiveEffectRackFrameBatchProcessorOptions) {
     super();
     this.scheduler = options.scheduler;
+    this.sampleRate = boundedLiveEffectInteger(options.sampleRate, 48000, 1, 384000);
+    this.maxBlockSize = boundedLiveEffectInteger(options.maxBlockSize, 128, 1, 8192);
     this.maxTargets = boundedLiveEffectInteger(options.maxTargets, LIVE_EFFECT_FRAME_BATCH_TARGETS, 1, 32);
     this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, 0, 0, 60000);
     this.processTimeoutMs = boundedLiveEffectNumber(options.processTimeoutMs, 0, 0, 60000);
@@ -199,6 +207,11 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
 
   get health(): LiveEffectRackFrameBatchHealth {
     return this.healthFromResult(this.lastResult);
+  }
+
+  get timing(): LiveEffectRackTiming {
+    const health = this.health;
+    return liveEffectRackTiming(this.sampleRate, this.maxBlockSize, health.latencySamples, 0, health.reportedLatencySamples, this.processBudgetMs, this.processTimeoutMs, 0, 0);
   }
 
   async process(
@@ -474,14 +487,6 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     };
   }
 
-  private processBudgetDryResult(
-    frame: LiveEffectRackScheduledFrame,
-    targets: ArrayLike<LiveEffectRackFrameBatchTargetRequest>,
-    targetCount: number
-  ): LiveEffectRackFrameBatchResult {
-    return this.processPressureDryResult(frame, targets, targetCount);
-  }
-
   private processPressureDryResult(
     frame: LiveEffectRackScheduledFrame,
     targets: ArrayLike<LiveEffectRackFrameBatchTargetRequest>,
@@ -699,6 +704,8 @@ export function createLivePerformanceFrameBatchProcessorOptions(
   });
   return {
     ...processorOptions,
+    sampleRate,
+    maxBlockSize,
     processBudgetMs: policy.processBudgetMs,
     processTimeoutMs: policy.processTimeoutMs,
     maxConsecutiveProcessBudgetMisses: policy.maxConsecutiveProcessBudgetMisses,
