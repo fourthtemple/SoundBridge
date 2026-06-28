@@ -40,7 +40,7 @@ export function createRealtimeStats({ onTransportLatencySamples } = {}) {
       setText(elements.staleOutputBlocks, stats.staleOutputBlocks);
       setText(elements.droppedInputBlocks, stats.droppedInputBlocks);
       setText(elements.inFlightBlocks, stats.inFlightBlocks);
-      setText(elements.outputLatencyBlocks, stats.outputLatencyBlocks);
+      setText(elements.outputLatencyBlocks, formatLimit(stats.outputLatencyBlocks, stats.maxOutputLatencyBlocks));
       setText(elements.transportLatencySamples, stats.transportLatencySamples);
       setText(elements.latencyIncreases, stats.latencyIncreases);
       setText(elements.latencyDecreases, stats.latencyDecreases);
@@ -105,7 +105,8 @@ function setSharedAudio(elements, stats) {
     const current = `${stats.sharedInputQueuedBlocks ?? 0}/${stats.sharedOutputQueuedBlocks ?? 0}`;
     const peakInput = stats.sharedInputQueuedMaxBlocks ?? stats.sharedInputQueuedBlocks ?? 0;
     const peakOutput = stats.sharedOutputQueuedMaxBlocks ?? stats.sharedOutputQueuedBlocks ?? 0;
-    elements.sharedQueuedBlocks.textContent = `${current} peak ${peakInput}/${peakOutput}`;
+    const capacity = Number.isFinite(Number(stats.sharedBufferBlocks)) ? ` cap ${stats.sharedBufferBlocks}` : "";
+    elements.sharedQueuedBlocks.textContent = `${current} peak ${peakInput}/${peakOutput}${capacity}`;
   }
   if (elements.sharedDroppedBlocks) {
     elements.sharedDroppedBlocks.textContent = `${stats.sharedInputDroppedBlocks ?? 0}/${stats.sharedOutputDroppedBlocks ?? 0}`;
@@ -115,6 +116,10 @@ function setSharedAudio(elements, stats) {
 function formatMilliseconds(value) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(60000, number)).toFixed(3) : "0";
+}
+
+function formatLimit(value, max) {
+  return max === undefined || max === null ? String(value ?? 0) : `${value ?? 0}/${max}`;
 }
 
 function formatDirection(value) {

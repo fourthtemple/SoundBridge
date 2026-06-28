@@ -171,6 +171,7 @@ async function playKeyUntilProcessed(page, label) {
 async function assertRealtimeStats(page) {
   for (const selector of [
     "#latencyDecreases",
+    "#outputLatencyBlocks",
     "#fallbackOutputBlocks",
     "#reportedLatencyMs",
     "#responseDeadlineLeadSamples",
@@ -193,7 +194,7 @@ async function assertRealtimeStats(page) {
   const pressureReasons = await page.locator("#transportPressureReasons").textContent();
   assert(/^(None|[a-z-]+(, [a-z-]+)*)$/.test((pressureReasons ?? "").trim()), "Pressure reason reports latest live transport pressure.");
   const sharedQueued = await page.locator("#sharedQueuedBlocks").textContent();
-  assert(/^-?\d+\/-?\d+( peak -?\d+\/-?\d+)?$/.test((sharedQueued ?? "").trim()), "Shared queue reports current and peak live pressure.");
+  assert(/^-?\d+\/-?\d+( peak -?\d+\/-?\d+)?( cap -?\d+)?$/.test((sharedQueued ?? "").trim()), "Shared queue reports current, peak, and capacity live pressure.");
 }
 
 async function assertRetryControl(page) {

@@ -316,7 +316,7 @@ const pressureStats = {
 };
 FakeAudioWorkletNode.last.port.onmessage({ data: pressureStats });
 assert(statsEvents === 1, "SoundBridgeAudioNode emits one stats event per worklet stats message");
-assert(statsDetail.transportLatencySamples === 256 && statsDetail.fallbackOutputBlocks === 7, "SoundBridgeAudioNode preserves stats event details");
+assert(statsDetail.transportLatencySamples === 256 && statsDetail.fallbackOutputBlocks === 7 && statsDetail.sharedBufferBlocks === 8, "SoundBridgeAudioNode preserves stats event details and fixed shared-ring capacity");
 assert(fallbackOutputEvents === 1 && fallbackOutputDetail?.deltaBlocks === 7 && fallbackOutputDetail?.reason === "underrun", "SoundBridgeAudioNode emits fallback-output for new fallback blocks");
 assert(liveNode.health.inFlightBlocks === 3, "SoundBridgeAudioNode health tracks worklet in-flight blocks");
 assert(liveNode.health.queuedOutputBlocks === 2, "SoundBridgeAudioNode health tracks queued output blocks");

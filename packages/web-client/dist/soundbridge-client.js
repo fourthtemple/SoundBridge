@@ -1112,7 +1112,7 @@ export class SoundBridgeAudioNode extends EventTarget {
 
     if (message.type === "stats") {
       this.recordStats(message);
-      this.dispatchEvent(new CustomEvent("stats", { detail: message }));
+      this.dispatchEvent(new CustomEvent("stats", { detail: { ...message, sharedBufferBlocks: this.sharedBufferBlocks } }));
       return;
     }
 

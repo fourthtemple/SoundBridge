@@ -367,6 +367,7 @@ export class SoundBridgeAudioNode extends EventTarget {
       latencySafetyInsertions?: number;
       sharedAudioEnabled?: boolean;
       sharedAudioWakeMode?: string;
+      sharedBufferBlocks?: number;
       sharedInputQueuedBlocks?: number;
       sharedOutputQueuedBlocks?: number;
       sharedInputDroppedBlocks?: number;
@@ -403,7 +404,7 @@ export class SoundBridgeAudioNode extends EventTarget {
 
     if (typed.type === "stats") {
       this.recordStats(typed);
-      this.dispatchEvent(new CustomEvent("stats", { detail: typed }));
+      this.dispatchEvent(new CustomEvent("stats", { detail: { ...typed, sharedBufferBlocks: this.sharedBufferBlocks } }));
       return;
     }
     if (typed.type === "process-diagnostics") {
