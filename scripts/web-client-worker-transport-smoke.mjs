@@ -172,7 +172,7 @@ assert(liveNodeOptions.maxOutputLatencyBlocks === 4, "live AudioNode preset boun
 assert(liveNodeOptions.latencyRecoveryBlocks === 128, "live AudioNode preset recovers faster than the generic default");
 assert(liveNodeOptions.latencyPressureThresholdBlocks === 2 && liveNodeOptions.responseJitterThresholdBlocks === 2, "live AudioNode preset reacts to deadline and jitter pressure quickly");
 assert(liveNodeOptions.statsIntervalBlocks === 32, "live AudioNode preset reports stats quickly for live hosts");
-assert(liveNodeOptions.sharedBufferBlocks === 8, "live AudioNode preset derives shared ring depth from in-flight and latency bounds");
+assert(liveNodeOptions.sharedBufferBlocks === 8, "live AudioNode preset derives shared ring depth from queue and latency bounds");
 assert(liveNodeOptions.maxBlockFrames === 128, "live AudioNode preset keeps 128-frame block metadata");
 assert(liveNodeOptions.maxConsecutiveRenderBudgetMisses === 2, "live AudioNode preset fails dry after repeated budget misses");
 assert(liveNodeOptions.maxConsecutiveAudioErrors === 1, "live AudioNode preset fails dry on audio errors");

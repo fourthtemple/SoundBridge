@@ -261,9 +261,10 @@ export function createLivePerformanceAudioNodeOptions(options: LivePerformanceAu
     maxQueuedOutputBlocks
   );
   const maxInFlightBlocks = boundedInteger(options.maxInFlightBlocks, LIVE_AUDIO_NODE_MAX_IN_FLIGHT_BLOCKS, 1, 64);
+  const sharedBufferFloor = Math.max(LIVE_AUDIO_NODE_SHARED_BUFFER_BLOCKS, maxQueuedOutputBlocks, maxInFlightBlocks + maxOutputLatencyBlocks);
   const sharedBufferBlocks = boundedInteger(
     options.sharedBufferBlocks,
-    Math.max(LIVE_AUDIO_NODE_SHARED_BUFFER_BLOCKS, maxInFlightBlocks + maxOutputLatencyBlocks),
+    sharedBufferFloor,
     2,
     64
   );

@@ -51,9 +51,10 @@ assert(policy.outputLatencyBlocks === 2, "live AudioNode policy exposes output l
 assert(policy.outputLatencySamples === 256 && policy.outputLatencyMs === 5.333, "live AudioNode policy exposes output latency timing");
 assert(policy.maxOutputLatencyBlocks === 4 && policy.maxOutputLatencySamples === 512, "live AudioNode policy exposes adaptive latency ceiling");
 assert(policy.maxInFlightBlocks === 4 && policy.maxQueuedOutputBlocks === 8, "live AudioNode policy exposes bounded queue depth");
-assert(policy.sharedBufferBlocks === 8, "live AudioNode policy derives shared ring depth from live latency bounds");
+assert(policy.sharedBufferBlocks === 8, "live AudioNode policy derives shared ring depth from live queue and latency bounds");
 assert(policy.audioRequestTimeoutMs === 250 && near(policy.audioRequestTimeoutBlocks, 93.75), "live AudioNode policy exposes audio timeout in blocks");
 assert(policy.reportedLatencySamples === 288 && policy.reportedLatencyMs === 6, "live AudioNode policy combines plugin and transport latency");
+assert(createLivePerformanceAudioNodePolicy({ instanceId: "inst-deep-output-queue", maxQueuedOutputBlocks: 12 }).sharedBufferBlocks === 12, "live AudioNode policy keeps implicit shared rings large enough for deeper output queues");
 
 const readyCalibration = calibrateLivePerformanceAudioNodePolicy({
   instanceId: "inst-ready",
