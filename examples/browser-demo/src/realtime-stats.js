@@ -102,7 +102,10 @@ function setSharedAudio(elements, stats) {
       : "Off";
   }
   if (elements.sharedQueuedBlocks) {
-    elements.sharedQueuedBlocks.textContent = `${stats.sharedInputQueuedBlocks ?? 0}/${stats.sharedOutputQueuedBlocks ?? 0}`;
+    const current = `${stats.sharedInputQueuedBlocks ?? 0}/${stats.sharedOutputQueuedBlocks ?? 0}`;
+    const peakInput = stats.sharedInputQueuedMaxBlocks ?? stats.sharedInputQueuedBlocks ?? 0;
+    const peakOutput = stats.sharedOutputQueuedMaxBlocks ?? stats.sharedOutputQueuedBlocks ?? 0;
+    elements.sharedQueuedBlocks.textContent = `${current} peak ${peakInput}/${peakOutput}`;
   }
   if (elements.sharedDroppedBlocks) {
     elements.sharedDroppedBlocks.textContent = `${stats.sharedInputDroppedBlocks ?? 0}/${stats.sharedOutputDroppedBlocks ?? 0}`;

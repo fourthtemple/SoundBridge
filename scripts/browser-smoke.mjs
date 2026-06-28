@@ -192,6 +192,8 @@ async function assertRealtimeStats(page) {
   assert(/^(None|bypass|latency-safety|underrun)$/.test((fallbackReason ?? "").trim()), "Fallback reason reports live worklet fallback output.");
   const pressureReasons = await page.locator("#transportPressureReasons").textContent();
   assert(/^(None|[a-z-]+(, [a-z-]+)*)$/.test((pressureReasons ?? "").trim()), "Pressure reason reports latest live transport pressure.");
+  const sharedQueued = await page.locator("#sharedQueuedBlocks").textContent();
+  assert(/^-?\d+\/-?\d+( peak -?\d+\/-?\d+)?$/.test((sharedQueued ?? "").trim()), "Shared queue reports current and peak live pressure.");
 }
 
 async function assertRetryControl(page) {
