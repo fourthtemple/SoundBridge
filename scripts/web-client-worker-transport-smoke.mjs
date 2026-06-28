@@ -312,7 +312,8 @@ const pressureStats = {
   sharedInputQueuedBlocks: 3,
   sharedOutputQueuedBlocks: 4,
   sharedInputDroppedBlocks: 5,
-  sharedOutputDroppedBlocks: 6
+  sharedOutputDroppedBlocks: 6,
+  sharedTransportInFlightBlocks: 4
 };
 FakeAudioWorkletNode.last.port.onmessage({ data: pressureStats });
 assert(statsEvents === 1, "SoundBridgeAudioNode emits one stats event per worklet stats message");
@@ -344,7 +345,7 @@ assert(latencyDetail?.previous?.outputLatencyBlocks === 0, "latencychange includ
 assert(latencyDetail?.health?.transportLatencySamples === 256, "latencychange includes updated health");
 assert(transportPressureEvents === 1, "SoundBridgeAudioNode emits transport-pressure on increased pressure counters");
 assert(
-  transportPressureDetail?.reasons?.join(",") === "deadline-miss,response-jitter,stale-output,dropped-input,underrun,shared-input-drop,shared-output-drop",
+  transportPressureDetail?.reasons?.join(",") === "deadline-miss,response-jitter,stale-output,dropped-input,underrun,shared-input-drop,shared-output-drop,shared-transport-saturation",
   "transport-pressure reports bounded pressure reasons"
 );
 assert(transportPressureDetail?.health?.transportPressureEvents === 1, "transport-pressure includes updated health");
@@ -352,7 +353,7 @@ assert(
   liveNode.health.lastTransportPressureReasons.includes("deadline-miss"),
   "SoundBridgeAudioNode health tracks the latest transport-pressure reason"
 );
-FakeAudioWorkletNode.last.port.onmessage({ data: pressureStats });
+FakeAudioWorkletNode.last.port.onmessage({ data: { ...pressureStats, sharedTransportInFlightBlocks: 0 } });
 assert(fallbackOutputEvents === 1, "SoundBridgeAudioNode does not repeat fallback-output for unchanged counters");
 assert(transportPressureEvents === 1, "SoundBridgeAudioNode does not repeat transport-pressure for unchanged counters");
 assert(latencyEvents === 1, "SoundBridgeAudioNode does not repeat latencychange for unchanged latency stats");
@@ -361,7 +362,7 @@ FakeAudioWorkletNode.last.port.onmessage({
     ...pressureStats,
     outputLatencyBlocks: 1,
     transportLatencySamples: 128,
-    latencyDecreases: 1
+    latencyDecreases: 1, sharedTransportInFlightBlocks: 0
   }
 });
 assert(latencyEvents === 2, "SoundBridgeAudioNode emits latencychange when adaptive latency recovers");
@@ -440,7 +441,7 @@ assert(
     FakeAudioWorkletNode.last.port.messages.at(-1)?.bypassed === true,
   "transport-pressure auto-bypass sends a dry command to the worklet"
 );
-FakeAudioWorkletNode.last.port.onmessage({ data: { ...pressureStats, outputLatencyBlocks: 1, transportLatencySamples: 128, latencyIncreases: 1, latencyDecreases: 1, responseDeadlineMisses: 7, staleOutputBlocks: 5, droppedInputBlocks: 4, underruns: 10 } });
+FakeAudioWorkletNode.last.port.onmessage({ data: { ...pressureStats, outputLatencyBlocks: 1, transportLatencySamples: 128, latencyIncreases: 1, latencyDecreases: 1, responseDeadlineMisses: 7, staleOutputBlocks: 5, droppedInputBlocks: 4, underruns: 10, sharedTransportInFlightBlocks: 0 } });
 assert(liveNode.health.transportPressureAutoBypassed === true, "stale calm stats do not clear transport-pressure auto-bypass");
 assert(liveNode.retry() === true, "SoundBridgeAudioNode retry resumes after transport-pressure auto-bypass");
 assert(liveNode.health.bypassed === false, "AudioNode retry unbypasses after transport-pressure auto-bypass");

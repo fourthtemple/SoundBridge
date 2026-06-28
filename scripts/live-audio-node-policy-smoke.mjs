@@ -304,10 +304,10 @@ assert(refreshed.transportLatencySamples === 896, "live AudioNode calibration he
 
 const filteredLiveOptions = createLivePerformanceAudioNodeOptions({
   instanceId: "inst-filtered-live",
-  transportPressureAutoBypassReasons: ["deadline-miss", "response-jitter", "deadline-miss"]
+  transportPressureAutoBypassReasons: ["deadline-miss", "shared-transport-saturation", "deadline-miss"]
 });
 assert(
-  filteredLiveOptions.transportPressureAutoBypassReasons.join(",") === "deadline-miss,response-jitter",
+  filteredLiveOptions.transportPressureAutoBypassReasons.join(",") === "deadline-miss,shared-transport-saturation",
   "live AudioNode options normalize transport-pressure auto-bypass filters"
 );
 

@@ -37,6 +37,7 @@ export type SoundBridgeAudioNodeTransportPressureReason =
   | "response-jitter"
   | "shared-input-drop"
   | "shared-output-drop"
+  | "shared-transport-saturation"
   | "stale-output"
   | "underrun";
 
@@ -517,6 +518,7 @@ function audioNodeTransportPressureReason(reason: unknown): SoundBridgeAudioNode
     reason === "response-jitter" ||
     reason === "shared-input-drop" ||
     reason === "shared-output-drop" ||
+    reason === "shared-transport-saturation" ||
     reason === "stale-output" ||
     reason === "underrun"
     ? reason

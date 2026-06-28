@@ -625,10 +625,9 @@ export class SoundBridgeAudioNode extends EventTarget {
       staleOutputBlocks: number;
       droppedInputBlocks: number;
       underruns: number;
-      sharedInputDroppedBlocks: number;
-      sharedOutputDroppedBlocks: number;
+      sharedInputDroppedBlocks: number; sharedOutputDroppedBlocks: number;
     },
-    stats: { responseJitterBlocks?: number }
+    stats: { responseJitterBlocks?: number; sharedTransportInFlightBlocks?: number }
   ): void {
     const reasons: string[] = [];
     const deadlineMisses = Math.max(0, this.responseDeadlineMisses - previous.responseDeadlineMisses);
@@ -640,6 +639,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (this.underruns > previous.underruns) reasons.push("underrun");
     if (this.sharedInputDroppedBlocks > previous.sharedInputDroppedBlocks) reasons.push("shared-input-drop");
     if (this.sharedOutputDroppedBlocks > previous.sharedOutputDroppedBlocks) reasons.push("shared-output-drop");
+    if (boundedOptionalNumber(stats.sharedTransportInFlightBlocks, 0, 64) !== undefined && this.sharedTransportStats.inFlightBlocks >= this.maxInFlightBlocks) reasons.push("shared-transport-saturation");
     if (reasons.length === 0) {
       if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
       return;

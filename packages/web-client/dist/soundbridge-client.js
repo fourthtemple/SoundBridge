@@ -1324,6 +1324,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (this.underruns > previous.underruns) reasons.push("underrun");
     if (this.sharedInputDroppedBlocks > previous.sharedInputDroppedBlocks) reasons.push("shared-input-drop");
     if (this.sharedOutputDroppedBlocks > previous.sharedOutputDroppedBlocks) reasons.push("shared-output-drop");
+    if (boundedAudioNodeOptionalNumber(stats.sharedTransportInFlightBlocks, 0, 64) !== void 0 && this.sharedTransportStats.inFlightBlocks >= this.maxInFlightBlocks) reasons.push("shared-transport-saturation");
     if (reasons.length === 0) {
       if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
       return;
@@ -1518,6 +1519,7 @@ function audioNodeTransportPressureReason(reason) {
     reason === "response-jitter" ||
     reason === "shared-input-drop" ||
     reason === "shared-output-drop" ||
+    reason === "shared-transport-saturation" ||
     reason === "stale-output" ||
     reason === "underrun"
     ? reason
