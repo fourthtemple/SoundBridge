@@ -84,8 +84,8 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     const frames = output[0]?.length ?? input[0]?.length ?? 128;
     if (this.destroyed) { this.writeBlock(output, [], frames); return false; }
     this.lastFrames = frames;
-    const outgoing = this.copyInputBlock(input, frames);
-    if (this.bypassed) { this.blockId += 1; this.writeFallbackBlock(output, outgoing, frames, "bypass"); } else {
+    if (this.bypassed) { this.blockId += 1; this.writeFallbackBlock(output, input, frames, "bypass"); } else {
+      const outgoing = this.copyInputBlock(input, frames);
       if (this.sharedAudio) this.sharedOutputQueuedMaxBlocks = Math.max(this.sharedOutputQueuedMaxBlocks, Atomics.load(this.sharedAudio.outputControl, SoundBridgeAudioProcessor.sharedAvailable));
       this.drainSharedOutput();
       const currentBlockId = this.blockId++;
