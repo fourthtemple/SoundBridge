@@ -130,6 +130,10 @@ function boundedAudioFrames(channels: ArrayLike<number>[], channelCount: number,
 
 function normalizedChannel(channel: ArrayLike<number>, frames: number): ArrayLike<number> | undefined {
   if (channelLength(channel) !== frames) return Array.from({ length: frames }, (_unused, index) => finiteSample(channel[index]));
+  if (channel instanceof Float32Array) {
+    for (let index = 0; index < frames; index += 1) if (!Number.isFinite(channel[index])) return Array.from({ length: frames }, (_unused, frame) => finiteSample(channel[frame]));
+    return undefined;
+  }
   for (let index = 0; index < frames; index += 1) {
     if (!Number.isFinite(Number(channel[index] ?? 0))) return Array.from({ length: frames }, (_unused, frame) => finiteSample(channel[frame]));
   }

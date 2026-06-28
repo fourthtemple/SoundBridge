@@ -5744,6 +5744,10 @@ function boundedLiveEffectAudioFrames(channels, channelCount, maxFrames) {
 
 function normalizedLiveEffectChannel(channel, frames) {
   if (liveEffectChannelLength(channel) !== frames) return Array.from({ length: frames }, (_unused, index) => finiteLiveEffectSample(channel[index]));
+  if (channel instanceof Float32Array) {
+    for (let index = 0; index < frames; index += 1) if (!Number.isFinite(channel[index])) return Array.from({ length: frames }, (_unused, frame) => finiteLiveEffectSample(channel[frame]));
+    return void 0;
+  }
   for (let index = 0; index < frames; index += 1) {
     if (!Number.isFinite(Number(channel[index] ?? 0))) return Array.from({ length: frames }, (_unused, frame) => finiteLiveEffectSample(channel[frame]));
   }
