@@ -27,6 +27,33 @@ export type LiveEffectRackDeadlinePressureReason =
   | "process-timeout"
   | "response-jitter";
 
+export function liveEffectRackDeadlinePressureReason(reason: unknown): LiveEffectRackDeadlinePressureReason | undefined {
+  return reason === "deadline-miss" ||
+    reason === "dry-output-pressure" ||
+    reason === "increase-transport-latency" ||
+    reason === "increase-process-budget" ||
+    reason === "increase-process-timeout" ||
+    reason === "low-deadline-lead" ||
+    reason === "process-over-budget" ||
+    reason === "process-timeout" ||
+    reason === "response-jitter"
+    ? reason
+    : undefined;
+}
+
+export function normalizeLiveEffectRackDeadlinePressureReasons(
+  reasons: ArrayLike<unknown> | undefined | null
+): LiveEffectRackDeadlinePressureReason[] | undefined {
+  if (reasons === undefined || reasons === null) return undefined;
+  const normalized: LiveEffectRackDeadlinePressureReason[] = [];
+  const length = boundedLiveEffectInteger(reasons.length, 0, 0, 16);
+  for (let index = 0; index < length; index += 1) {
+    const reason = liveEffectRackDeadlinePressureReason(reasons[index]);
+    if (reason !== undefined && !normalized.includes(reason)) normalized.push(reason);
+  }
+  return normalized;
+}
+
 export interface LiveEffectRackDeadlinePressure {
   pressure: boolean;
   reasons: LiveEffectRackDeadlinePressureReason[];
@@ -382,14 +409,8 @@ export function shouldSkipLiveEffectDeadlinePressure(
   options: LiveEffectRackDeadlinePressureSkipOptions = {}
 ): boolean {
   if (options.skipOnDeadlinePressure !== true || pressure === undefined || pressure.pressure !== true) return false;
-  const reasons = options.skipOnDeadlinePressureReasons;
-  if (reasons === undefined || reasons === null) return true;
-  const length = boundedLiveEffectInteger(reasons.length, 0, 0, 16);
-  for (let index = 0; index < length; index += 1) {
-    const reason = reasons[index];
-    if (typeof reason === "string" && pressure.reasons.includes(reason)) return true;
-  }
-  return false;
+  const reasons = normalizeLiveEffectRackDeadlinePressureReasons(options.skipOnDeadlinePressureReasons);
+  return reasons === undefined ? true : reasons.some((reason) => pressure.reasons.includes(reason));
 }
 
 function optionalSchedulerInteger(value: unknown, min: number, max: number): number | undefined {

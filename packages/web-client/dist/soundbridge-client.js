@@ -3699,6 +3699,31 @@ const LIVE_EFFECT_SCHEDULER_MAX_BLOCK_ID = 9_007_199_254_740_991;
 const LIVE_EFFECT_SCHEDULER_MAX_SAMPLE_POSITION = 9_007_199_254_740_991;
 const LIVE_EFFECT_SCHEDULER_DEADLINE_LEAD_TARGET_BLOCKS = 1;
 
+export function liveEffectRackDeadlinePressureReason(reason) {
+  return reason === "deadline-miss" ||
+    reason === "dry-output-pressure" ||
+    reason === "increase-transport-latency" ||
+    reason === "increase-process-budget" ||
+    reason === "increase-process-timeout" ||
+    reason === "low-deadline-lead" ||
+    reason === "process-over-budget" ||
+    reason === "process-timeout" ||
+    reason === "response-jitter"
+    ? reason
+    : void 0;
+}
+
+export function normalizeLiveEffectRackDeadlinePressureReasons(reasons) {
+  if (reasons === void 0 || reasons === null) return void 0;
+  const normalized = [];
+  const length = boundedLiveEffectInteger(reasons.length, 0, 0, 16);
+  for (let index = 0; index < length; index += 1) {
+    const reason = liveEffectRackDeadlinePressureReason(reasons[index]);
+    if (reason !== void 0 && !normalized.includes(reason)) normalized.push(reason);
+  }
+  return normalized;
+}
+
 export class LiveEffectRackBlockScheduler {
   constructor(options) {
     this.sampleRate = boundedLiveEffectInteger(options.sampleRate, 48000, 1, 384000);
@@ -4458,14 +4483,8 @@ function liveEffectFrameBatchLatencySamples(health) {
 
 export function shouldSkipLiveEffectDeadlinePressure(pressure, options = {}) {
   if (options.skipOnDeadlinePressure !== true || pressure === void 0 || pressure.pressure !== true) return false;
-  const reasons = options.skipOnDeadlinePressureReasons;
-  if (reasons === void 0 || reasons === null) return true;
-  const length = boundedLiveEffectInteger(reasons.length, 0, 0, 16);
-  for (let index = 0; index < length; index += 1) {
-    const reason = reasons[index];
-    if (typeof reason === "string" && pressure.reasons.includes(reason)) return true;
-  }
-  return false;
+  const reasons = normalizeLiveEffectRackDeadlinePressureReasons(options.skipOnDeadlinePressureReasons);
+  return reasons === void 0 ? true : reasons.some((reason) => pressure.reasons.includes(reason));
 }
 
 function optionalLiveEffectSchedulerInteger(value, min, max) {

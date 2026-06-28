@@ -6,6 +6,7 @@ import {
   createLiveEffectRackFrameBatchProcessor,
   createLivePerformanceFrameBatchProcessor,
   createLivePerformanceFrameBatchProcessorOptions,
+  normalizeLiveEffectRackDeadlinePressureReasons,
   shouldSkipLiveEffectDeadlinePressure
 } from "../packages/web-client/dist/soundbridge-client.js";
 
@@ -186,6 +187,8 @@ assert(
   shouldSkipLiveEffectDeadlinePressure(pressuredSnapshot.deadlinePressure, { skipOnDeadlinePressure: true, skipOnDeadlinePressureReasons: ["process-timeout"] }) === true,
   "live rack scheduler pressure filters can match process-timeout recommendations"
 );
+assert(normalizeLiveEffectRackDeadlinePressureReasons(["process-timeout", "bogus", "process-timeout"]).join(",") === "process-timeout", "live rack scheduler pressure reason filters are bounded and deduplicated");
+assert(shouldSkipLiveEffectDeadlinePressure(pressuredSnapshot.deadlinePressure, { skipOnDeadlinePressure: true, skipOnDeadlinePressureReasons: ["bogus"] }) === false, "live rack scheduler pressure filters ignore unknown reasons");
 pressureScheduler.updateFromChainHealth({
   latencySamples: 512,
   lastResponseDeadlineLeadBlocks: 2,
