@@ -4697,6 +4697,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       renderBudgetRecoveryBlocks: this.renderBudgetRecoveryBlocks,
       processTimeoutRecoveryBlocks: this.processTimeoutRecoveryBlocks,
       processTimeoutRecoveryAttempts: this.processTimeoutRecoveryAttempts,
+      processTimeoutRecoveryExhausted: this.unhealthyReason === "process-timeout" && (this.maxProcessTimeoutRecoveries <= 0 || this.processTimeoutRecoveryAttempts >= this.maxProcessTimeoutRecoveries),
       maxProcessTimeoutRecoveries: this.maxProcessTimeoutRecoveries,
       processBudgetMs: this.processBudgetMs,
       processTimeoutMs: this.processTimeoutMs,

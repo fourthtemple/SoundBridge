@@ -53,6 +53,7 @@ timeoutRack.addEventListener("effect-error", () => {
 });
 const timedOut = await timeoutRack.processBlock({ blockId: 1, channels: [[0.5]] });
 assert(timedOut.bypassed === true && timedOut.healthy === false, "live rack process timeout fails dry");
+assert(timeoutRack.health.processTimeoutRecoveryExhausted === true, "live rack reports unavailable timeout recovery as exhausted");
 assert(timeoutClient.timeouts.at(-1) === 1, "live rack process timeout passes bounded request timeout");
 assert(timeoutEvents === 1 && timeoutTripEvents === 1 && effectErrorEvents === 1, "live rack emits timeout and timeout-trip events beside generic effect-error");
 assert(
@@ -88,5 +89,23 @@ const failed = await failureRack.processBlock({ blockId: 2, channels: [[0.25]] }
 assert(failed.bypassed === true && failureRack.health.unhealthyReason === "processing-error", "live rack still classifies ordinary processing errors");
 assert(unexpectedTimeoutEvents === 0 && unexpectedTimeoutTripEvents === 0, "live rack does not emit timeout events for ordinary processing errors");
 await failureRack.destroy();
+
+const cappedRecoveryClient = createClient(() => new Promise(() => undefined));
+const cappedRecoveryRack = await SoundBridgeLiveEffectRack.create({
+  client: cappedRecoveryClient,
+  plugin,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processTimeoutMs: 1,
+  processTimeoutRecoveryBlocks: 1,
+  maxProcessTimeoutRecoveries: 1
+});
+await cappedRecoveryRack.processBlock({ blockId: 3, channels: [[0.5]] });
+assert(cappedRecoveryRack.health.processTimeoutRecoveryExhausted === false, "live rack does not report timeout recovery exhausted before its cooldown");
+await cappedRecoveryRack.processBlock({ blockId: 4, channels: [[0.5]] });
+await new Promise((resolve) => setTimeout(resolve, 0));
+await cappedRecoveryRack.processBlock({ blockId: 5, channels: [[0.5]] });
+assert(cappedRecoveryRack.health.processTimeoutRecoveryExhausted === true, "live rack reports exhausted timeout recovery after the retry cap");
+await cappedRecoveryRack.destroy();
 
 console.log("Live effect rack process-timeout event smoke checks passed.");

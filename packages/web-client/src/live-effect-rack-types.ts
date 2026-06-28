@@ -95,6 +95,7 @@ export interface LiveEffectRackHealth {
   renderBudgetRecoveryBlocks: number;
   processTimeoutRecoveryBlocks: number;
   processTimeoutRecoveryAttempts: number;
+  processTimeoutRecoveryExhausted: boolean;
   maxProcessTimeoutRecoveries: number;
   processBudgetMs: number;
   processTimeoutMs: number;
