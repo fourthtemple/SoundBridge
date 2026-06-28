@@ -272,7 +272,11 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       this.dropOldestOutputBlock();
     }
 
-    this.queueOutputBlock(blockId, typed.channels.slice(0, this.outputChannels).map((channel) => this.outputChannelBlock(channel)));
+    const outputChannels = new Array<Float32Array>(Math.min(this.outputChannels, typed.channels.length));
+    for (let channelIndex = 0; channelIndex < outputChannels.length; channelIndex += 1) {
+      outputChannels[channelIndex] = this.outputChannelBlock(typed.channels[channelIndex]);
+    }
+    this.queueOutputBlock(blockId, outputChannels);
     if (typeof typed.renderEngine === "string" || typeof typed.latencySamples === "number") {
       this.port.postMessage({ type: "process-diagnostics", blockId, latencySamples: typed.latencySamples, renderEngine: typed.renderEngine, renderDurationMs: typed.renderDurationMs, renderBudgetMs: typed.renderBudgetMs, renderBudgetExceeded: typed.renderBudgetExceeded });
     }
@@ -618,7 +622,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   }
 
   private transportLatencySamples(): number { return this.outputLatencyBlocks * this.lastFrames; }
-  private reportedLatencySamples(transportLatencySamples = this.transportLatencySamples()): number { return this.boundedInteger(transportLatencySamples + this.pluginLatencySamples, transportLatencySamples, 0, 1_048_576); }
+  private reportedLatencySamples(transportLatencySamples = this.transportLatencySamples()): number { return Math.min(1_048_576, transportLatencySamples + this.pluginLatencySamples); }
 
   private takeInputBuffer(frames: number): Float32Array {
     const pool = this.inputBufferPool.get(frames);
