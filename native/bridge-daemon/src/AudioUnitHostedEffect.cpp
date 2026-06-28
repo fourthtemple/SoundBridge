@@ -321,6 +321,7 @@ RenderedAudio HostedAudioUnit::render(
   checkStatus(AudioUnitRender(unit_, &flags, &timeStamp, 0, frames, outputBufferListFor(0, frames)), "AudioUnitRender");
   RenderedAudio rendered;
   rendered.channels = renderedChannels(outputStorage_[0], frames);
+  rendered.outputBuses.reserve(outputBusActive_.size() > 1 ? outputBusActive_.size() - 1 : 0);
 
   for (std::uint32_t busIndex = 1; busIndex < outputBusActive_.size(); ++busIndex) {
     if (!outputBusActive_[busIndex]) {
