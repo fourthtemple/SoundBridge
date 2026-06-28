@@ -1300,6 +1300,7 @@ export class SoundBridgeAudioNode extends EventTarget {
 
   reportTransportPressure(previous, stats) {
     const reasons = [];
+    const deadlineMisses = Math.max(0, this.responseDeadlineMisses - previous.responseDeadlineMisses);
     if (this.responseDeadlineMisses > previous.responseDeadlineMisses) reasons.push("deadline-miss");
     if (this.latencyIncreases > previous.latencyIncreases && this.responseJitterThresholdBlocks > 0 && boundedAudioNodeOptionalNumber(stats.responseJitterBlocks, 0, 64) !== undefined && this.responseJitterBlocks >= this.responseJitterThresholdBlocks) reasons.push("response-jitter");
     if (this.fallbackOutputBlocks > previous.fallbackOutputBlocks && this.lastFallbackReason === "latency-safety") reasons.push("latency-safety");
@@ -1317,6 +1318,7 @@ export class SoundBridgeAudioNode extends EventTarget {
     if (autoBypassPressure) this.consecutiveTransportPressureEvents = Math.min(1024, this.consecutiveTransportPressureEvents + 1);
     else if (!this.transportPressureAutoBypassed) this.consecutiveTransportPressureEvents = 0;
     this.lastTransportPressureReasons = reasons;
+    if (deadlineMisses > 0) this.dispatchEvent(new CustomEvent("response-deadline-missed", { detail: { deltaMisses: deadlineMisses, stats, health: this.health } }));
     this.dispatchEvent(new CustomEvent("transport-pressure", { detail: { reasons, stats, health: this.health } }));
     if (autoBypassPressure && this.maxConsecutiveTransportPressureEvents > 0 && this.consecutiveTransportPressureEvents >= this.maxConsecutiveTransportPressureEvents && !this.bypassed && !this.transportPressureAutoBypassed) {
       this.transportPressureAutoBypassed = true;

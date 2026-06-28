@@ -16,6 +16,10 @@ export function bindBridgeMonitorEvents({ bridge, realtimeStats, elements, logEr
   bridge.addEventListener("transport-pressure", (event) => {
     realtimeStats.updateTransportPressure(event.detail);
   });
+  bridge.addEventListener("response-deadline-missed", (event) => {
+    realtimeStats.updateTransportPressure({ reasons: ["deadline-miss"] });
+    updateHealth(event.detail?.health);
+  });
   bridge.addEventListener("process-timeout", (event) => {
     updateHealth(event.detail?.health);
   });

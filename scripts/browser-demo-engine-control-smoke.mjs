@@ -72,6 +72,7 @@ assert(disabledButton.textContent === "Recreate Engine" && disabledButton.disabl
 const monitorBridge = new EventTarget();
 let monitorHealth;
 let latencyHealth;
+let pressureReasons;
 bindBridgeMonitorEvents({
   bridge: monitorBridge,
   realtimeStats: {
@@ -79,7 +80,9 @@ bindBridgeMonitorEvents({
     updateLatencyHealth(health) {
       latencyHealth = health;
     },
-    updateTransportPressure() {},
+    updateTransportPressure(detail) {
+      pressureReasons = detail?.reasons;
+    },
     updateRenderDiagnostics() {}
   },
   elements: { renderEngine: { textContent: "" } },
@@ -89,6 +92,10 @@ bindBridgeMonitorEvents({
     monitorHealth = health;
   }
 });
+const deadlineHealth = { responseDeadlineMisses: 2, lastTransportPressureReasons: ["deadline-miss"] };
+monitorBridge.dispatchEvent(new CustomEvent("response-deadline-missed", { detail: { health: deadlineHealth } }));
+assert(monitorHealth === deadlineHealth && latencyHealth === deadlineHealth, "browser demo monitor updates health from response deadline events");
+assert(pressureReasons?.join(",") === "deadline-miss", "browser demo monitor surfaces deadline-miss pressure");
 const timeoutTripHealth = { unhealthyReason: "process-timeout", bypassed: true };
 monitorBridge.dispatchEvent(new CustomEvent("process-timeout-tripped", { detail: { health: timeoutTripHealth } }));
 assert(monitorHealth === timeoutTripHealth && latencyHealth === timeoutTripHealth, "browser demo monitor updates from process-timeout trip events");
