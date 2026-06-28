@@ -68,6 +68,10 @@ FakeAudioWorkletNode.last.port.onmessage({
     sharedInputBufferAllocations: 5,
     sharedInputBufferReuses: 4,
     sharedPooledInputBuffers: 2,
+    sharedInputQueuedBlocks: 1,
+    sharedInputQueuedMaxBlocks: 4,
+    sharedOutputQueuedBlocks: 2,
+    sharedOutputQueuedMaxBlocks: 3,
     responseDeadlineMisses: 2,
     responseDeadlineMissesSinceLastStats: 2
   }
@@ -81,6 +85,7 @@ assert(node.health.sharedTransportInFlightBlocks === 3, "AudioNode health tracks
 assert(node.health.sharedInputBufferAllocations === 5, "AudioNode health tracks shared input buffer allocations");
 assert(node.health.sharedInputBufferReuses === 4, "AudioNode health tracks shared input buffer reuse");
 assert(node.health.sharedPooledInputBuffers === 2, "AudioNode health tracks pooled shared input buffers");
+assert(node.health.sharedInputQueuedMaxBlocks === 4 && node.health.sharedOutputQueuedMaxBlocks === 3, "AudioNode health tracks peak shared queue depth");
 
 FakeAudioWorkletNode.last.port.onmessage({
   data: {
@@ -89,6 +94,8 @@ FakeAudioWorkletNode.last.port.onmessage({
     sharedInputBufferAllocations: Number.MAX_SAFE_INTEGER + 1000,
     sharedInputBufferReuses: Number.MAX_SAFE_INTEGER + 1000,
     sharedPooledInputBuffers: 9999,
+    sharedInputQueuedMaxBlocks: 999,
+    sharedOutputQueuedMaxBlocks: 999,
     responseDeadlineMisses: 2
   }
 });
@@ -96,6 +103,7 @@ FakeAudioWorkletNode.last.port.onmessage({
 assert(node.health.sharedTransportInFlightBlocks === 64, "AudioNode health bounds shared transport in-flight blocks");
 assert(node.health.sharedInputBufferAllocations === Number.MAX_SAFE_INTEGER, "AudioNode health bounds shared allocation counters");
 assert(node.health.sharedPooledInputBuffers === 2048, "AudioNode health bounds pooled shared buffers");
+assert(node.health.sharedInputQueuedMaxBlocks === 64 && node.health.sharedOutputQueuedMaxBlocks === 64, "AudioNode health bounds peak shared queue depth");
 assert(deadlineMissEvents === 1, "AudioNode does not repeat deadline-miss events for unchanged counters");
 
 let renderBudgetTripEvents = 0;

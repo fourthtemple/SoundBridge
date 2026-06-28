@@ -31,8 +31,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private droppedInputBlocks = 0;
   private latencyIncreases = 0;
   private latencyDecreases = 0;
-  private sharedInputDroppedBlocks = 0;
-  private sharedOutputDroppedBlocks = 0;
+  private sharedInputDroppedBlocks = 0; private sharedOutputDroppedBlocks = 0; private sharedInputQueuedMaxBlocks = 0; private sharedOutputQueuedMaxBlocks = 0;
   private consecutiveLatencyMisses = 0;
   private consecutiveOnTimeBlocks = 0;
   private consecutiveLowDeadlineLeadBlocks = 0;
@@ -107,12 +106,12 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     this.lastFrames = frames;
     const outgoing = this.copyInputBlock(input, frames);
     if (this.bypassed) { this.blockId += 1; this.writeFallbackBlock(output, outgoing, frames, "bypass"); } else {
+      if (this.sharedAudio) this.sharedOutputQueuedMaxBlocks = Math.max(this.sharedOutputQueuedMaxBlocks, Atomics.load(this.sharedAudio.outputControl, SoundBridgeAudioProcessor.sharedAvailable));
       this.drainSharedOutput();
       const currentBlockId = this.blockId++;
       const insertingSafetyBlock = this.latencySafetyBlocks > 0;
       const targetBlockId = insertingSafetyBlock ? -1 : currentBlockId - this.outputLatencyBlocks;
       const queued = targetBlockId >= 0 ? this.outputBlocks.get(targetBlockId) : undefined;
-
       if (queued) {
         this.outputBlocks.delete(targetBlockId);
         this.writeBlock(output, queued, frames);
@@ -161,8 +160,8 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         latencySafetyInsertions: this.latencySafetyInsertions,
         sharedAudioEnabled: Boolean(this.sharedAudio),
         sharedAudioWakeMode: this.sharedAudioWakeMode,
-        sharedInputQueuedBlocks: this.sharedAudio ? Atomics.load(this.sharedAudio.inputControl, SoundBridgeAudioProcessor.sharedAvailable) : 0,
-        sharedOutputQueuedBlocks: this.sharedAudio ? Atomics.load(this.sharedAudio.outputControl, SoundBridgeAudioProcessor.sharedAvailable) : 0,
+        sharedInputQueuedBlocks: this.sharedAudio ? Atomics.load(this.sharedAudio.inputControl, SoundBridgeAudioProcessor.sharedAvailable) : 0, sharedInputQueuedMaxBlocks: this.sharedInputQueuedMaxBlocks,
+        sharedOutputQueuedBlocks: this.sharedAudio ? Atomics.load(this.sharedAudio.outputControl, SoundBridgeAudioProcessor.sharedAvailable) : 0, sharedOutputQueuedMaxBlocks: this.sharedOutputQueuedMaxBlocks,
         sharedInputDroppedBlocks: this.sharedInputDroppedBlocks,
         sharedOutputDroppedBlocks: this.sharedOutputDroppedBlocks,
         staleOutputBlocks: this.staleOutputBlocks,
@@ -371,6 +370,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       Atomics.add(shared.inputControl, SoundBridgeAudioProcessor.sharedAvailable, 1);
     }
     Atomics.notify(shared.inputControl, SoundBridgeAudioProcessor.sharedAvailable, 1);
+    this.sharedInputQueuedMaxBlocks = Math.max(this.sharedInputQueuedMaxBlocks, Atomics.load(shared.inputControl, SoundBridgeAudioProcessor.sharedAvailable));
     return "sent";
   }
 
@@ -600,7 +600,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
 
   private resetResponseDeadlineWindow(): void {
     this.responseBlocksSinceLastStats = 0;
-    this.responseDeadlineMissesSinceLastStats = 0;
+    this.responseDeadlineMissesSinceLastStats = this.sharedInputQueuedMaxBlocks = this.sharedOutputQueuedMaxBlocks = 0;
     this.responseDeadlineLeadMinBlocks = undefined;
     this.responseDeadlineLeadMaxBlocks = undefined;
   }

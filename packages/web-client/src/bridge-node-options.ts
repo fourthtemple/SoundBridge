@@ -88,7 +88,9 @@ export interface SoundBridgeAudioNodeHealth {
   underruns: number;
   sharedAudioEnabled: boolean;
   sharedInputQueuedBlocks: number;
+  sharedInputQueuedMaxBlocks: number;
   sharedOutputQueuedBlocks: number;
+  sharedOutputQueuedMaxBlocks: number;
   sharedInputDroppedBlocks: number;
   sharedOutputDroppedBlocks: number;
   sharedTransportInFlightBlocks: number;
@@ -143,7 +145,9 @@ export interface LivePerformanceAudioNodeCalibrationOptions extends LivePerforma
   droppedInputBlocks?: number;
   staleOutputBlocks?: number;
   sharedInputQueuedBlocks?: number;
+  sharedInputQueuedMaxBlocks?: number;
   sharedOutputQueuedBlocks?: number;
+  sharedOutputQueuedMaxBlocks?: number;
   sharedInputDroppedBlocks?: number;
   sharedOutputDroppedBlocks?: number;
   sharedInputBufferAllocations?: number;
@@ -205,7 +209,9 @@ export interface LivePerformanceAudioNodeCalibrationHealthSample {
   droppedInputBlocks?: number;
   staleOutputBlocks?: number;
   sharedInputQueuedBlocks?: number;
+  sharedInputQueuedMaxBlocks?: number;
   sharedOutputQueuedBlocks?: number;
+  sharedOutputQueuedMaxBlocks?: number;
   sharedInputDroppedBlocks?: number;
   sharedOutputDroppedBlocks?: number;
   sharedInputBufferAllocations?: number;
@@ -490,8 +496,8 @@ function audioNodeDropPressure(options: LivePerformanceAudioNodeCalibrationOptio
 }
 
 function audioNodeSharedQueueMaxBlocks(options: LivePerformanceAudioNodeCalibrationOptions): number | undefined {
-  const inputQueued = boundedOptionalNumber(options.sharedInputQueuedBlocks, 0, 64);
-  const outputQueued = boundedOptionalNumber(options.sharedOutputQueuedBlocks, 0, 64);
+  const inputQueued = boundedOptionalNumber(options.sharedInputQueuedMaxBlocks ?? options.sharedInputQueuedBlocks, 0, 64);
+  const outputQueued = boundedOptionalNumber(options.sharedOutputQueuedMaxBlocks ?? options.sharedOutputQueuedBlocks, 0, 64);
   if (inputQueued === undefined && outputQueued === undefined) return undefined;
   return Math.max(boundedInteger(inputQueued, 0, 0, 64), boundedInteger(outputQueued, 0, 0, 64));
 }
@@ -647,8 +653,8 @@ export class LivePerformanceAudioNodeCalibrationWindow {
   }
 
   private recordPressure(health: LivePerformanceAudioNodeCalibrationHealthSample): void {
-    this.sharedInputQueuedBlocks = Math.max(this.sharedInputQueuedBlocks, boundedInteger(health.sharedInputQueuedBlocks, 0, 0, 64));
-    this.sharedOutputQueuedBlocks = Math.max(this.sharedOutputQueuedBlocks, boundedInteger(health.sharedOutputQueuedBlocks, 0, 0, 64));
+    this.sharedInputQueuedBlocks = Math.max(this.sharedInputQueuedBlocks, boundedInteger(health.sharedInputQueuedMaxBlocks ?? health.sharedInputQueuedBlocks, 0, 0, 64));
+    this.sharedOutputQueuedBlocks = Math.max(this.sharedOutputQueuedBlocks, boundedInteger(health.sharedOutputQueuedMaxBlocks ?? health.sharedOutputQueuedBlocks, 0, 0, 64));
     const counters = this.pressureCounters(health);
     if (this.pressureBaseline === undefined) {
       this.pressureBaseline = counters;

@@ -836,6 +836,8 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.sharedAudioEnabled = false;
     this.sharedInputQueuedBlocks = 0;
     this.sharedOutputQueuedBlocks = 0;
+    this.sharedInputQueuedMaxBlocks = 0;
+    this.sharedOutputQueuedMaxBlocks = 0;
     this.sharedInputDroppedBlocks = 0;
     this.sharedOutputDroppedBlocks = 0;
     this.sharedTransportStats = { inFlightBlocks: 0, inputBufferAllocations: 0, inputBufferReuses: 0, pooledInputBuffers: 0 };
@@ -1061,7 +1063,9 @@ export class SoundBridgeAudioNode extends EventTarget {
       underruns: this.underruns,
       sharedAudioEnabled: this.sharedAudioEnabled,
       sharedInputQueuedBlocks: this.sharedInputQueuedBlocks,
+      sharedInputQueuedMaxBlocks: this.sharedInputQueuedMaxBlocks,
       sharedOutputQueuedBlocks: this.sharedOutputQueuedBlocks,
+      sharedOutputQueuedMaxBlocks: this.sharedOutputQueuedMaxBlocks,
       sharedInputDroppedBlocks: this.sharedInputDroppedBlocks,
       sharedOutputDroppedBlocks: this.sharedOutputDroppedBlocks,
       sharedTransportInFlightBlocks: this.sharedTransportStats.inFlightBlocks,
@@ -1245,7 +1249,9 @@ export class SoundBridgeAudioNode extends EventTarget {
     this.droppedInputBlocks = boundedAudioNodeInteger(stats.droppedInputBlocks, this.droppedInputBlocks, 0, Number.MAX_SAFE_INTEGER);
     this.underruns = boundedAudioNodeInteger(stats.underruns, this.underruns, 0, Number.MAX_SAFE_INTEGER);
     this.sharedInputQueuedBlocks = boundedAudioNodeInteger(stats.sharedInputQueuedBlocks, this.sharedInputQueuedBlocks, 0, 64);
+    this.sharedInputQueuedMaxBlocks = boundedAudioNodeInteger(stats.sharedInputQueuedMaxBlocks, this.sharedInputQueuedMaxBlocks, 0, 64);
     this.sharedOutputQueuedBlocks = boundedAudioNodeInteger(stats.sharedOutputQueuedBlocks, this.sharedOutputQueuedBlocks, 0, 64);
+    this.sharedOutputQueuedMaxBlocks = boundedAudioNodeInteger(stats.sharedOutputQueuedMaxBlocks, this.sharedOutputQueuedMaxBlocks, 0, 64);
     this.sharedInputDroppedBlocks = boundedAudioNodeInteger(
       stats.sharedInputDroppedBlocks,
       this.sharedInputDroppedBlocks,
@@ -1490,8 +1496,8 @@ function audioNodeDropPressure(options) {
 }
 
 function audioNodeSharedQueueMaxBlocks(options) {
-  const inputQueued = boundedAudioNodeOptionalNumber(options.sharedInputQueuedBlocks, 0, 64);
-  const outputQueued = boundedAudioNodeOptionalNumber(options.sharedOutputQueuedBlocks, 0, 64);
+  const inputQueued = boundedAudioNodeOptionalNumber(options.sharedInputQueuedMaxBlocks ?? options.sharedInputQueuedBlocks, 0, 64);
+  const outputQueued = boundedAudioNodeOptionalNumber(options.sharedOutputQueuedMaxBlocks ?? options.sharedOutputQueuedBlocks, 0, 64);
   if (inputQueued === void 0 && outputQueued === void 0) return void 0;
   return Math.max(boundedAudioNodeInteger(inputQueued, 0, 0, 64), boundedAudioNodeInteger(outputQueued, 0, 0, 64));
 }
@@ -1634,8 +1640,8 @@ export class LivePerformanceAudioNodeCalibrationWindow {
   }
 
   recordPressure(health) {
-    this.sharedInputQueuedBlocks = Math.max(this.sharedInputQueuedBlocks, boundedAudioNodeInteger(health.sharedInputQueuedBlocks, 0, 0, 64));
-    this.sharedOutputQueuedBlocks = Math.max(this.sharedOutputQueuedBlocks, boundedAudioNodeInteger(health.sharedOutputQueuedBlocks, 0, 0, 64));
+    this.sharedInputQueuedBlocks = Math.max(this.sharedInputQueuedBlocks, boundedAudioNodeInteger(health.sharedInputQueuedMaxBlocks ?? health.sharedInputQueuedBlocks, 0, 0, 64));
+    this.sharedOutputQueuedBlocks = Math.max(this.sharedOutputQueuedBlocks, boundedAudioNodeInteger(health.sharedOutputQueuedMaxBlocks ?? health.sharedOutputQueuedBlocks, 0, 0, 64));
     const counters = this.pressureCounters(health);
     if (this.pressureBaseline === void 0) {
       this.pressureBaseline = counters;

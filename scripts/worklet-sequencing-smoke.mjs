@@ -442,6 +442,7 @@ for (let index = 0; index < 8; index += 1) {
 }
 const sharedStatsMessage = sharedStatsPort.messages.find((message) => message.type === "stats");
 assert(sharedStatsMessage?.sharedTransportInFlightBlocks === 3 && sharedStatsMessage.sharedInputBufferAllocations === 5, "worklet stats include shared transport worker status");
+assert(sharedStatsMessage.sharedInputQueuedMaxBlocks === 4 && sharedStatsMessage.sharedOutputQueuedMaxBlocks === 0, "worklet stats include peak shared ring queue depth");
 
 const fastStatsProcessor = new processorCtor({ processorOptions: { outputChannels: 1, statsIntervalBlocks: 8 } });
 const fastStatsPort = lastPort;

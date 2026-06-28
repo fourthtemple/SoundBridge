@@ -142,7 +142,8 @@ const sharedQueueCalibration = calibrateLivePerformanceAudioNodePolicy({
   sampleRate: 48000,
   maxBlockFrames: 128,
   sharedBufferBlocks: 8,
-  sharedInputQueuedBlocks: 7,
+  sharedInputQueuedBlocks: 2,
+  sharedInputQueuedMaxBlocks: 7,
   sharedOutputQueuedBlocks: 2,
   safetyMarginBlocks: 1
 });
@@ -164,7 +165,8 @@ const sharedQueueSnapshot = sharedQueueWindow.record({
   lastRenderDurationMs: 0.5,
   responseJitterBlocks: 0.25,
   responseDeadlineLeadSamples: 128,
-  sharedInputQueuedBlocks: 7
+  sharedInputQueuedBlocks: 2,
+  sharedInputQueuedMaxBlocks: 7
 });
 assert(sharedQueueSnapshot.calibration.observedSharedQueueMaxBlocks === 7, "live AudioNode calibration window keeps shared queue gauges");
 assert(sharedQueueSnapshot.recommendedOptions.sharedBufferBlocks === 9, "live AudioNode calibration window recommends shared ring headroom");
