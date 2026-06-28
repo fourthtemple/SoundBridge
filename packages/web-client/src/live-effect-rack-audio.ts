@@ -93,11 +93,14 @@ export function boundedLiveEffectBusBlocks(buses: BinaryAudioBusBlock[] | undefi
 }
 
 export function outputTail(channels: ArrayLike<number>[], outputChannels: number): number[] {
-  return Array.from({ length: outputChannels }, (_, index) => {
-    const channel = channels.length > 0 ? channels[index % channels.length] : undefined;
+  const tail = new Array<number>(outputChannels);
+  const channelCount = channels.length;
+  for (let index = 0; index < outputChannels; index += 1) {
+    const channel = channelCount > 0 ? channels[index % channelCount] : undefined;
     const sample = Number(channel?.[Math.max(0, channel.length - 1)] ?? 0);
-    return Number.isFinite(sample) ? sample : 0;
-  });
+    tail[index] = Number.isFinite(sample) ? sample : 0;
+  }
+  return tail;
 }
 
 export function cloneChannels(channels: ArrayLike<number>[], maxFrames = Number.MAX_SAFE_INTEGER): number[][] {

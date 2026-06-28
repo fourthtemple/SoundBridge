@@ -5710,11 +5710,14 @@ function boundedLiveEffectBusBlocks(buses, maxFrames) {
 }
 
 function liveEffectOutputTail(channels, outputChannels) {
-  return Array.from({ length: outputChannels }, (_, index) => {
-    const channel = channels.length > 0 ? channels[index % channels.length] : void 0;
+  const tail = new Array(outputChannels);
+  const channelCount = channels.length;
+  for (let index = 0; index < outputChannels; index += 1) {
+    const channel = channelCount > 0 ? channels[index % channelCount] : void 0;
     const sample = Number(channel?.[Math.max(0, channel.length - 1)] ?? 0);
-    return Number.isFinite(sample) ? sample : 0;
-  });
+    tail[index] = Number.isFinite(sample) ? sample : 0;
+  }
+  return tail;
 }
 
 function cloneLiveEffectChannels(channels, maxFrames = Number.MAX_SAFE_INTEGER) {
