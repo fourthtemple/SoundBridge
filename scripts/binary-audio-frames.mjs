@@ -1,6 +1,7 @@
 const MAGIC = 0x53424131; // SBA1
 const HEADER_BYTES = 8;
 const FLOAT_BYTES = 4;
+const LITTLE_ENDIAN_FLOATS = new Uint8Array(new Float32Array([1]).buffer)[0] === 0;
 const MAX_CHANNELS = 32;
 const MAX_FRAMES = 8192;
 const MAX_BUSES = 32;
@@ -126,11 +127,17 @@ function readBusBlocks(buffer, offset, specs, label) {
 
 function readPlanarFloat32(buffer, offset, channelCount, frames) {
   const channels = [];
+  const bytes = frames * FLOAT_BYTES;
   for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
     const channel = new Float32Array(frames);
-    for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
-      channel[frameIndex] = buffer.readFloatLE(offset);
-      offset += FLOAT_BYTES;
+    if (LITTLE_ENDIAN_FLOATS) {
+      buffer.copy(Buffer.from(channel.buffer, channel.byteOffset, channel.byteLength), 0, offset, offset + bytes);
+      offset += bytes;
+    } else {
+      for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
+        channel[frameIndex] = buffer.readFloatLE(offset);
+        offset += FLOAT_BYTES;
+      }
     }
     channels.push(channel);
   }
@@ -140,6 +147,11 @@ function readPlanarFloat32(buffer, offset, channelCount, frames) {
 function writeChannelBlocks(buffer, offset, blocks) {
   for (const block of blocks) {
     for (const channel of block.channels) {
+      if (LITTLE_ENDIAN_FLOATS && channel instanceof Float32Array) {
+        Buffer.from(channel.buffer, channel.byteOffset, channel.byteLength).copy(buffer, offset);
+        offset += channel.byteLength;
+        continue;
+      }
       for (const sample of channel) {
         buffer.writeFloatLE(Number.isFinite(sample) ? sample : 0, offset);
         offset += FLOAT_BYTES;

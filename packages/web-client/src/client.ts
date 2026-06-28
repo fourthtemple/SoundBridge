@@ -534,6 +534,7 @@ export class SoundBridgeClient extends EventTarget {
 const BINARY_AUDIO_MAGIC = 0x53424131;
 const BINARY_AUDIO_HEADER_BYTES = 8;
 const FLOAT_BYTES = 4;
+const LITTLE_ENDIAN_FLOATS = new Uint8Array(new Float32Array([1]).buffer)[0] === 0;
 const MAX_BINARY_CHANNELS = 32;
 const MAX_BINARY_FRAMES = 8192;
 const MAX_BINARY_BUSES = 32;
@@ -656,8 +657,14 @@ function busHeaders(buses: Array<{ index: number; channels: Float32Array[]; fram
 }
 
 function writeBinaryBlocks(view: DataView, offset: number, blocks: Array<{ channels: Float32Array[] }>): void {
+  const target = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
   for (const block of blocks) {
     for (const channel of block.channels) {
+      if (LITTLE_ENDIAN_FLOATS) {
+        target.set(new Uint8Array(channel.buffer, channel.byteOffset, channel.byteLength), offset);
+        offset += channel.byteLength;
+        continue;
+      }
       for (const sample of channel) {
         view.setFloat32(offset, sample, true);
         offset += FLOAT_BYTES;
@@ -666,27 +673,15 @@ function writeBinaryBlocks(view: DataView, offset: number, blocks: Array<{ chann
   }
 }
 
-function readBinaryBlock(
-  view: DataView,
-  offset: number,
-  channelCount: number,
-  frames: number
-): { channels: Float32Array[]; offset: number } {
+function readBinaryBlock(view: DataView, offset: number, channelCount: number, frames: number): { channels: Float32Array[]; offset: number } {
   const byteLength = channelCount * frames * FLOAT_BYTES;
   if (offset + byteLength > view.byteLength) {
     throw new Error("invalid_binary_audio_payload");
   }
-  return {
-    channels: readBinaryChannels(view, offset, channelCount, frames),
-    offset: offset + byteLength
-  };
+  return { channels: readBinaryChannels(view, offset, channelCount, frames), offset: offset + byteLength };
 }
 
-function readBinaryBuses(
-  view: DataView,
-  offset: number,
-  specs: unknown
-): { blocks: Array<{ index: number; channels: Float32Array[] }>; offset: number } {
+function readBinaryBuses(view: DataView, offset: number, specs: unknown): { blocks: Array<{ index: number; channels: Float32Array[] }>; offset: number } {
   if (specs === undefined) {
     return { blocks: [], offset };
   }
@@ -713,11 +708,17 @@ function readBinaryBuses(
 
 function readBinaryChannels(view: DataView, offset: number, channelCount: number, frames: number): Float32Array[] {
   const channels: Float32Array[] = [];
+  const byteLength = frames * FLOAT_BYTES;
   for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
     const normalized = new Float32Array(frames);
-    for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
-      normalized[frameIndex] = view.getFloat32(offset, true);
-      offset += FLOAT_BYTES;
+    if (LITTLE_ENDIAN_FLOATS) {
+      new Uint8Array(normalized.buffer).set(new Uint8Array(view.buffer, view.byteOffset + offset, byteLength));
+      offset += byteLength;
+    } else {
+      for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
+        normalized[frameIndex] = view.getFloat32(offset, true);
+        offset += FLOAT_BYTES;
+      }
     }
     channels.push(normalized);
   }
@@ -725,12 +726,8 @@ function readBinaryChannels(view: DataView, offset: number, channelCount: number
 }
 
 function binaryBytes(data: unknown): Uint8Array | undefined {
-  if (data instanceof ArrayBuffer) {
-    return new Uint8Array(data);
-  }
-  if (ArrayBuffer.isView(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-  }
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   return undefined;
 }
 

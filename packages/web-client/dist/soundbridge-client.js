@@ -369,6 +369,7 @@ export class SoundBridgeClient extends EventTarget {
 const BINARY_AUDIO_MAGIC = 0x53424131;
 const BINARY_AUDIO_HEADER_BYTES = 8;
 const FLOAT_BYTES = 4;
+const LITTLE_ENDIAN_FLOATS = new Uint8Array(new Float32Array([1]).buffer)[0] === 0;
 const MAX_BINARY_CHANNELS = 32;
 const MAX_BINARY_FRAMES = 8192;
 const MAX_BINARY_BUSES = 32;
@@ -491,8 +492,14 @@ function busHeaders(buses) {
 }
 
 function writeBinaryBlocks(view, offset, blocks) {
+  const target = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
   for (const block of blocks) {
     for (const channel of block.channels) {
+      if (LITTLE_ENDIAN_FLOATS) {
+        target.set(new Uint8Array(channel.buffer, channel.byteOffset, channel.byteLength), offset);
+        offset += channel.byteLength;
+        continue;
+      }
       for (const sample of channel) {
         view.setFloat32(offset, sample, true);
         offset += FLOAT_BYTES;
@@ -506,10 +513,7 @@ function readBinaryBlock(view, offset, channelCount, frames) {
   if (offset + byteLength > view.byteLength) {
     throw new Error("invalid_binary_audio_payload");
   }
-  return {
-    channels: readBinaryChannels(view, offset, channelCount, frames),
-    offset: offset + byteLength
-  };
+  return { channels: readBinaryChannels(view, offset, channelCount, frames), offset: offset + byteLength };
 }
 
 function readBinaryBuses(view, offset, specs) {
@@ -538,11 +542,17 @@ function readBinaryBuses(view, offset, specs) {
 
 function readBinaryChannels(view, offset, channelCount, frames) {
   const channels = [];
+  const byteLength = frames * FLOAT_BYTES;
   for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
     const channel = new Float32Array(frames);
-    for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
-      channel[frameIndex] = view.getFloat32(offset, true);
-      offset += FLOAT_BYTES;
+    if (LITTLE_ENDIAN_FLOATS) {
+      new Uint8Array(channel.buffer).set(new Uint8Array(view.buffer, view.byteOffset + offset, byteLength));
+      offset += byteLength;
+    } else {
+      for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
+        channel[frameIndex] = view.getFloat32(offset, true);
+        offset += FLOAT_BYTES;
+      }
     }
     channels.push(channel);
   }
