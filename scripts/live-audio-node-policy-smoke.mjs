@@ -54,6 +54,7 @@ assert(policy.maxInFlightBlocks === 4 && policy.maxQueuedOutputBlocks === 8, "li
 assert(policy.sharedBufferBlocks === 8, "live AudioNode policy derives shared ring depth from live queue and latency bounds");
 assert(policy.audioRequestTimeoutMs === 250 && near(policy.audioRequestTimeoutBlocks, 93.75), "live AudioNode policy exposes audio timeout in blocks");
 assert(policy.reportedLatencySamples === 288 && policy.reportedLatencyMs === 6, "live AudioNode policy combines plugin and transport latency");
+assert(policy.options.transportPressureAutoBypassReasons.join(",") === "deadline-miss,dropped-input,latency-safety,shared-input-drop,shared-output-drop,stale-output,underrun" && shouldAutoBypassAudioNodeTransportPressure(["response-jitter"], policy.options.transportPressureAutoBypassReasons) === false && shouldAutoBypassAudioNodeTransportPressure(["underrun"], policy.options.transportPressureAutoBypassReasons) === true, "live AudioNode policy defaults auto-bypass to hard transport pressure");
 assert(createLivePerformanceAudioNodePolicy({ instanceId: "inst-deep-output-queue", maxQueuedOutputBlocks: 12 }).sharedBufferBlocks === 12, "live AudioNode policy keeps implicit shared rings large enough for deeper output queues");
 
 const readyCalibration = calibrateLivePerformanceAudioNodePolicy({

@@ -620,6 +620,7 @@ const LIVE_AUDIO_NODE_STATS_INTERVAL_BLOCKS = 32;
 const LIVE_AUDIO_NODE_SHARED_BUFFER_BLOCKS = 4;
 const LIVE_AUDIO_NODE_AUDIO_REQUEST_TIMEOUT_MS = 250;
 const LIVE_AUDIO_NODE_CALIBRATION_SAMPLES = 256;
+const LIVE_AUDIO_NODE_TRANSPORT_PRESSURE_AUTO_BYPASS_REASONS = ["deadline-miss", "dropped-input", "latency-safety", "shared-input-drop", "shared-output-drop", "stale-output", "underrun"];
 
 export function createLivePerformanceAudioNodeOptions(options) {
   const maxQueuedOutputBlocks = boundedAudioNodeInteger(
@@ -676,7 +677,7 @@ export function createLivePerformanceAudioNodeOptions(options) {
     maxConsecutiveRenderBudgetMisses: boundedAudioNodeInteger(options.maxConsecutiveRenderBudgetMisses, 2, 0, 1024),
     maxConsecutiveAudioErrors: boundedAudioNodeInteger(options.maxConsecutiveAudioErrors, 1, 0, 1024),
     maxConsecutiveTransportPressureEvents: boundedAudioNodeInteger(options.maxConsecutiveTransportPressureEvents, 3, 0, 1024),
-    transportPressureAutoBypassReasons: boundedAudioNodeTransportPressureReasons(options.transportPressureAutoBypassReasons),
+    transportPressureAutoBypassReasons: boundedAudioNodeTransportPressureReasons(options.transportPressureAutoBypassReasons ?? LIVE_AUDIO_NODE_TRANSPORT_PRESSURE_AUTO_BYPASS_REASONS),
     bypassed: options.bypassed === true
   };
 }
