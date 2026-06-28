@@ -68,6 +68,7 @@ private:
   void connectController();
   void disconnectController();
   void configure();
+  void prepareRenderBuffers();
 
   std::shared_ptr<VST3::Hosting::Module> module_;
   Steinberg::Vst::HostApplication hostApplication_;
@@ -90,6 +91,12 @@ private:
   Steinberg::int32 outputBusCount_ = 0;
   std::vector<std::uint32_t> inputBusChannels_;
   std::vector<std::uint32_t> outputBusChannels_;
+  std::vector<std::vector<std::vector<float>>> inputStorage_;
+  std::vector<std::vector<Steinberg::Vst::Sample32*>> inputPointers_;
+  std::vector<Steinberg::Vst::AudioBusBuffers> inputBusBuffers_;
+  std::vector<std::vector<std::vector<float>>> outputStorage_;
+  std::vector<std::vector<Steinberg::Vst::Sample32*>> outputPointers_;
+  std::vector<Steinberg::Vst::AudioBusBuffers> outputBusBuffers_;
   std::vector<PendingMidiEvent> pendingMidiEvents_;
   std::vector<PendingParameterChange> pendingParameterChanges_;
   double sampleTime_ = 0.0;

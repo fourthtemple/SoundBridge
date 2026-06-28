@@ -19,6 +19,21 @@
 
 namespace soundbridge::vst3_worker {
 
+namespace {
+
+std::vector<std::vector<float>> renderedChannels(
+    const std::vector<std::vector<float>>& storage,
+    std::uint32_t frames) {
+  std::vector<std::vector<float>> channels;
+  channels.reserve(storage.size());
+  for (const auto& channel : storage) {
+    channels.emplace_back(channel.begin(), channel.begin() + std::min<std::size_t>(frames, channel.size()));
+  }
+  return channels;
+}
+
+} // namespace
+
 HostedVst3Effect::HostedVst3Effect(
     std::string bundlePath,
     double sampleRate,
@@ -97,55 +112,39 @@ RenderedAudio HostedVst3Effect::render(
     inputBuses.push_back(IndexedAudioBus{0, std::move(inputChannels)});
   }
 
-  std::vector<std::vector<std::vector<float>>> inputStorage(inputBusChannels_.size());
-  std::vector<std::vector<Steinberg::Vst::Sample32*>> inputPointers(inputBusChannels_.size());
-  std::vector<Steinberg::Vst::AudioBusBuffers> inputBusBuffers(inputBusChannels_.size());
   for (std::size_t busIndex = 0; busIndex < inputBusChannels_.size(); ++busIndex) {
     const auto channelCount = inputBusChannels_[busIndex];
-    inputStorage[busIndex].resize(channelCount);
     const auto* requestedBus = findBusChannels(inputBuses, static_cast<std::uint32_t>(busIndex));
     for (std::uint32_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
-      inputStorage[busIndex][channelIndex].assign(frames, 0.0F);
+      auto& channel = inputStorage_[busIndex][channelIndex];
+      std::fill(channel.begin(), channel.begin() + frames, 0.0F);
       if (requestedBus != nullptr && channelIndex < requestedBus->size()) {
         const auto copyFrames = std::min<std::size_t>(frames, (*requestedBus)[channelIndex].size());
         for (std::size_t frame = 0; frame < copyFrames; ++frame) {
-          inputStorage[busIndex][channelIndex][frame] = std::clamp((*requestedBus)[channelIndex][frame], -1.0F, 1.0F);
+          channel[frame] = std::clamp((*requestedBus)[channelIndex][frame], -1.0F, 1.0F);
         }
       }
     }
-    inputPointers[busIndex].resize(channelCount);
-    for (std::uint32_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
-      inputPointers[busIndex][channelIndex] = inputStorage[busIndex][channelIndex].data();
-    }
-    inputBusBuffers[busIndex].numChannels = static_cast<Steinberg::int32>(channelCount);
-    inputBusBuffers[busIndex].silenceFlags = 0;
-    inputBusBuffers[busIndex].channelBuffers32 = inputPointers[busIndex].empty() ? nullptr : inputPointers[busIndex].data();
+    inputBusBuffers_[busIndex].silenceFlags = 0;
   }
 
-  std::vector<std::vector<std::vector<float>>> outputStorage(outputBusChannels_.size());
-  std::vector<std::vector<Steinberg::Vst::Sample32*>> outputPointers(outputBusChannels_.size());
-  std::vector<Steinberg::Vst::AudioBusBuffers> outputBusBuffers(outputBusChannels_.size());
   for (std::size_t busIndex = 0; busIndex < outputBusChannels_.size(); ++busIndex) {
     const auto channelCount = outputBusChannels_[busIndex];
-    outputStorage[busIndex].resize(channelCount);
-    outputPointers[busIndex].resize(channelCount);
     for (std::uint32_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
-      outputStorage[busIndex][channelIndex].assign(frames, 0.0F);
-      outputPointers[busIndex][channelIndex] = outputStorage[busIndex][channelIndex].data();
+      auto& channel = outputStorage_[busIndex][channelIndex];
+      std::fill(channel.begin(), channel.begin() + frames, 0.0F);
     }
-    outputBusBuffers[busIndex].numChannels = static_cast<Steinberg::int32>(channelCount);
-    outputBusBuffers[busIndex].silenceFlags = 0;
-    outputBusBuffers[busIndex].channelBuffers32 = outputPointers[busIndex].empty() ? nullptr : outputPointers[busIndex].data();
+    outputBusBuffers_[busIndex].silenceFlags = 0;
   }
 
   Steinberg::Vst::ProcessData processData {};
   processData.processMode = Steinberg::Vst::kRealtime;
   processData.symbolicSampleSize = Steinberg::Vst::kSample32;
   processData.numSamples = static_cast<Steinberg::int32>(frames);
-  processData.numInputs = static_cast<Steinberg::int32>(inputBusBuffers.size());
-  processData.numOutputs = static_cast<Steinberg::int32>(outputBusBuffers.size());
-  processData.inputs = inputBusBuffers.empty() ? nullptr : inputBusBuffers.data();
-  processData.outputs = outputBusBuffers.empty() ? nullptr : outputBusBuffers.data();
+  processData.numInputs = static_cast<Steinberg::int32>(inputBusBuffers_.size());
+  processData.numOutputs = static_cast<Steinberg::int32>(outputBusBuffers_.size());
+  processData.inputs = inputBusBuffers_.empty() ? nullptr : inputBusBuffers_.data();
+  processData.outputs = outputBusBuffers_.empty() ? nullptr : outputBusBuffers_.data();
 
   auto processContext = processContextForTransport(transport, sampleRate_);
   processData.processContext = &processContext;
@@ -198,11 +197,12 @@ RenderedAudio HostedVst3Effect::render(
   checkResult(processor_->process(processData), "IAudioProcessor::process");
   sampleTime_ = static_cast<double>(transport.samplePosition) + frames;
   RenderedAudio rendered;
-  rendered.channels = outputStorage.empty() ? std::vector<std::vector<float>>{} : outputStorage[0];
-  for (std::size_t busIndex = 0; busIndex < outputStorage.size(); ++busIndex) {
+  rendered.channels = outputStorage_.empty() ? std::vector<std::vector<float>>{} : renderedChannels(outputStorage_[0], frames);
+  rendered.outputBuses.reserve(outputStorage_.size());
+  for (std::size_t busIndex = 0; busIndex < outputStorage_.size(); ++busIndex) {
     rendered.outputBuses.push_back(IndexedAudioBus{
         static_cast<std::uint32_t>(busIndex),
-        outputStorage[busIndex]});
+        renderedChannels(outputStorage_[busIndex], frames)});
   }
   return rendered;
 }
@@ -642,9 +642,44 @@ void HostedVst3Effect::configure() {
   setup.maxSamplesPerBlock = static_cast<Steinberg::int32>(maxBlockSize_);
   setup.sampleRate = sampleRate_;
   checkResult(processor_->setupProcessing(setup), "IAudioProcessor::setupProcessing");
+  prepareRenderBuffers();
   checkResult(component_->setActive(true), "IComponent::setActive");
   active_ = true;
   checkResult(processor_->setProcessing(true), "IAudioProcessor::setProcessing");
+}
+
+void HostedVst3Effect::prepareRenderBuffers() {
+  inputStorage_.resize(inputBusChannels_.size());
+  inputPointers_.resize(inputBusChannels_.size());
+  inputBusBuffers_.resize(inputBusChannels_.size());
+  for (std::size_t busIndex = 0; busIndex < inputBusChannels_.size(); ++busIndex) {
+    const auto channelCount = inputBusChannels_[busIndex];
+    inputStorage_[busIndex].resize(channelCount);
+    inputPointers_[busIndex].resize(channelCount);
+    for (std::uint32_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
+      inputStorage_[busIndex][channelIndex].assign(maxBlockSize_, 0.0F);
+      inputPointers_[busIndex][channelIndex] = inputStorage_[busIndex][channelIndex].data();
+    }
+    inputBusBuffers_[busIndex].numChannels = static_cast<Steinberg::int32>(channelCount);
+    inputBusBuffers_[busIndex].silenceFlags = 0;
+    inputBusBuffers_[busIndex].channelBuffers32 = inputPointers_[busIndex].empty() ? nullptr : inputPointers_[busIndex].data();
+  }
+
+  outputStorage_.resize(outputBusChannels_.size());
+  outputPointers_.resize(outputBusChannels_.size());
+  outputBusBuffers_.resize(outputBusChannels_.size());
+  for (std::size_t busIndex = 0; busIndex < outputBusChannels_.size(); ++busIndex) {
+    const auto channelCount = outputBusChannels_[busIndex];
+    outputStorage_[busIndex].resize(channelCount);
+    outputPointers_[busIndex].resize(channelCount);
+    for (std::uint32_t channelIndex = 0; channelIndex < channelCount; ++channelIndex) {
+      outputStorage_[busIndex][channelIndex].assign(maxBlockSize_, 0.0F);
+      outputPointers_[busIndex][channelIndex] = outputStorage_[busIndex][channelIndex].data();
+    }
+    outputBusBuffers_[busIndex].numChannels = static_cast<Steinberg::int32>(channelCount);
+    outputBusBuffers_[busIndex].silenceFlags = 0;
+    outputBusBuffers_[busIndex].channelBuffers32 = outputPointers_[busIndex].empty() ? nullptr : outputPointers_[busIndex].data();
+  }
 }
 
 } // namespace soundbridge::vst3_worker
