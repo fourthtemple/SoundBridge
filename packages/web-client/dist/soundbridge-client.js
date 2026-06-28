@@ -3956,6 +3956,19 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     return true;
   }
 
+  setTimingPolicy(options) {
+    const previous = { processBudgetMs: this.processBudgetMs, processTimeoutMs: this.processTimeoutMs };
+    this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, this.processBudgetMs, 0, 60000);
+    this.processTimeoutMs = boundedLiveEffectNumber(options.processTimeoutMs, this.processTimeoutMs, 0, 60000);
+    const changed = this.processBudgetMs !== previous.processBudgetMs || this.processTimeoutMs !== previous.processTimeoutMs;
+    if (changed) {
+      const health = this.health;
+      this.dispatchEvent(new CustomEvent("timingpolicychange", { detail: { previous, health } }));
+      this.dispatchEvent(new CustomEvent("healthchange", { detail: health }));
+    }
+    return this.health;
+  }
+
   async processTarget(frame, targetRequest, index) {
     const startedAt = this.nowMs();
     const scheduled = this.scheduler.scheduleFromFrame(

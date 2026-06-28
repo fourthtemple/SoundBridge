@@ -158,8 +158,8 @@ export interface LiveEffectRackFrameBatchHealth {
 export class LiveEffectRackFrameBatchProcessor extends EventTarget {
   readonly scheduler: LiveEffectRackFrameBatchScheduler;
   readonly maxTargets: number;
-  readonly processBudgetMs: number;
-  readonly processTimeoutMs: number;
+  processBudgetMs: number;
+  processTimeoutMs: number;
   readonly maxConsecutiveProcessBudgetMisses: number;
   readonly processBudgetRecoveryBlocks: number;
   readonly processTimeoutRecoveryBlocks: number;
@@ -244,6 +244,19 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     this.dispatchEvent(new CustomEvent("retry", { detail: { health: this.health } }));
     this.dispatchHealthChangeIfNeeded();
     return true;
+  }
+
+  setTimingPolicy(options: Partial<LiveEffectRackFrameBatchProcessorOptions>): LiveEffectRackFrameBatchHealth {
+    const previous = { processBudgetMs: this.processBudgetMs, processTimeoutMs: this.processTimeoutMs };
+    this.processBudgetMs = boundedLiveEffectNumber(options.processBudgetMs, this.processBudgetMs, 0, 60000);
+    this.processTimeoutMs = boundedLiveEffectNumber(options.processTimeoutMs, this.processTimeoutMs, 0, 60000);
+    const changed = this.processBudgetMs !== previous.processBudgetMs || this.processTimeoutMs !== previous.processTimeoutMs;
+    if (changed) {
+      const health = this.health;
+      this.dispatchEvent(new CustomEvent("timingpolicychange", { detail: { previous, health } }));
+      this.dispatchEvent(new CustomEvent("healthchange", { detail: health }));
+    }
+    return this.health;
   }
 
   private async processTarget(
