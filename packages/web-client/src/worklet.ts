@@ -317,20 +317,21 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       this.recycleInputBlock(channels, frames);
       return;
     }
-    const processMessage = {
-      type: "process",
-      blockId,
-      frames,
-      channels,
-      transportLatencySamples: this.transportLatencySamples(),
-      reportedLatencySamples: this.reportedLatencySamples()
-    };
-    const transfer = channels.map((channel) => channel.buffer);
     if (this.inFlightBlocks >= this.maxInFlightBlocks) {
       this.droppedInputBlocks += 1;
       this.recycleInputBlock(channels, frames);
       return;
     }
+    const transportLatencySamples = this.transportLatencySamples();
+    const processMessage = {
+      type: "process",
+      blockId,
+      frames,
+      channels,
+      transportLatencySamples,
+      reportedLatencySamples: this.reportedLatencySamples(transportLatencySamples)
+    };
+    const transfer = channels.map((channel) => channel.buffer);
     this.inFlightBlocks += 1;
     (this.transportPort ?? this.port).postMessage(processMessage, transfer);
   }
@@ -617,7 +618,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   }
 
   private transportLatencySamples(): number { return this.outputLatencyBlocks * this.lastFrames; }
-  private reportedLatencySamples(): number { return this.boundedInteger(this.transportLatencySamples() + this.pluginLatencySamples, this.transportLatencySamples(), 0, 1_048_576); }
+  private reportedLatencySamples(transportLatencySamples = this.transportLatencySamples()): number { return this.boundedInteger(transportLatencySamples + this.pluginLatencySamples, transportLatencySamples, 0, 1_048_576); }
 
   private takeInputBuffer(frames: number): Float32Array {
     const pool = this.inputBufferPool.get(frames);
