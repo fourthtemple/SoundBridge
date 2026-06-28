@@ -2,6 +2,7 @@
 
 #ifdef SOUNDBRIDGE_MACOS
 
+#include "SoundBridge/NativeAudioJson.h"
 #include "SoundBridge/NativePlugin.h"
 
 #include <CoreFoundation/CoreFoundation.h>
@@ -197,22 +198,6 @@ float sanitizeSampleSlice(const char* begin, const char* end) {
   }
 
   return sanitizeSample(std::string(begin, static_cast<std::size_t>(end - begin)));
-}
-
-void appendJsonSample(std::string& output, float sample) {
-  const float value = std::isfinite(sample) ? sample : 0.0F;
-  char buffer[64] {};
-  const auto converted = std::to_chars(
-      buffer,
-      buffer + sizeof(buffer),
-      value,
-      std::chars_format::general,
-      6);
-  if (converted.ec != std::errc{}) {
-    output.push_back('0');
-    return;
-  }
-  output.append(buffer, static_cast<std::size_t>(converted.ptr - buffer));
 }
 
 } // namespace
@@ -633,29 +618,7 @@ const std::vector<std::vector<float>>* findBusChannels(const std::vector<Indexed
 }
 
 std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels) {
-  std::size_t sampleCount = 0;
-  for (const auto& channel : channels) {
-    sampleCount += channel.size();
-  }
-
-  std::string output;
-  output.reserve(2 + channels.size() * 2 + sampleCount * 12);
-  output.push_back('[');
-  for (std::size_t channelIndex = 0; channelIndex < channels.size(); ++channelIndex) {
-    if (channelIndex > 0) {
-      output.push_back(',');
-    }
-    output.push_back('[');
-    for (std::size_t frame = 0; frame < channels[channelIndex].size(); ++frame) {
-      if (frame > 0) {
-        output.push_back(',');
-      }
-      appendJsonSample(output, channels[channelIndex][frame]);
-    }
-    output.push_back(']');
-  }
-  output.push_back(']');
-  return output;
+  return worker_audio_json::channelsToJson(channels);
 }
 
 std::string audioUnitBusLayoutsToJson(
@@ -697,17 +660,30 @@ std::string audioUnitBusLayoutsToJson(
 }
 
 std::string renderedAudioToJson(const RenderedAudio& rendered) {
-  const auto channelsJson = audioChannelsToJson(rendered.channels);
   std::string output;
-  output.reserve(channelsJson.size() * 2 + rendered.outputBuses.size() * 48 + 64);
-  output.append("{\"channels\":").append(channelsJson).append(",\"outputBuses\":[{\"index\":0,\"channels\":");
-  output.append(channelsJson).push_back('}');
+  std::size_t busBytes = 0;
+  for (const auto& bus : rendered.outputBuses) {
+    if (bus.index != 0) {
+      busBytes += worker_audio_json::estimatedChannelsJsonBytes(bus.channels);
+    }
+  }
+  output.reserve(
+      worker_audio_json::estimatedChannelsJsonBytes(rendered.channels) * 2 +
+      busBytes +
+      rendered.outputBuses.size() * 48 +
+      64);
+  output.append("{\"channels\":");
+  worker_audio_json::appendChannelsJson(output, rendered.channels);
+  output.append(",\"outputBuses\":[{\"index\":0,\"channels\":");
+  worker_audio_json::appendChannelsJson(output, rendered.channels);
+  output.push_back('}');
   for (std::size_t busIndex = 0; busIndex < rendered.outputBuses.size(); ++busIndex) {
     if (rendered.outputBuses[busIndex].index == 0) {
       continue;
     }
     output.append(",{\"index\":").append(std::to_string(rendered.outputBuses[busIndex].index)).append(",\"channels\":");
-    output.append(audioChannelsToJson(rendered.outputBuses[busIndex].channels)).push_back('}');
+    worker_audio_json::appendChannelsJson(output, rendered.outputBuses[busIndex].channels);
+    output.push_back('}');
   }
   output.append("]}");
   return output;
