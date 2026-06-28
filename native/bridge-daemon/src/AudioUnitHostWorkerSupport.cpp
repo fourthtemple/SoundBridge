@@ -561,22 +561,22 @@ std::vector<std::vector<float>> parseChannels(std::string_view encoded, std::uin
   }
 
   std::vector<std::vector<float>> channels;
+  channels.reserve(kMaxWorkerChannels);
   const char* cursor = encoded.data();
   const char* const end = cursor + encoded.size();
   while (channels.size() < kMaxWorkerChannels && cursor < end) {
     const char* const channelEnd = std::find(cursor, end, '|');
-    std::vector<float> channel;
-    channel.reserve(frames);
+    std::vector<float> channel(frames, 0.0F);
+    std::size_t frame = 0;
     const char* sampleStart = cursor;
-    while (channel.size() < frames && sampleStart < channelEnd) {
+    while (frame < frames && sampleStart < channelEnd) {
       const char* const sampleEnd = std::find(sampleStart, channelEnd, ',');
-      channel.push_back(sanitizeSampleSlice(sampleStart, sampleEnd));
+      channel[frame++] = sanitizeSampleSlice(sampleStart, sampleEnd);
       if (sampleEnd == channelEnd) {
         break;
       }
       sampleStart = sampleEnd + 1;
     }
-    channel.resize(frames, 0.0F);
     channels.push_back(std::move(channel));
     if (channelEnd == end) {
       break;
