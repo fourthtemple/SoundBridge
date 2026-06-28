@@ -114,7 +114,7 @@ assert(
 
 const directProcessor = new processorCtor({
   processorOptions: {
-    outputChannels: 1,
+    outputChannels: 2,
     maxInFlightBlocks: 1,
     maxQueuedOutputBlocks: 4,
     outputLatencyBlocks: 1
@@ -133,16 +133,16 @@ directTransportPort.onmessage({
   data: {
     type: "recycle-input",
     frames: 2,
-    channels: [recycledInput]
+    channels: [recycledInput, recycledInput]
   }
 });
-assert(directProcessor.pooledInputBuffers === 1, "direct worklet transport pools recycled input buffers");
+assert(directProcessor.pooledInputBuffers === 1, "direct worklet transport deduplicates aliased recycled input buffers");
 const transferredOutput = Float32Array.from([50, 50]);
 directTransportPort.onmessage({
   data: {
     type: "processed",
     blockId: 0,
-    channels: [transferredOutput],
+    channels: [transferredOutput, transferredOutput],
     latencySamples: 64,
     renderDurationMs: 0.75,
     renderBudgetMs: 1.333,
@@ -169,6 +169,7 @@ assert(
   "direct worklet transport forwards render timing diagnostics to the page port"
 );
 directProcessor.process([[Float32Array.from([6, 6])]], [[new Float32Array(2)]]);
+assert(directProcessor.pooledOutputBuffers === 1, "direct worklet transport deduplicates aliased recycled output buffers");
 assert(
   directTransportPort.messages[1]?.channels?.[0] === recycledInput,
   "direct worklet transport reuses recycled input buffers for later process blocks"

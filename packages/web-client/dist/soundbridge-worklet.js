@@ -628,7 +628,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   recycleInputBlock(channels, requestedFrames) {
     const frames = this.boundedInteger(requestedFrames, channels[0]?.length ?? 128, 1, 8192);
     const pool = this.inputBufferPool.get(frames) ?? [];
-    const seenBuffers = new Set();
+    const startLength = pool.length;
     for (const channel of channels) {
       if (
         this.pooledInputBuffers >= this.maxRecycledInputBuffers ||
@@ -638,11 +638,10 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         !(channel.buffer instanceof ArrayBuffer) ||
         channel.byteLength !== channel.buffer.byteLength ||
         channel.buffer.byteLength < frames * Float32Array.BYTES_PER_ELEMENT ||
-        seenBuffers.has(channel.buffer)
+        this.poolHasBuffer(pool, channel.buffer, startLength)
       ) {
         continue;
       }
-      seenBuffers.add(channel.buffer);
       pool.push(channel);
       this.pooledInputBuffers += 1;
     }
@@ -654,7 +653,7 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   recycleOutputBlock(channels, requestedFrames) {
     const frames = this.boundedInteger(requestedFrames, channels[0]?.length ?? 128, 1, 8192);
     const pool = this.outputBufferPool.get(frames) ?? [];
-    const seenBuffers = new Set();
+    const startLength = pool.length;
     for (const channel of channels) {
       if (
         this.pooledOutputBuffers >= this.maxRecycledOutputBuffers ||
@@ -664,17 +663,21 @@ class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         !(channel.buffer instanceof ArrayBuffer) ||
         channel.byteLength !== channel.buffer.byteLength ||
         channel.buffer.byteLength < frames * Float32Array.BYTES_PER_ELEMENT ||
-        seenBuffers.has(channel.buffer)
+        this.poolHasBuffer(pool, channel.buffer, startLength)
       ) {
         continue;
       }
-      seenBuffers.add(channel.buffer);
       pool.push(channel);
       this.pooledOutputBuffers += 1;
     }
     if (pool.length > 0) {
       this.outputBufferPool.set(frames, pool);
     }
+  }
+
+  poolHasBuffer(pool, buffer, start) {
+    for (let index = start; index < pool.length; index += 1) if (pool[index]?.buffer === buffer) return true;
+    return false;
   }
 
   dropOldestOutputBlock() {

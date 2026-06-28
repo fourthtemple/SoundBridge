@@ -650,7 +650,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private recycleInputBlock(channels: ArrayLike<number>[], requestedFrames: unknown): void {
     const frames = this.boundedInteger(requestedFrames, channels[0]?.length ?? 128, 1, 8192);
     const pool = this.inputBufferPool.get(frames) ?? [];
-    const seenBuffers = new Set<ArrayBufferLike>();
+    const startLength = pool.length;
     for (const channel of channels) {
       if (
         this.pooledInputBuffers >= this.maxRecycledInputBuffers ||
@@ -660,11 +660,10 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         !(channel.buffer instanceof ArrayBuffer) ||
         channel.byteLength !== channel.buffer.byteLength ||
         channel.buffer.byteLength < frames * Float32Array.BYTES_PER_ELEMENT ||
-        seenBuffers.has(channel.buffer)
+        this.poolHasBuffer(pool, channel.buffer, startLength)
       ) {
         continue;
       }
-      seenBuffers.add(channel.buffer);
       pool.push(channel);
       this.pooledInputBuffers += 1;
     }
@@ -676,7 +675,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   private recycleOutputBlock(channels: ArrayLike<number>[], requestedFrames: unknown): void {
     const frames = this.boundedInteger(requestedFrames, channels[0]?.length ?? 128, 1, 8192);
     const pool = this.outputBufferPool.get(frames) ?? [];
-    const seenBuffers = new Set<ArrayBufferLike>();
+    const startLength = pool.length;
     for (const channel of channels) {
       if (
         this.pooledOutputBuffers >= this.maxRecycledOutputBuffers ||
@@ -686,11 +685,10 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
         !(channel.buffer instanceof ArrayBuffer) ||
         channel.byteLength !== channel.buffer.byteLength ||
         channel.buffer.byteLength < frames * Float32Array.BYTES_PER_ELEMENT ||
-        seenBuffers.has(channel.buffer)
+        this.poolHasBuffer(pool, channel.buffer, startLength)
       ) {
         continue;
       }
-      seenBuffers.add(channel.buffer);
       pool.push(channel);
       this.pooledOutputBuffers += 1;
     }
@@ -698,6 +696,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       this.outputBufferPool.set(frames, pool);
     }
   }
+  private poolHasBuffer(pool: Float32Array[], buffer: ArrayBufferLike, start: number): boolean { for (let index = start; index < pool.length; index += 1) if (pool[index]?.buffer === buffer) return true; return false; }
 
   private dropOldestOutputBlock(): void {
     let oldestBlockId = Number.POSITIVE_INFINITY;
