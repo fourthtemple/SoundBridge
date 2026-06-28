@@ -526,17 +526,21 @@ function writeSharedOutputBlock(shared, blockId, channels) {
   for (let channelIndex = 0; channelIndex < shared.channels; channelIndex += 1) {
     const offset = base + channelIndex * shared.frames;
     const source = channels[channelIndex] ?? channels[0];
-    if (source) {
+    if (source instanceof Float32Array) {
+      for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
+        const sample = source[frameIndex];
+        shared.outputAudio[offset + frameIndex] = Number.isFinite(sample) ? sample : 0;
+      }
+    } else if (source) {
       for (let frameIndex = 0; frameIndex < frames; frameIndex += 1) {
         const sample = Number(source[frameIndex] ?? 0);
         shared.outputAudio[offset + frameIndex] = Number.isFinite(sample) ? sample : 0;
       }
-      if (frames < shared.frames) {
-        shared.outputAudio.fill(0, offset + frames, offset + shared.frames);
-      }
     } else {
       shared.outputAudio.fill(0, offset, offset + shared.frames);
+      continue;
     }
+    if (frames < shared.frames) shared.outputAudio.fill(0, offset + frames, offset + shared.frames);
   }
   Atomics.store(shared.outputControl, SHARED_WRITE_INDEX, (writeIndex + 1) % shared.slots);
   if (outputFull) {
