@@ -233,14 +233,13 @@ function recycleAudioInput(port, channels, frames) {
   }
   const transfer = [];
   const recycled = [];
-  const seenBuffers = new Set();
   for (const channel of channels) {
-    if (seenBuffers.has(channel.buffer)) {
+    const buffer = channel.buffer;
+    if (transfer.includes(buffer)) {
       continue;
     }
-    seenBuffers.add(channel.buffer);
     recycled.push(channel);
-    transfer.push(channel.buffer);
+    transfer.push(buffer);
   }
   try {
     port.postMessage({ type: "recycle-input", frames, channels: recycled }, transfer);
@@ -298,17 +297,15 @@ function routeAudioResponse(envelope) {
 
 function transferableChannelBuffers(channels) {
   const transfer = [];
-  const seenBuffers = new Set();
   for (const channel of channels) {
     if (
       channel instanceof Float32Array &&
       channel.byteOffset === 0 &&
       channel.buffer instanceof ArrayBuffer &&
-      channel.byteLength === channel.buffer.byteLength &&
-      !seenBuffers.has(channel.buffer)
+      channel.byteLength === channel.buffer.byteLength
     ) {
-      seenBuffers.add(channel.buffer);
-      transfer.push(channel.buffer);
+      const buffer = channel.buffer;
+      if (!transfer.includes(buffer)) transfer.push(buffer);
     }
   }
   return transfer;
@@ -485,7 +482,7 @@ function takeSharedInputBuffer(shared, frames) {
 
 function recycleSharedInputBlock(shared, channels, frames) {
   const pool = shared.inputBufferPool.get(frames) ?? [];
-  const seenBuffers = new Set();
+  const startLength = pool.length;
   for (const channel of channels) {
     if (
       shared.pooledInputBuffers >= shared.maxRecycledInputBuffers ||
@@ -493,17 +490,21 @@ function recycleSharedInputBlock(shared, channels, frames) {
       channel.byteOffset !== 0 ||
       !(channel.buffer instanceof ArrayBuffer) ||
       channel.byteLength !== channel.buffer.byteLength ||
-      seenBuffers.has(channel.buffer)
+      poolHasBuffer(pool, channel.buffer, startLength)
     ) {
       continue;
     }
-    seenBuffers.add(channel.buffer);
     pool.push(channel);
     shared.pooledInputBuffers += 1;
   }
   if (pool.length > 0) {
     shared.inputBufferPool.set(frames, pool);
   }
+}
+
+function poolHasBuffer(pool, buffer, start) {
+  for (let index = start; index < pool.length; index += 1) if (pool[index]?.buffer === buffer) return true;
+  return false;
 }
 
 function writeSharedOutputBlock(shared, blockId, channels) {

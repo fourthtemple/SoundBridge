@@ -159,7 +159,7 @@ audioPort.onmessage({
     frames: 2,
     transportLatencySamples: 4,
     reportedLatencySamples: 6,
-    channels: [input]
+    channels: [input, input]
   }
 });
 assert(socket.sent.length === 1, "transport worker sends the audio process frame");
@@ -167,7 +167,9 @@ assert(encodedBinaryEnvelopes[0]?.payload.renderTimeoutMs === 2000, "transport w
 assert(encodedBinaryEnvelopes[0]?.payload.transport?.samplePosition === 20, "transport worker compensates direct transport sample positions from reported latency");
 assert(audioPort.messages[0]?.type === "recycle-input", "transport worker recycles worklet input after send");
 assert(audioPort.messages[0]?.channels?.[0] === input, "transport worker returns the original input channel");
+assert(audioPort.messages[0]?.channels?.length === 1, "transport worker deduplicates aliased recycled input channels");
 assert(audioPort.transfers[0]?.[0] === input.buffer, "transport worker transfers the recycled input buffer");
+assert(audioPort.transfers[0]?.length === 1, "transport worker deduplicates aliased recycled input transfers");
 
 socket.emit("message", {
   data: JSON.stringify({

@@ -274,14 +274,13 @@ function recycleAudioInput(port: MessagePort, channels: Float32Array[], frames: 
   }
   const transfer: ArrayBuffer[] = [];
   const recycled: Float32Array[] = [];
-  const seenBuffers = new Set<ArrayBufferLike>();
   for (const channel of channels) {
-    if (seenBuffers.has(channel.buffer)) {
+    const buffer = channel.buffer as ArrayBuffer;
+    if (transfer.includes(buffer)) {
       continue;
     }
-    seenBuffers.add(channel.buffer);
     recycled.push(channel);
-    transfer.push(channel.buffer as ArrayBuffer);
+    transfer.push(buffer);
   }
   try {
     port.postMessage({ type: "recycle-input", frames, channels: recycled }, transfer);
@@ -340,17 +339,15 @@ function routeAudioResponse(envelope: { id?: string; ok?: boolean; payload?: unk
 
 function transferableChannelBuffers(channels: ArrayLike<number>[]): ArrayBuffer[] {
   const transfer: ArrayBuffer[] = [];
-  const seenBuffers = new Set<ArrayBufferLike>();
   for (const channel of channels) {
     if (
       channel instanceof Float32Array &&
       channel.byteOffset === 0 &&
       channel.buffer instanceof ArrayBuffer &&
-      channel.byteLength === channel.buffer.byteLength &&
-      !seenBuffers.has(channel.buffer)
+      channel.byteLength === channel.buffer.byteLength
     ) {
-      seenBuffers.add(channel.buffer);
-      transfer.push(channel.buffer as ArrayBuffer);
+      const buffer = channel.buffer as ArrayBuffer;
+      if (!transfer.includes(buffer)) transfer.push(buffer);
     }
   }
   return transfer;
@@ -531,7 +528,7 @@ function takeSharedInputBuffer(shared: SharedAudioPort, frames: number): Float32
 
 function recycleSharedInputBlock(shared: SharedAudioPort, channels: Float32Array[], frames: number): void {
   const pool = shared.inputBufferPool.get(frames) ?? [];
-  const seenBuffers = new Set<ArrayBufferLike>();
+  const startLength = pool.length;
   for (const channel of channels) {
     if (
       shared.pooledInputBuffers >= shared.maxRecycledInputBuffers ||
@@ -539,17 +536,21 @@ function recycleSharedInputBlock(shared: SharedAudioPort, channels: Float32Array
       channel.byteOffset !== 0 ||
       !(channel.buffer instanceof ArrayBuffer) ||
       channel.byteLength !== channel.buffer.byteLength ||
-      seenBuffers.has(channel.buffer)
+      poolHasBuffer(pool, channel.buffer, startLength)
     ) {
       continue;
     }
-    seenBuffers.add(channel.buffer);
     pool.push(channel);
     shared.pooledInputBuffers += 1;
   }
   if (pool.length > 0) {
     shared.inputBufferPool.set(frames, pool);
   }
+}
+
+function poolHasBuffer(pool: Float32Array[], buffer: ArrayBufferLike, start: number): boolean {
+  for (let index = start; index < pool.length; index += 1) if (pool[index]?.buffer === buffer) return true;
+  return false;
 }
 
 function writeSharedOutputBlock(shared: SharedAudioPort, blockId: number, channels: ArrayLike<number>[]): void {
