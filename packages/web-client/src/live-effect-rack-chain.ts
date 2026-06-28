@@ -116,6 +116,7 @@ export interface LiveEffectRackChainHealth {
   processTimeoutTripped: boolean;
   recoveryDryBlocks: number;
   timeoutRecoveryDryBlocks: number;
+  recoveryDryBlocksRemaining: number;
   unhealthyReason?: "process-budget-exceeded" | "process-timeout";
   lastError?: unknown;
 }
@@ -231,9 +232,16 @@ export class LiveEffectRackChain extends EventTarget {
       processTimeoutTripped: this.unhealthyReason === "process-timeout",
       recoveryDryBlocks: this.recoveryDryBlocks,
       timeoutRecoveryDryBlocks: this.timeoutRecoveryDryBlocks,
+      recoveryDryBlocksRemaining: this.recoveryDryBlocksRemaining(),
       unhealthyReason: this.unhealthyReason,
       lastError: this.lastError
     };
+  }
+
+  private recoveryDryBlocksRemaining(): number {
+    const timeout = this.unhealthyReason === "process-timeout";
+    const target = timeout ? this.processTimeoutRecoveryBlocks : this.unhealthyReason === "process-budget-exceeded" ? this.processBudgetRecoveryBlocks : 0;
+    return Math.max(0, target - (timeout ? this.timeoutRecoveryDryBlocks : this.recoveryDryBlocks));
   }
 
   get timing(): LiveEffectRackTiming {

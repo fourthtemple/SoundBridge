@@ -3191,9 +3191,20 @@ export class LiveEffectRackChain extends EventTarget {
       processTimeoutTripped: this.unhealthyReason === "process-timeout",
       recoveryDryBlocks: this.recoveryDryBlocks,
       timeoutRecoveryDryBlocks: this.timeoutRecoveryDryBlocks,
+      recoveryDryBlocksRemaining: this.recoveryDryBlocksRemaining(),
       unhealthyReason: this.unhealthyReason,
       lastError: this.lastError
     };
+  }
+
+  recoveryDryBlocksRemaining() {
+    const target = this.unhealthyReason === "process-budget-exceeded"
+      ? this.processBudgetRecoveryBlocks
+      : this.unhealthyReason === "process-timeout"
+        ? this.processTimeoutRecoveryBlocks
+        : 0;
+    const elapsed = this.unhealthyReason === "process-timeout" ? this.timeoutRecoveryDryBlocks : this.recoveryDryBlocks;
+    return Math.max(0, target - elapsed);
   }
 
   get timing() {
