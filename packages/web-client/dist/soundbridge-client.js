@@ -375,6 +375,8 @@ const BINARY_TEXT_DECODER = new TextDecoder();
 const MAX_BINARY_CHANNELS = 32;
 const MAX_BINARY_FRAMES = 8192;
 const MAX_BINARY_BUSES = 32;
+const EMPTY_BINARY_BUSES = [];
+const EMPTY_READ_BINARY_BLOCKS = [];
 const SHARED_AUDIO_VERSION = 1;
 const SHARED_AUDIO_HEADER_INTS = 8;
 const SHARED_AUDIO_SLOT_INTS = 4;
@@ -403,7 +405,9 @@ function encodeBinaryAudioEnvelope(envelope, channels) {
   delete header.payload.inputBuses;
   delete header.payload.outputBuses;
   const headerBytes = BINARY_TEXT_ENCODER.encode(JSON.stringify(header));
-  const sampleBytes = binaryBlockBytes(mainBlock) + binaryBlocksBytes(inputBuses) + binaryBlocksBytes(outputBuses);
+  let sampleBytes = binaryBlockBytes(mainBlock);
+  if (inputBuses.length > 0) sampleBytes += binaryBlocksBytes(inputBuses);
+  if (outputBuses.length > 0) sampleBytes += binaryBlocksBytes(outputBuses);
   const buffer = new ArrayBuffer(BINARY_AUDIO_HEADER_BYTES + headerBytes.length + sampleBytes);
   const view = new DataView(buffer);
   view.setUint32(0, BINARY_AUDIO_MAGIC, false);
@@ -412,8 +416,8 @@ function encodeBinaryAudioEnvelope(envelope, channels) {
   const target = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
   let offset = BINARY_AUDIO_HEADER_BYTES + headerBytes.length;
   offset = writeBinaryBlockSamples(view, target, offset, mainBlock);
-  offset = writeBinaryBlocks(view, target, offset, inputBuses);
-  writeBinaryBlocks(view, target, offset, outputBuses);
+  if (inputBuses.length > 0) offset = writeBinaryBlocks(view, target, offset, inputBuses);
+  if (outputBuses.length > 0) writeBinaryBlocks(view, target, offset, outputBuses);
   return buffer;
 }
 
@@ -488,8 +492,8 @@ function normalizeBinaryBlock(channels) {
 }
 
 function normalizeBinaryBuses(buses) {
-  if (!Array.isArray(buses)) {
-    return [];
+  if (!Array.isArray(buses) || buses.length === 0) {
+    return EMPTY_BINARY_BUSES;
   }
   const seen = /* @__PURE__ */ new Set();
   const blocks = [];
@@ -550,7 +554,7 @@ function readBinaryBlock(view, offset, channelCount, frames) {
 
 function readBinaryBuses(view, offset, specs) {
   if (specs === void 0) {
-    return { blocks: [], offset };
+    return { blocks: EMPTY_READ_BINARY_BLOCKS, offset };
   }
   if (!Array.isArray(specs) || specs.length > MAX_BINARY_BUSES) {
     throw new Error("binary_audio_bus_out_of_range");
