@@ -118,10 +118,16 @@ export function cloneBusBlocks(buses?: BinaryAudioBusBlock[], maxFrames = Number
 export function dryChannels(channels: ArrayLike<number>[], outputChannels: number, maxFrames = Number.MAX_SAFE_INTEGER): number[][] {
   const bounded = boundedLiveEffectChannels(channels, outputChannels, maxFrames);
   const frames = bounded[0]?.length ?? 0;
-  return Array.from({ length: outputChannels }, (_, index) => {
-    const source = bounded.length > 0 ? bounded[index % bounded.length] : undefined;
-    return source ? Array.from(source) : Array.from({ length: frames }, () => 0);
-  });
+  const dry = new Array<number[]>(outputChannels);
+  const boundedCount = bounded.length;
+  for (let index = 0; index < outputChannels; index += 1) {
+    const source = boundedCount > 0 ? bounded[index % boundedCount] : undefined;
+    const output = new Array<number>(source ? source.length : frames);
+    if (source) for (let frame = 0; frame < source.length; frame += 1) output[frame] = source[frame];
+    else output.fill(0);
+    dry[index] = output;
+  }
+  return dry;
 }
 
 function boundedAudioCount(value: number): number {
