@@ -104,6 +104,18 @@ assert(dryPressureCalibration.recommendedTransportLatencySamples === 128, "live 
 assert(dryPressureCalibration.warnings.includes("dry-output-pressure"), "live effect calibration reports dry-output pressure");
 assert(dryPressureCalibration.warnings.includes("increase-transport-latency"), "live effect calibration makes dry-output pressure actionable");
 
+const timeoutPressureCalibration = calibrateLiveEffectRackPolicy({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  processBudgetMs: 8,
+  processTimeoutMs: 12,
+  renderTimeouts: 1,
+  safetyMarginBlocks: 0
+});
+assert(timeoutPressureCalibration.warnings.includes("process-timeout"), "live effect calibration reports render-timeout pressure");
+assert(timeoutPressureCalibration.warnings.includes("increase-process-timeout"), "live effect calibration makes render-timeout pressure actionable");
+assert(timeoutPressureCalibration.recommendedProcessTimeoutMs === 14.667, "live effect calibration adds bounded timeout headroom after render timeouts");
+
 const stressedCalibration = calibrateLiveEffectRackPolicy({
   sampleRate: 48000,
   maxBlockSize: 128,

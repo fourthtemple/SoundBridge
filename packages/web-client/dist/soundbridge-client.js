@@ -2101,6 +2101,7 @@ export function calibrateLiveEffectRackPolicy(options) {
     policy.transportLatencySamples
   );
   const observedBudgetWithSafetyMs = Math.max(observedProcessP95Ms ?? 0, observedRenderP95Ms ?? 0) + safetyMs;
+  const timeoutPressureSafetyMs = hasRenderTimeouts ? policy.blockDurationMs * Math.max(1, safetyBlocks) : 0;
   const recommendedProcessBudgetMs = roundedLiveEffectPolicyNumber(
     boundedLiveEffectNumber(
       Math.max(policy.processBudgetMs, observedBudgetWithSafetyMs),
@@ -2111,7 +2112,7 @@ export function calibrateLiveEffectRackPolicy(options) {
   );
   const recommendedProcessTimeoutMs = roundedLiveEffectPolicyNumber(
     boundedLiveEffectNumber(
-      Math.max(policy.processTimeoutMs, recommendedProcessBudgetMs + safetyMs),
+      Math.max(policy.processTimeoutMs + timeoutPressureSafetyMs, recommendedProcessBudgetMs + safetyMs),
       policy.processTimeoutMs,
       0,
       60000

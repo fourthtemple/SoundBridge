@@ -86,6 +86,8 @@ const deltaSnapshot = baselineWindow.record({
 assert(deltaSnapshot.calibration.warnings.includes("dry-output-pressure"), "live rack calibration window counts dry-output pressure deltas after the baseline");
 assert(deltaSnapshot.calibration.warnings.includes("deadline-miss"), "live rack calibration window counts deadline-miss deltas after the baseline");
 assert(deltaSnapshot.calibration.warnings.includes("process-timeout"), "live rack calibration window counts render-timeout deltas after the baseline");
+assert(deltaSnapshot.calibration.warnings.includes("increase-process-timeout"), "live rack calibration window recommends timeout headroom after render-timeout deltas");
+assert(deltaSnapshot.recommendedPolicyOptions.processTimeoutMs === 14.667, "live rack calibration window makes render-timeout pressure actionable");
 
 baselineWindow.reset();
 const resetBaselineSnapshot = baselineWindow.record({
