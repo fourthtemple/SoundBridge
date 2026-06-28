@@ -696,16 +696,18 @@ export function createNativeWorkerProcesses({
   }
 
   function normalizeWorkerOutputBuses(value, mainChannels, outputBusChannelsByIndex, frames, preferTypedOutput = false) {
-    if (!Array.isArray(value)) {
-      return [{ index: 0, channels: mainChannels }];
+    const mainBus = { index: 0, channels: mainChannels };
+    if (!Array.isArray(value) || value.length === 0) {
+      return [mainBus];
     }
-    const byIndex = new Array(limits.maxPluginBuses);
+    let byIndex;
     const busCount = Math.min(value.length, limits.maxPluginBuses);
     for (let busPosition = 0; busPosition < busCount; busPosition += 1) {
       const bus = value[busPosition];
       if (!bus || typeof bus !== "object" || Array.isArray(bus)) continue;
       const index = normalizeBusIndex(bus.index);
       if (index === undefined || index === 0) continue;
+      byIndex ??= new Array(limits.maxPluginBuses);
       if (byIndex[index] !== undefined) {
         continue;
       }
@@ -715,7 +717,8 @@ export function createNativeWorkerProcesses({
         channels: normalizeWorkerRenderChannels(bus.channels, layoutChannels, frames, limits.maxAudioChannels, preferTypedOutput)
       };
     }
-    byIndex[0] = { index: 0, channels: mainChannels };
+    if (byIndex === undefined) return [mainBus];
+    byIndex[0] = mainBus;
     const outputBuses = [];
     for (const bus of byIndex) if (bus !== undefined) outputBuses.push(bus);
     return outputBuses;
