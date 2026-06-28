@@ -101,6 +101,21 @@ const timeoutScheduler = {
     };
   }
 };
+const fastTimeoutTarget = {
+  health: { healthy: true, latencySamples: 4, reportedLatencySamples: 6 },
+  async processScheduledBlock(scheduled) {
+    return {
+      blockId: scheduled.blockId,
+      channels: scheduled.request.channels,
+      latencySamples: 4,
+      tailSamples: 0,
+      infiniteTail: false,
+      renderEngine: "frame-batch-timeout-fast-target",
+      bypassed: false,
+      healthy: true
+    };
+  }
+};
 const timeoutTarget = {
   health: { healthy: true },
   async processScheduledBlock() {
@@ -115,11 +130,29 @@ const timeoutProcessor = createLiveEffectRackFrameBatchProcessor({
   processTimeoutRecoveryBlocks: 2,
   nowMs: () => timeoutNow
 });
-const timeoutTrip = await timeoutProcessor.process([{ id: "deck-timeout", target: timeoutTarget, channels: [[1, 0]] }]);
+let timeoutDetail;
+let timeoutDryDetail;
+timeoutProcessor.addEventListener("frame-batch-process-timeout", (event) => {
+  timeoutDetail = event.detail;
+});
+timeoutProcessor.addEventListener("frame-batch-dry-output", (event) => {
+  timeoutDryDetail = event.detail;
+});
+const timeoutTargets = [
+  { id: "deck-fast", target: fastTimeoutTarget, channels: [[0.5, 0.25]] },
+  { id: "deck-timeout", target: timeoutTarget, channels: [[1, 0]] }
+];
+const timeoutTrip = await timeoutProcessor.process(timeoutTargets);
 assert(timeoutTrip.processTimeoutTripped === true && timeoutTrip.recoveryDryBlocksRemaining === 2, "live frame batch reports full timeout recovery cooldown after trip");
-await timeoutProcessor.process([{ id: "deck-timeout", target: timeoutTarget, channels: [[0, 1]] }]);
+assert(timeoutTrip.processedTargets === 1 && timeoutTrip.skippedTargets === 1, "live frame batch timeout preserves completed target results");
+assert(timeoutTrip.results[0].id === "deck-fast" && timeoutTrip.results[0].healthy === true && timeoutTrip.results[0].skipped === false, "live frame batch timeout keeps completed target healthy");
+assert(timeoutTrip.results[1].id === "deck-timeout" && timeoutTrip.results[1].dry === true && timeoutTrip.results[1].skipped === true, "live frame batch timeout marks only pending target dry");
+assert(timeoutTrip.results[1].response.renderEngine === "frame-batch-process-timeout", "live frame batch timeout marks pending target with timeout render engine");
+assert(timeoutDetail.result.results[0].id === "deck-fast" && timeoutDetail.result.results[1].id === "deck-timeout", "live frame batch timeout event includes target attribution");
+assert(timeoutDryDetail.result.processedTargets === 1 && timeoutDryDetail.reason === "frame-batch-process-timeout", "live frame batch dry-output event includes timeout target attribution");
+await timeoutProcessor.process(timeoutTargets);
 assert(timeoutProcessor.health.timeoutRecoveryDryBlocks === 1 && timeoutProcessor.health.recoveryDryBlocksRemaining === 1, "live frame batch reports remaining timeout recovery cooldown");
-await timeoutProcessor.process([{ id: "deck-timeout", target: timeoutTarget, channels: [[0.25, 0.5]] }]);
+await timeoutProcessor.process(timeoutTargets);
 assert(timeoutProcessor.health.processTimeoutTripped === false && timeoutProcessor.health.recoveryDryBlocksRemaining === 0, "live frame batch clears timeout recovery cooldown");
 
 console.log("Live effect rack frame batch timing policy smoke checks passed.");

@@ -119,15 +119,20 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
       return this.schedulerDryResult(frame, targets, targetCount, "frame-batch-deadline-pressure");
     }
     const startedAt = this.nowMs();
-    const processing = Promise.all(
-      Array.from({ length: targetCount }, (_unused, index) => this.processTarget(frame, targets[index], index))
+    const targetResults: Array<LiveEffectRackFrameBatchTargetResult | undefined> = Array.from({ length: targetCount });
+    const targetPromises = Array.from({ length: targetCount }, (_unused, index) =>
+      this.processTarget(frame, targets[index], index).then((result) => {
+        targetResults[index] = result;
+        return result;
+      })
     );
+    const processing = Promise.all(targetPromises);
     try {
       const results = await withLiveEffectTimeout(processing, this.processTimeoutMs);
       return this.recordProcessBudget(frame, results, this.nowMs() - startedAt);
     } catch (error) {
       processing.catch(() => undefined);
-      return this.recordProcessTimeout(frame, targets, targetCount, this.nowMs() - startedAt, error);
+      return this.recordProcessTimeout(frame, targets, targetCount, this.nowMs() - startedAt, error, targetResults.slice());
     }
   }
 
@@ -330,7 +335,8 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
     targets: ArrayLike<LiveEffectRackFrameBatchTargetRequest>,
     targetCount: number,
     totalDurationMs: number,
-    error: unknown
+    error: unknown,
+    completedResults: Array<LiveEffectRackFrameBatchTargetResult | undefined> = []
   ): LiveEffectRackFrameBatchResult {
     this.processTimeouts = Math.min(1024, this.processTimeouts + 1);
     this.processTimeoutTripped = true;
@@ -342,7 +348,7 @@ export class LiveEffectRackFrameBatchProcessor extends EventTarget {
       boundedOptionalNumber(totalDurationMs, 0, 60000) ?? 0
     );
     const results = Array.from({ length: targetCount }, (_unused, index) =>
-      this.dryTargetResult(frame, targets[index], index, error, "frame-batch-process-timeout")
+      completedResults[index] ?? this.dryTargetResult(frame, targets[index], index, error, "frame-batch-process-timeout")
     );
     this.recordResponseDeadlineLead(results, boundedDurationMs);
     const result = this.result(frame, results, boundedDurationMs, false, true, error);
