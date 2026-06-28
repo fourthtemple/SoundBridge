@@ -279,7 +279,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
   }
 
   private copyInputBlock(input: Float32Array[], frames: number): Float32Array[] {
-    const channels: Float32Array[] = [];
+    const channels = new Array<Float32Array>(this.outputChannels);
     for (let channelIndex = 0; channelIndex < this.outputChannels; channelIndex += 1) {
       const source = input[channelIndex] ?? input[0];
       const copy = this.takeInputBuffer(frames);
@@ -288,7 +288,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
       } else {
         copy.fill(0);
       }
-      channels.push(copy);
+      channels[channelIndex] = copy;
     }
     return channels;
   }
@@ -404,13 +404,13 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
     if (this.outputBlocks.size >= this.maxQueuedOutputBlocks && !this.outputBlocks.has(blockId)) {
       this.dropOldestOutputBlock();
     }
-    const outputChannels: Float32Array[] = [];
+    const outputChannels = new Array<Float32Array>(channels);
     const base = this.sharedAudioOffset(shared, slotIndex);
     for (let channelIndex = 0; channelIndex < channels; channelIndex += 1) {
       const channel = this.takeOutputBuffer(frames);
       const sourceOffset = base + channelIndex * shared.frames;
       channel.set(shared.outputAudio.subarray(sourceOffset, sourceOffset + frames));
-      outputChannels.push(channel);
+      outputChannels[channelIndex] = channel;
     }
     this.queueOutputBlock(blockId, outputChannels);
   }

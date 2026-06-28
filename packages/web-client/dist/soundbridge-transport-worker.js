@@ -445,13 +445,13 @@ function readSharedInputBlock(shared, slotIndex) {
   const frames = Math.min(shared.frames, boundedFrames(Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_FRAMES_OFFSET)));
   const channelCount = Math.max(1, Math.min(shared.channels, Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_CHANNELS_OFFSET)));
   const transportLatencySamples = Atomics.load(shared.inputControl, metadataOffset + SHARED_BLOCK_TRANSPORT_LATENCY_OFFSET);
-  const channels = [];
+  const channels = new Array(channelCount);
   const base = sharedAudioOffset(shared, slotIndex);
   for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
     const offset = base + channelIndex * shared.frames;
     const channel = takeSharedInputBuffer(shared, frames);
     channel.set(shared.inputAudio.subarray(offset, offset + frames));
-    channels.push(channel);
+    channels[channelIndex] = channel;
   }
   return { blockId, frames, channels, transportLatencySamples };
 }
