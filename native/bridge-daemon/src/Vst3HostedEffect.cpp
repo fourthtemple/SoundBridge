@@ -198,8 +198,8 @@ RenderedAudio HostedVst3Effect::render(
   sampleTime_ = static_cast<double>(transport.samplePosition) + frames;
   RenderedAudio rendered;
   rendered.channels = outputStorage_.empty() ? std::vector<std::vector<float>>{} : renderedChannels(outputStorage_[0], frames);
-  rendered.outputBuses.reserve(outputStorage_.size());
-  for (std::size_t busIndex = 0; busIndex < outputStorage_.size(); ++busIndex) {
+  rendered.outputBuses.reserve(outputStorage_.size() > 0 ? outputStorage_.size() - 1 : 0);
+  for (std::size_t busIndex = 1; busIndex < outputStorage_.size(); ++busIndex) {
     rendered.outputBuses.push_back(IndexedAudioBus{
         static_cast<std::uint32_t>(busIndex),
         renderedChannels(outputStorage_[busIndex], frames)});

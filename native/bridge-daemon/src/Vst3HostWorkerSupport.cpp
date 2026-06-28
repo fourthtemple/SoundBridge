@@ -655,14 +655,15 @@ std::string audioChannelsToJson(const std::vector<std::vector<float>>& channels)
 }
 
 std::string renderedAudioToJson(const RenderedAudio& rendered) {
+  const auto channelsJson = audioChannelsToJson(rendered.channels);
   std::ostringstream output;
-  output << "{\"channels\":" << audioChannelsToJson(rendered.channels)
-         << ",\"outputBuses\":[";
+  output << "{\"channels\":" << channelsJson
+         << ",\"outputBuses\":[{\"index\":0,\"channels\":" << channelsJson << "}";
   for (std::size_t index = 0; index < rendered.outputBuses.size(); ++index) {
-    if (index > 0) {
-      output << ",";
+    if (rendered.outputBuses[index].index == 0) {
+      continue;
     }
-    output << "{\"index\":" << rendered.outputBuses[index].index
+    output << ",{\"index\":" << rendered.outputBuses[index].index
            << ",\"channels\":" << audioChannelsToJson(rendered.outputBuses[index].channels)
            << "}";
   }
