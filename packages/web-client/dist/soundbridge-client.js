@@ -5638,16 +5638,20 @@ function transitionLiveEffectOutputChannels(channels, previousTail, previousPath
   if (fadeSamples <= 0 || !previousTail || previousPath === void 0 || previousPath === outputPath) {
     return channels;
   }
-  return channels.map((source, channelIndex) => {
-    const output = Array.from(source);
-    const fade = Math.min(output.length, fadeSamples);
+  const transitioned = new Array(channels.length);
+  for (let channelIndex = 0; channelIndex < channels.length; channelIndex += 1) {
+    const source = channels[channelIndex];
+    const output = new Array(source.length);
+    const fade = Math.min(source.length, fadeSamples);
     const previous = previousTail[channelIndex % previousTail.length] ?? 0;
     for (let frame = 0; frame < fade; frame += 1) {
       const wet = (frame + 1) / (fade + 1);
-      output[frame] = previous * (1 - wet) + output[frame] * wet;
+      output[frame] = previous * (1 - wet) + Number(source[frame] ?? 0) * wet;
     }
-    return output;
-  });
+    for (let frame = fade; frame < output.length; frame += 1) output[frame] = source[frame];
+    transitioned[channelIndex] = output;
+  }
+  return transitioned;
 }
 
 function wetMixedLiveEffectChannels(wetChannels, dryInput, outputChannels, wetMix, maxFrames = Number.MAX_SAFE_INTEGER) {
