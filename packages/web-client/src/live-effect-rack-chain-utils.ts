@@ -4,7 +4,7 @@ import type {
   LiveEffectRackChainResponse,
   LiveEffectRackChainStage,
   LiveEffectRackChainStageResult
-} from "./live-effect-rack-chain";
+} from "./live-effect-rack-chain-types";
 import { boundedLiveEffectNumber, boundedOptionalNumber } from "./live-effect-rack-metrics";
 
 export function stageWetMix(

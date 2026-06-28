@@ -392,6 +392,38 @@ assert(chainRecovery.targetTransportLatencySamples === 512, "adaptive chain sche
 assert(chainScheduler.snapshot().transportLatencySamples === 512, "adaptive chain scheduler latency applies the recovery target");
 assert(chainRecovery.deadlinePressure?.pressure === false, "adaptive chain scheduler latency snapshots show recovered pressure");
 
+const chainTimeoutScheduler = createLiveEffectRackBlockScheduler({
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0
+});
+const chainTimeoutController = createLiveEffectRackChainSchedulerAdaptiveLatencyController({
+  scheduler: chainTimeoutScheduler,
+  sampleRate: 48000,
+  maxBlockSize: 128,
+  transportLatencySamples: 0,
+  processBudgetMs: 4,
+  processTimeoutMs: 12,
+  minSamples: 1,
+  cooldownBlocks: 0,
+  safetyMarginBlocks: 0
+});
+chainTimeoutController.record({
+  latencySamples: 0,
+  lastProcessDurationMs: 1,
+  processTimedOut: false
+});
+const chainTimeoutPressure = chainTimeoutController.record({
+  latencySamples: 0,
+  lastProcessDurationMs: 1,
+  processTimedOut: true
+});
+assert(
+  chainTimeoutPressure.deadlinePressure?.reasons.includes("process-timeout") &&
+    chainTimeoutPressure.deadlinePressure?.reasons.includes("increase-process-timeout"),
+  "adaptive chain scheduler latency surfaces timeout calibration pressure"
+);
+
 const batchScheduler = createLiveEffectRackBlockScheduler({
   sampleRate: 48000,
   maxBlockSize: 128,
