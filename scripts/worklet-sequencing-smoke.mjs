@@ -221,6 +221,13 @@ bypassLeakMainPort.onmessage({ data: { type: "set-bypassed", bypassed: false } }
 bypassLeakTransportPort.onmessage({ data: { type: "processed", blockId: 0, channels: [Float32Array.from([400])] } });
 assert(bypassLeakProcessor.outputBlocks.size === 0, "unbypassed worklet drops wet responses requested before bypass");
 
+const bypassPoolProcessor = new processorCtor({ processorOptions: { outputChannels: 1, maxQueuedOutputBlocks: 4, outputLatencyBlocks: 2 } });
+const bypassPoolPort = lastPort;
+bypassPoolProcessor.process([[Float32Array.from([42])]], [[new Float32Array(1)]]);
+bypassPoolPort.onmessage({ data: { type: "processed", blockId: 0, channels: [Float32Array.from([420])] } });
+bypassPoolPort.onmessage({ data: { type: "set-bypassed", bypassed: true } });
+assert(bypassPoolProcessor.outputBlocks.size === 0 && bypassPoolProcessor.pooledOutputBuffers === 1, "bypassed worklet recycles queued wet output buffers");
+
 directMainPort.onmessage({ data: { type: "destroy" } });
 assert(directTransportPort.messages.at(-1)?.type === "destroy", "worklet destroy notifies the transport port");
 const directMessagesBeforeDestroyedProcess = directTransportPort.messages.length;

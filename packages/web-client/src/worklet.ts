@@ -215,7 +215,7 @@ export class SoundBridgeAudioProcessor extends AudioWorkletProcessor {
 
     if (typed.type === "set-bypassed") {
       this.bypassed = typed.bypassed === true;
-      if (this.bypassed) { this.outputBlocks.clear(); this.inFlightBlocks = 0; this.bypassResponseBlockFloor = this.blockId; this.latencySafetyBlocks = 0; this.resetResponseDeadlineState(); }
+      if (this.bypassed) { this.dropStaleOutputBlocks(Number.POSITIVE_INFINITY); this.inFlightBlocks = 0; this.bypassResponseBlockFloor = this.blockId; this.latencySafetyBlocks = 0; this.resetResponseDeadlineState(); }
       return;
     }
 
