@@ -3417,6 +3417,7 @@ export class LiveEffectRackChain extends EventTarget {
     const response = this.chainDryResponse(request, "chain-process-timeout", outputChannels, error, false);
     this.recordStageHealth(response);
     this.dispatchEvent(new CustomEvent("chain-process-timeout", { detail: { response, health: this.health } }));
+    this.dispatchEvent(new CustomEvent("chain-process-timeout-tripped", { detail: { response, health: this.health } }));
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
     return response;
   }
