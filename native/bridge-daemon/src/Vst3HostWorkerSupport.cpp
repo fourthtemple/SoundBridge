@@ -7,11 +7,11 @@
 #include "public.sdk/source/vst/hosting/stringconvert.h"
 
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
-#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -514,7 +514,7 @@ bool parseAudioBuses(
     return true;
   }
 
-  std::set<std::uint32_t> seenIndexes;
+  std::array<bool, kMaxWorkerChannels> seenIndexes {};
   const char* cursor = encoded.data();
   const char* const end = cursor + encoded.size();
   while (cursor < end) {
@@ -530,9 +530,10 @@ bool parseAudioBuses(
     if (parsed.ec != std::errc{} || parsed.ptr != separator || index >= kMaxWorkerChannels) {
       return false;
     }
-    if (!seenIndexes.insert(index).second) {
+    if (seenIndexes[index]) {
       return false;
     }
+    seenIndexes[index] = true;
     buses.push_back(IndexedAudioBus{
         index,
         parseChannels(std::string_view(separator + 1, static_cast<std::size_t>(tokenEnd - separator - 1)), frames)});
