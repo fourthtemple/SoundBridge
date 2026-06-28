@@ -2439,6 +2439,8 @@ function isLiveEffectChainBypassDryReason(reason) {
 export class LiveEffectRackFrameBatchCalibrationWindow {
   constructor(options) {
     this.dryOutputBlocks = 0;
+    this.processTimeouts = 0;
+    this.processTimeoutActive = false;
     this.window = new LiveEffectRackCalibrationWindow(options);
     this.seedPressureBaseline();
   }
@@ -2448,6 +2450,7 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
   }
 
   record(health) {
+    this.recordProcessTimeout(health);
     if (this.hasDryPressure(health)) {
       this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
     }
@@ -2458,12 +2461,15 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
       lastResponseDeadlineLeadBlocks: health.lastResponseDeadlineLeadBlocks,
       latencySamples: health.latencySamples ?? health.reportedLatencySamples,
       dryOutputBlocks: this.dryOutputBlocks,
-      responseDeadlineMisses: health.responseDeadlineMisses
+      responseDeadlineMisses: health.responseDeadlineMisses,
+      renderTimeouts: this.processTimeouts
     });
   }
 
   reset() {
     this.dryOutputBlocks = 0;
+    this.processTimeouts = 0;
+    this.processTimeoutActive = false;
     this.window.reset();
     this.seedPressureBaseline();
   }
@@ -2491,6 +2497,14 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
       boundedLiveEffectInteger(health.skippedTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0 ||
       boundedLiveEffectInteger(health.failedTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0
     );
+  }
+
+  recordProcessTimeout(health) {
+    const timeoutActive = health.processTimedOut === true || health.processTimeoutTripped === true;
+    if (timeoutActive && !this.processTimeoutActive) {
+      this.processTimeouts = Math.min(Number.MAX_SAFE_INTEGER, this.processTimeouts + 1);
+    }
+    this.processTimeoutActive = timeoutActive;
   }
 
   seedPressureBaseline() {

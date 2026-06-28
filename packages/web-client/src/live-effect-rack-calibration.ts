@@ -289,6 +289,8 @@ function isChainBypassDryReason(reason: unknown): boolean {
 export class LiveEffectRackFrameBatchCalibrationWindow {
   private readonly window: LiveEffectRackCalibrationWindow;
   private dryOutputBlocks = 0;
+  private processTimeouts = 0;
+  private processTimeoutActive = false;
 
   constructor(options: LiveEffectRackCalibrationWindowOptions) {
     this.window = new LiveEffectRackCalibrationWindow(options);
@@ -300,6 +302,7 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
   }
 
   record(health: LiveEffectRackFrameBatchCalibrationHealthSample): LiveEffectRackCalibrationWindowSnapshot {
+    this.recordProcessTimeout(health);
     if (this.hasDryPressure(health)) {
       this.dryOutputBlocks = Math.min(Number.MAX_SAFE_INTEGER, this.dryOutputBlocks + 1);
     }
@@ -310,12 +313,15 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
       lastResponseDeadlineLeadBlocks: health.lastResponseDeadlineLeadBlocks,
       latencySamples: health.latencySamples ?? health.reportedLatencySamples,
       dryOutputBlocks: this.dryOutputBlocks,
-      responseDeadlineMisses: health.responseDeadlineMisses
+      responseDeadlineMisses: health.responseDeadlineMisses,
+      renderTimeouts: this.processTimeouts
     });
   }
 
   reset(): void {
     this.dryOutputBlocks = 0;
+    this.processTimeouts = 0;
+    this.processTimeoutActive = false;
     this.window.reset();
     this.seedPressureBaseline();
   }
@@ -343,6 +349,14 @@ export class LiveEffectRackFrameBatchCalibrationWindow {
       boundedLiveEffectInteger(health.skippedTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0 ||
       boundedLiveEffectInteger(health.failedTargets, 0, 0, Number.MAX_SAFE_INTEGER) > 0
     );
+  }
+
+  private recordProcessTimeout(health: LiveEffectRackFrameBatchCalibrationHealthSample): void {
+    const timeoutActive = health.processTimedOut === true || health.processTimeoutTripped === true;
+    if (timeoutActive && !this.processTimeoutActive) {
+      this.processTimeouts = Math.min(Number.MAX_SAFE_INTEGER, this.processTimeouts + 1);
+    }
+    this.processTimeoutActive = timeoutActive;
   }
 
   private seedPressureBaseline(): void {

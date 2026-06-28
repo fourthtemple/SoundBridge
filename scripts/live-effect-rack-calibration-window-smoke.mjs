@@ -342,6 +342,15 @@ assert(
   batchTimeoutPressure.calibration.warnings.includes("dry-output-pressure"),
   "live frame batch calibration treats timeout-only health as dry pressure"
 );
+assert(
+  batchTimeoutPressure.calibration.warnings.includes("process-timeout"),
+  "live frame batch calibration reports timeout-only health as timeout pressure"
+);
+assert(
+  batchTimeoutPressure.calibration.warnings.includes("increase-process-timeout") &&
+    batchTimeoutPressure.recommendedPolicyOptions.processTimeoutMs === 14.667,
+  "live frame batch calibration makes timeout-only health actionable"
+);
 
 const batchBypassWindow = createLiveEffectRackFrameBatchCalibrationWindow({
   sampleRate: 48000,
