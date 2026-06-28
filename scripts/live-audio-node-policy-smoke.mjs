@@ -403,6 +403,10 @@ assert(pressureNoApply.applied === false && adaptiveNode.refreshes.length === 0,
 const pressureApplied = await adaptiveController.record();
 assert(pressureApplied.applied === true, "live AudioNode adaptive latency applies after sustained pressure");
 assert(pressureApplied.appliedDirection === "increase", "live AudioNode adaptive latency reports increase direction");
+assert(
+  pressureApplied.recreateRecommended === true && pressureApplied.recreateReasons.includes("increase-max-output-latency"),
+  "live AudioNode adaptive latency can report fixed-option advice alongside an in-place latency refresh"
+);
 assert(adaptiveNode.refreshes[0] === 384, "live AudioNode adaptive latency caps increase steps");
 assert(pressureApplied.refreshResult.transportLatencySamples === 384, "live AudioNode adaptive latency returns refresh results");
 adaptiveNode.health = {
@@ -421,6 +425,41 @@ assert(adaptiveNode.refreshes.at(-1) === 256, "live AudioNode adaptive latency c
 adaptiveController.reset();
 const resetStable = await adaptiveController.record();
 assert(resetStable.stableBlocks === 0, "live AudioNode adaptive latency reset clears stable recovery state");
+
+const sharedPressureNode = {
+  health: {
+    lastRenderDurationMs: 0.5,
+    responseJitterBlocks: 0,
+    responseDeadlineLeadSamples: 256,
+    sharedInputQueuedMaxBlocks: 7,
+    transportLatencySamples: 256
+  },
+  refreshes: [],
+  async refreshLatency(transportLatencySamples) {
+    this.refreshes.push(transportLatencySamples);
+    this.health.transportLatencySamples = transportLatencySamples;
+    return { transportLatencySamples };
+  }
+};
+const sharedPressureController = createLivePerformanceAudioNodeAdaptiveLatencyController({
+  node: sharedPressureNode,
+  instanceId: "inst-audio-node-shared-pressure",
+  sampleRate: 48000,
+  maxBlockFrames: 128,
+  sharedBufferBlocks: 8,
+  transportLatencySamples: 256,
+  minSamples: 2,
+  safetyMarginBlocks: 1
+});
+const sharedPressureWarmup = await sharedPressureController.record();
+assert(sharedPressureWarmup.recreateRecommended === false, "live AudioNode adaptive latency waits for enough shared-ring pressure samples before recreate advice");
+const sharedPressureAdvice = await sharedPressureController.record();
+assert(sharedPressureAdvice.applied === false && sharedPressureNode.refreshes.length === 0, "live AudioNode adaptive latency does not refresh transport latency for shared-ring sizing");
+assert(
+  sharedPressureAdvice.recreateRecommended === true && sharedPressureAdvice.recreateReasons.join(",") === "increase-shared-buffer",
+  "live AudioNode adaptive latency recommends recreate for fixed shared-ring pressure"
+);
+assert(sharedPressureAdvice.recommendedOptions.sharedBufferBlocks === 9, "live AudioNode adaptive latency includes next-node shared-ring sizing advice");
 
 const recoveryNode = {
   health: {

@@ -16,6 +16,7 @@ const LIVE_AUDIO_NODE_ADAPTIVE_LATENCY_RECOVERY_BLOCKS = 128;
 const LIVE_AUDIO_NODE_ADAPTIVE_LATENCY_MAX_RECOVERY_STEP_BLOCKS = 1;
 
 export type LivePerformanceAudioNodeAdaptiveLatencyDirection = "none" | "increase" | "decrease";
+export type LivePerformanceAudioNodeRecreateRecommendationReason = "increase-max-output-latency" | "increase-shared-buffer" | "increase-audio-timeout";
 
 export interface LivePerformanceAudioNodeAdaptiveLatencyTarget<T = unknown> extends LivePerformanceAudioNodeLatencyRefresher<T> {
   readonly health: LivePerformanceAudioNodeCalibrationHealthSample & { transportLatencySamples?: number };
@@ -35,6 +36,8 @@ export interface LivePerformanceAudioNodeAdaptiveLatencyOptions<T = unknown> ext
 export interface LivePerformanceAudioNodeAdaptiveLatencySnapshot<T = unknown> extends LivePerformanceAudioNodeCalibrationWindowSnapshot {
   applied: boolean;
   appliedDirection: LivePerformanceAudioNodeAdaptiveLatencyDirection;
+  recreateRecommended: boolean;
+  recreateReasons: LivePerformanceAudioNodeRecreateRecommendationReason[];
   currentTransportLatencySamples: number;
   targetTransportLatencySamples: number;
   cooldownBlocksRemaining: number;
@@ -91,6 +94,7 @@ export class LivePerformanceAudioNodeAdaptiveLatencyController<T = unknown> {
   ): Promise<LivePerformanceAudioNodeAdaptiveLatencySnapshot<T>> {
     if (this.cooldownBlocksRemaining > 0) this.cooldownBlocksRemaining -= 1;
     const snapshot = this.window.record(health);
+    const recreateReasons = this.recreateReasons(snapshot);
     const currentTransportLatencySamples = boundedInteger(
       this.node.health.transportLatencySamples,
       snapshot.calibration.policy.transportLatencySamples,
@@ -128,6 +132,8 @@ export class LivePerformanceAudioNodeAdaptiveLatencyController<T = unknown> {
       ...snapshot,
       applied,
       appliedDirection,
+      recreateRecommended: recreateReasons.length > 0,
+      recreateReasons,
       currentTransportLatencySamples,
       targetTransportLatencySamples,
       cooldownBlocksRemaining: this.cooldownBlocksRemaining,
@@ -154,6 +160,18 @@ export class LivePerformanceAudioNodeAdaptiveLatencyController<T = unknown> {
       targetTransportLatencySamples > currentTransportLatencySamples &&
       snapshot.calibration.warnings.includes("increase-output-latency")
     );
+  }
+
+  private recreateReasons(
+    snapshot: LivePerformanceAudioNodeCalibrationWindowSnapshot
+  ): LivePerformanceAudioNodeRecreateRecommendationReason[] {
+    if (snapshot.samples < this.minSamples) return [];
+    const warnings = snapshot.calibration.warnings;
+    const reasons: LivePerformanceAudioNodeRecreateRecommendationReason[] = [];
+    if (warnings.includes("increase-max-output-latency")) reasons.push("increase-max-output-latency");
+    if (warnings.includes("increase-shared-buffer")) reasons.push("increase-shared-buffer");
+    if (warnings.includes("increase-audio-timeout")) reasons.push("increase-audio-timeout");
+    return reasons;
   }
 
   private shouldRecover(

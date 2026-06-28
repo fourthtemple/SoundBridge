@@ -1733,6 +1733,7 @@ export class LivePerformanceAudioNodeAdaptiveLatencyController {
   async record(health = this.node.health) {
     if (this.cooldownBlocksRemaining > 0) this.cooldownBlocksRemaining -= 1;
     const snapshot = this.window.record(health);
+    const recreateReasons = this.recreateReasons(snapshot);
     const currentTransportLatencySamples = boundedAudioNodeInteger(
       this.node.health.transportLatencySamples,
       snapshot.calibration.policy.transportLatencySamples,
@@ -1770,6 +1771,8 @@ export class LivePerformanceAudioNodeAdaptiveLatencyController {
       ...snapshot,
       applied,
       appliedDirection,
+      recreateRecommended: recreateReasons.length > 0,
+      recreateReasons,
       currentTransportLatencySamples,
       targetTransportLatencySamples,
       cooldownBlocksRemaining: this.cooldownBlocksRemaining,
@@ -1792,6 +1795,16 @@ export class LivePerformanceAudioNodeAdaptiveLatencyController {
       targetTransportLatencySamples > currentTransportLatencySamples &&
       snapshot.calibration.warnings.includes("increase-output-latency")
     );
+  }
+
+  recreateReasons(snapshot) {
+    if (snapshot.samples < this.minSamples) return [];
+    const warnings = snapshot.calibration.warnings;
+    const reasons = [];
+    if (warnings.includes("increase-max-output-latency")) reasons.push("increase-max-output-latency");
+    if (warnings.includes("increase-shared-buffer")) reasons.push("increase-shared-buffer");
+    if (warnings.includes("increase-audio-timeout")) reasons.push("increase-audio-timeout");
+    return reasons;
   }
 
   shouldRecover(snapshot, targetTransportLatencySamples, currentTransportLatencySamples) {
