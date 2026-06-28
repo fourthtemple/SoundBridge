@@ -114,6 +114,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
   private recoveryDryBlocks = 0;
   private recoveryInProgress = false;
   private processTimeoutRecoveryAttempts = 0;
+  private processTimeoutRecoveryExhaustedEmitted = false;
   private outputStateVersion = 0;
   private inFlightEpoch = 0;
   private inFlightBlocks = 0;
@@ -210,7 +211,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
       renderBudgetRecoveryBlocks: this.renderBudgetRecoveryBlocks,
       processTimeoutRecoveryBlocks: this.processTimeoutRecoveryBlocks,
       processTimeoutRecoveryAttempts: this.processTimeoutRecoveryAttempts,
-      processTimeoutRecoveryExhausted: this.unhealthyReason === "process-timeout" && (this.maxProcessTimeoutRecoveries <= 0 || this.processTimeoutRecoveryAttempts >= this.maxProcessTimeoutRecoveries),
+      processTimeoutRecoveryExhausted: this.processTimeoutRecoveryExhausted(),
       maxProcessTimeoutRecoveries: this.maxProcessTimeoutRecoveries,
       processBudgetMs: this.processBudgetMs,
       processTimeoutMs: this.processTimeoutMs,
@@ -266,6 +267,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     this.unhealthyReason = undefined;
     this.recoveryDryBlocks = 0;
     this.recoveryInProgress = false;
+    this.processTimeoutRecoveryExhaustedEmitted = false;
     this.processBudgetMisses = 0;
     this.lastProcessBudgetExceeded = false;
     this.renderBudgetMisses = 0;
@@ -624,9 +626,7 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     if (this.healthy || this.destroyed || this.unhealthyReason !== "process-timeout" || this.recoveryInProgress) {
       return;
     }
-    if (this.maxProcessTimeoutRecoveries <= 0 || this.processTimeoutRecoveryAttempts >= this.maxProcessTimeoutRecoveries) {
-      return;
-    }
+    if (this.maxProcessTimeoutRecoveries <= 0 || this.processTimeoutRecoveryAttempts >= this.maxProcessTimeoutRecoveries) { this.dispatchProcessTimeoutRecoveryExhaustedIfNeeded(); return; }
     this.recoveryDryBlocks = Math.min(4096, this.recoveryDryBlocks + 1);
     if (this.recoveryDryBlocks < this.processTimeoutRecoveryBlocks) {
       return;
@@ -669,9 +669,13 @@ export class SoundBridgeLiveEffectRack extends EventTarget {
     } else if (reason === "process-timeout") {
       this.dispatchEvent(new CustomEvent("process-timeout", { detail: { error, health: this.health } }));
       this.dispatchEvent(new CustomEvent("process-timeout-tripped", { detail: { error, health: this.health } }));
+      this.dispatchProcessTimeoutRecoveryExhaustedIfNeeded();
     }
     this.dispatchEvent(new CustomEvent("healthchange", { detail: this.health }));
   }
+
+  private processTimeoutRecoveryExhausted(): boolean { return this.unhealthyReason === "process-timeout" && !this.recoveryInProgress && (this.maxProcessTimeoutRecoveries <= 0 || this.processTimeoutRecoveryAttempts >= this.maxProcessTimeoutRecoveries); }
+  private dispatchProcessTimeoutRecoveryExhaustedIfNeeded(): void { if (!this.processTimeoutRecoveryExhausted() || this.processTimeoutRecoveryExhaustedEmitted) return; this.processTimeoutRecoveryExhaustedEmitted = true; this.dispatchEvent(new CustomEvent("process-timeout-recovery-exhausted", { detail: { health: this.health } })); }
 
   private recordRenderDeadlineDiagnostics(error: unknown): void {
     if (!isRenderDeadlineProtocolError(error)) {

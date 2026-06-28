@@ -40,6 +40,7 @@ let timeoutTripEvents = 0;
 let timeoutEventDetail;
 let timeoutTripEventDetail;
 let effectErrorEvents = 0;
+let timeoutRecoveryExhaustedEvents = 0;
 timeoutRack.addEventListener("process-timeout", (event) => {
   timeoutEvents += 1;
   timeoutEventDetail = event.detail;
@@ -51,9 +52,13 @@ timeoutRack.addEventListener("process-timeout-tripped", (event) => {
 timeoutRack.addEventListener("effect-error", () => {
   effectErrorEvents += 1;
 });
+timeoutRack.addEventListener("process-timeout-recovery-exhausted", () => {
+  timeoutRecoveryExhaustedEvents += 1;
+});
 const timedOut = await timeoutRack.processBlock({ blockId: 1, channels: [[0.5]] });
 assert(timedOut.bypassed === true && timedOut.healthy === false, "live rack process timeout fails dry");
 assert(timeoutRack.health.processTimeoutRecoveryExhausted === true, "live rack reports unavailable timeout recovery as exhausted");
+assert(timeoutRecoveryExhaustedEvents === 1, "live rack emits unavailable timeout recovery exhaustion once");
 assert(timeoutClient.timeouts.at(-1) === 1, "live rack process timeout passes bounded request timeout");
 assert(timeoutEvents === 1 && timeoutTripEvents === 1 && effectErrorEvents === 1, "live rack emits timeout and timeout-trip events beside generic effect-error");
 assert(
@@ -100,12 +105,19 @@ const cappedRecoveryRack = await SoundBridgeLiveEffectRack.create({
   processTimeoutRecoveryBlocks: 1,
   maxProcessTimeoutRecoveries: 1
 });
+let cappedRecoveryExhaustedEvents = 0;
+cappedRecoveryRack.addEventListener("process-timeout-recovery-exhausted", () => {
+  cappedRecoveryExhaustedEvents += 1;
+});
 await cappedRecoveryRack.processBlock({ blockId: 3, channels: [[0.5]] });
 assert(cappedRecoveryRack.health.processTimeoutRecoveryExhausted === false, "live rack does not report timeout recovery exhausted before its cooldown");
 await cappedRecoveryRack.processBlock({ blockId: 4, channels: [[0.5]] });
 await new Promise((resolve) => setTimeout(resolve, 0));
 await cappedRecoveryRack.processBlock({ blockId: 5, channels: [[0.5]] });
 assert(cappedRecoveryRack.health.processTimeoutRecoveryExhausted === true, "live rack reports exhausted timeout recovery after the retry cap");
+assert(cappedRecoveryExhaustedEvents === 1, "live rack emits timeout recovery exhaustion after the retry cap");
+await cappedRecoveryRack.processBlock({ blockId: 6, channels: [[0.5]] });
+assert(cappedRecoveryExhaustedEvents === 1, "live rack does not repeat timeout recovery exhaustion");
 await cappedRecoveryRack.destroy();
 
 console.log("Live effect rack process-timeout event smoke checks passed.");
